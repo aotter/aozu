@@ -50,6 +50,19 @@ export type VaultSnapshot = {
   journals: BlobRecord[]
 }
 
+export type CheckInInput = {
+  goalId: string
+  minutes: number
+  note: string
+}
+
+export type ProgressInput = {
+  sourceTurnId: string
+  summary: string
+  pointsAwarded: number
+  reason: string
+}
+
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
@@ -123,6 +136,131 @@ async function replaceVault(snapshot: VaultSnapshot) {
       reject(transaction.error)
     }
   })
+}
+
+async function commitJournalEvent(
+  expectedRevision: number,
+  manifest: VaultManifest,
+  journal: BlobRecord,
+) {
+  const db = await openDatabase()
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction([META_STORE, JOURNAL_STORE], 'readwrite')
+    const metaStore = transaction.objectStore(META_STORE)
+    const currentRequest = metaStore.get(MANIFEST_KEY)
+    let conflict: Error | undefined
+
+    currentRequest.onsuccess = () => {
+      const current = currentRequest.result as VaultManifest | undefined
+      if (!current || current.state.revision !== expectedRevision) {
+        conflict = new Error('Vault 已被其他操作更新，請重試')
+        transaction.abort()
+        return
+      }
+      metaStore.put(manifest, MANIFEST_KEY)
+      transaction.objectStore(JOURNAL_STORE).put(journal)
+    }
+    transaction.oncomplete = () => {
+      db.close()
+      resolve()
+    }
+    transaction.onabort = () => {
+      db.close()
+      reject(conflict ?? transaction.error ?? new Error('IndexedDB transaction 中止'))
+    }
+  })
+}
+
+async function appendJournalEvent(input: {
+  kind: 'check_in_submitted' | 'companion_progress_recorded'
+  actor: 'user' | 'agent'
+  fields: string[]
+  body: string
+  pointsDelta?: number
+}) {
+  const snapshot = await readVault()
+  const manifest = snapshot.manifest
+  if (!manifest) throw new Error('請先建立或匯入 vault')
+
+  const now = new Date()
+  const at = now.toISOString()
+  const date = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Taipei',
+  }).format(now)
+  const eventId = `evt_${crypto.randomUUID()}`
+  const journalPath = `journal/${date}.md`
+  const existingJournal = snapshot.journals.find(
+    (journal) => journal.path === journalPath,
+  )
+  const header = `---\njournal: ${date}\ntimezone: Asia/Taipei\nrevision: 1\n---\n\n# ${date}\n`
+  const currentMarkdown = existingJournal
+    ? (await existingJournal.blob.text()).trimEnd()
+    : header.trimEnd()
+  const nextMarkdown = `${currentMarkdown}\n\n## ${eventId} · ${input.kind}\n\n- at: ${at}\n- actor: ${input.actor}\n${input.fields.map((field) => `- ${field}\n`).join('')}\n${input.body}\n`
+  const journalBlob = new Blob([nextMarkdown], { type: 'text/markdown' })
+  const existingManifestJournal = manifest.journals.find(
+    (journal) => journal.path === journalPath,
+  )
+  const nextJournal = {
+    path: journalPath,
+    type: journalBlob.type,
+    size: journalBlob.size,
+    date,
+    eventIds: [...(existingManifestJournal?.eventIds ?? []), eventId],
+  }
+  const nextManifest: VaultManifest = {
+    ...manifest,
+    metadata: { ...manifest.metadata, updatedAt: at },
+    state: {
+      ...manifest.state,
+      revision: manifest.state.revision + 1,
+      lastEventId: eventId,
+      points: manifest.state.points + (input.pointsDelta ?? 0),
+    },
+    journals: existingManifestJournal
+      ? manifest.journals.map((journal) =>
+          journal.path === journalPath ? nextJournal : journal,
+        )
+      : [...manifest.journals, nextJournal],
+  }
+  const journalRecord = { path: journalPath, blob: journalBlob, updatedAt: at }
+
+  await commitJournalEvent(manifest.state.revision, nextManifest, journalRecord)
+  return {
+    eventId,
+    journalPath,
+    revision: nextManifest.state.revision,
+    points: nextManifest.state.points,
+  }
+}
+
+export async function appendCheckIn(input: CheckInInput) {
+  return {
+    status: 'committed',
+    ...(await appendJournalEvent({
+      kind: 'check_in_submitted',
+      actor: 'user',
+      fields: [`goal: ${input.goalId}`, `minutes: ${input.minutes}`],
+      body: input.note,
+    })),
+  }
+}
+
+export async function appendCompanionProgress(input: ProgressInput) {
+  return {
+    status: 'committed',
+    ...(await appendJournalEvent({
+      kind: 'companion_progress_recorded',
+      actor: 'agent',
+      fields: [
+        `source-turn: ${input.sourceTurnId}`,
+        `points-awarded: ${input.pointsAwarded}`,
+        `reason: ${input.reason}`,
+      ],
+      body: input.summary,
+      pointsDelta: input.pointsAwarded,
+    })),
+  }
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

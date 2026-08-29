@@ -36,3 +36,24 @@ label {
   display: grid;
   gap: 0.25rem;
 }
+
+.dialogue {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+}
+
+.dialogue p {
+  white-space: pre-wrap;
+}
+
+.dialogue-reply {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+}
+
+.dialogue-reply label {
+  grid-column: 1 / -1;
+}
