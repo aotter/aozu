@@ -53,6 +53,10 @@ const en = {
     placeholder: 'Placeholder',
     dialogueTitle: 'Dialogue',
     dialoguePlaceholder: 'Dialogue placeholder',
+    waitingForAgent: 'Waiting for the agent to answer in Companion…',
+    messageLabel: 'Message your companion',
+    messagePlaceholder: 'Say anything…',
+    send: 'Send',
   },
 } as const
 

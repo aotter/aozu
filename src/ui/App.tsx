@@ -13,11 +13,13 @@ type ScreenState = CompanionStartup | { status: 'loading' } | { status: 'error' 
 type AppProps = {
   loadStartup(): Promise<CompanionStartup>
   createPreset(): Promise<unknown>
+  submitAction(actionId: string, expectedRevision: number): Promise<unknown>
+  submitText(text: string, expectedRevision: number): Promise<unknown>
 }
 
 const startOptions = ['custom', 'preset', 'bundle'] as const
 
-function App({ loadStartup, createPreset }: AppProps) {
+function App({ loadStartup, createPreset, submitAction, submitText }: AppProps) {
   const { t } = useTranslation()
   const [screen, setScreen] = useState<ScreenState>({ status: 'loading' })
 
@@ -33,6 +35,12 @@ function App({ loadStartup, createPreset }: AppProps) {
     return () => {
       active = false
     }
+  }, [loadStartup])
+
+  useEffect(() => {
+    const refresh = () => void loadStartup().then(setScreen)
+    window.addEventListener('companion-updated', refresh)
+    return () => window.removeEventListener('companion-updated', refresh)
   }, [loadStartup])
 
   if (screen.status === 'loading') return <StatusScreen>{t('startup.loading')}</StatusScreen>
@@ -51,7 +59,17 @@ function App({ loadStartup, createPreset }: AppProps) {
     <MainScreen
       companionName={screen.companion.name}
       stage={screen.stage}
+      dialogue={screen.dialogue}
+      pendingTurns={screen.pendingTurns}
       webmcpAvailable={screen.webmcpAvailable}
+      onAction={async (actionId) => {
+        await submitAction(actionId, screen.stage.revision)
+        setScreen(await loadStartup())
+      }}
+      onText={async (text) => {
+        await submitText(text, screen.stage.revision)
+        setScreen(await loadStartup())
+      }}
     />
   )
 }
@@ -107,13 +125,23 @@ function StartScreen({ webmcpAvailable, onCreate }: { webmcpAvailable: boolean; 
 function MainScreen({
   companionName,
   stage,
+  dialogue,
+  pendingTurns,
   webmcpAvailable,
+  onAction,
+  onText,
 }: {
   companionName: string
   stage: import('@/core/domain/companion.ts').StageProjection
+  dialogue?: string
+  pendingTurns: number
   webmcpAvailable: boolean
+  onAction(actionId: string): Promise<void>
+  onText(text: string): Promise<void>
 }) {
   const { t } = useTranslation()
+  const [busy, setBusy] = useState(false)
+  const [text, setText] = useState('')
 
   return (
     <div className="min-h-svh bg-muted/30">
@@ -143,9 +171,32 @@ function MainScreen({
             <h2 id="dialogue-title" className="font-heading text-sm font-medium">
               {t('main.dialogueTitle')}
             </h2>
+            {dialogue && <p className="mt-2 text-sm text-foreground">{dialogue}</p>}
+            {pendingTurns > 0 && <p className="mt-2 text-sm text-muted-foreground">{t('main.waitingForAgent')}</p>}
             <div className="mt-3 flex flex-wrap gap-2">
-              {stage.actions.map((action) => <Button key={action.id} variant="outline" disabled>{action.label}</Button>)}
+              {stage.actions.map((action) => (
+                <Button key={action.id} variant="outline" disabled={busy} onClick={async () => {
+                  setBusy(true)
+                  try { await onAction(action.id) } finally { setBusy(false) }
+                }}>{action.label}</Button>
+              ))}
             </div>
+            <form className="mt-3 flex gap-2" onSubmit={async (event) => {
+              event.preventDefault()
+              if (!text.trim() || busy) return
+              setBusy(true)
+              try { await onText(text); setText('') } finally { setBusy(false) }
+            }}>
+              <label htmlFor="companion-message" className="sr-only">{t('main.messageLabel')}</label>
+              <input
+                id="companion-message"
+                className="min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm"
+                placeholder={t('main.messagePlaceholder')}
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+              />
+              <Button type="submit" disabled={busy || !text.trim()}>{t('main.send')}</Button>
+            </form>
           </div>
         </section>
       </main>
