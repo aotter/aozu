@@ -13,7 +13,7 @@ import {
   inspectCharacterWorkspace,
   proposeCharacterAssetJob,
   readCharacterCandidate,
-  readVault,
+  readCompanion,
   reviewCharacterCandidate,
   runRoundTripTest,
   setStoredCharacterExpression,
@@ -21,8 +21,8 @@ import {
   unequipStoredCharacterItem,
   type CheckInInput,
   type ProgressInput,
-  type VaultSnapshot,
-} from './vault'
+  type CompanionSnapshot,
+} from './companion'
 import {
   CHARACTER_PATHS,
   type AssetCandidate,
@@ -215,7 +215,7 @@ function parseProgressInput(input: object): ProgressInput {
 }
 
 async function inspectStorage() {
-  const snapshot = await readVault()
+  const snapshot = await readCompanion()
   return {
     indexedDb: Boolean(snapshot.manifest),
     manifest: snapshot.manifest
@@ -241,7 +241,7 @@ async function inspectStorage() {
 }
 
 async function readCharacterContext() {
-  const snapshot = await readVault()
+  const snapshot = await readCompanion()
   const recentJournals = await Promise.all(
     [...snapshot.journals]
       .sort((a, b) => b.path.localeCompare(a.path))
@@ -271,7 +271,7 @@ function App() {
   const [toolState, setToolState] = useState<'registering' | 'ready' | 'failed'>(
     modelContext ? 'registering' : 'failed',
   )
-  const [vault, setVault] = useState<VaultSnapshot>({
+  const [companion, setCompanion] = useState<CompanionSnapshot>({
     files: [],
     journals: [],
     documents: [],
@@ -298,7 +298,7 @@ function App() {
   const [activeCharacterLayers, setActiveCharacterLayers] = useState<
     Array<CharacterRenderLayer & { src: string }>
   >([])
-  const canonicalCandidate = vault.documents.find(
+  const canonicalCandidate = companion.documents.find(
     ({ path }) => path === CHARACTER_PATHS.seedCandidate,
   )?.value as AssetCandidate | undefined
 
@@ -323,7 +323,7 @@ function App() {
       cancelled = true
       for (const url of urls) URL.revokeObjectURL(url)
     }
-  }, [vault])
+  }, [companion])
 
   useEffect(() => {
     if (!modelContext) return
@@ -455,7 +455,7 @@ function App() {
           annotations: { readOnlyHint: false },
           async execute(input) {
             const committed = await proposeCharacterAssetJob(parseAssetJobProposal(input))
-            setVault(await readVault())
+            setCompanion(await readCompanion())
             return {
               status: 'ok',
               revision: committed.revision,
@@ -488,10 +488,10 @@ function App() {
             anchor.download = exported.filename
             anchor.click()
             URL.revokeObjectURL(url)
-            setVault(await readVault())
+            setCompanion(await readCompanion())
             return {
               status: 'ok',
-              revision: (await readVault()).manifest?.state.revision ?? 0,
+              revision: (await readCompanion()).manifest?.state.revision ?? 0,
               data: { filename: exported.filename, candidateId: exported.candidateId, expectedAssets: exported.expectedAssets },
               nextActions: [{ tool: 'request_candidate_import', required: true, reason: 'Import generated assets through the page for deterministic validation.' }],
             }
@@ -694,7 +694,7 @@ function App() {
           annotations: { readOnlyHint: false },
           async execute(input) {
             const committed = await activateCharacterCandidate(parseCandidateId(input))
-            setVault(await readVault())
+            setCompanion(await readCompanion())
             setResult(`已啟用 ${committed.candidateId} · revision ${committed.revision}`)
             return {
               status: 'ok',
@@ -721,7 +721,7 @@ function App() {
           annotations: { readOnlyHint: false },
           async execute(input) {
             const committed = await setStoredCharacterOutfit(parseEntityId(input, 'outfitId'))
-            setVault(await readVault())
+            setCompanion(await readCompanion())
             return { ...committed, data: { state: committed.state, layers: committed.layers }, nextActions: [] }
           },
         },
@@ -742,7 +742,7 @@ function App() {
           annotations: { readOnlyHint: false },
           async execute(input) {
             const committed = await setStoredCharacterExpression(parseEntityId(input, 'expressionId'))
-            setVault(await readVault())
+            setCompanion(await readCompanion())
             return { ...committed, data: { state: committed.state, layers: committed.layers }, nextActions: [] }
           },
         },
@@ -763,7 +763,7 @@ function App() {
           annotations: { readOnlyHint: false },
           async execute(input) {
             const committed = await equipStoredCharacterItem(parseEntityId(input, 'itemId'))
-            setVault(await readVault())
+            setCompanion(await readCompanion())
             return { ...committed, data: { state: committed.state, layers: committed.layers }, nextActions: [] }
           },
         },
@@ -784,7 +784,7 @@ function App() {
           annotations: { readOnlyHint: false },
           async execute(input) {
             const committed = await unequipStoredCharacterItem(parseEntityId(input, 'itemId'))
-            setVault(await readVault())
+            setCompanion(await readCompanion())
             return { ...committed, data: { state: committed.state, layers: committed.layers }, nextActions: [] }
           },
         },
@@ -845,7 +845,7 @@ function App() {
             }
             const committed = await appendCompanionProgress(parsed)
             lastDialogueResultRef.current = undefined
-            setVault(await readVault())
+            setCompanion(await readCompanion())
             setResult(
               `已記錄進度 · +${parsed.pointsAwarded} points · revision ${committed.revision}`,
             )
@@ -1008,8 +1008,8 @@ function App() {
         }
       })
 
-    readVault()
-      .then(setVault)
+    readCompanion()
+      .then(setCompanion)
       .catch((error: unknown) => setResult(`IndexedDB 讀取失敗：${String(error)}`))
 
     return () => controller.abort()
@@ -1029,7 +1029,7 @@ function App() {
     setRunning(true)
     try {
       const committed = await appendCheckIn(pending.input)
-      setVault(await readVault())
+      setCompanion(await readCompanion())
       clearPendingCheckIn(pending)
       pending.resolve(committed)
       setResult(`已寫入 ${committed.eventId} · revision ${committed.revision}`)
@@ -1077,7 +1077,7 @@ function App() {
       for (const url of pending.urls) URL.revokeObjectURL(url)
       pendingCandidateReviewRef.current = undefined
       setPendingCandidateReview(undefined)
-      setVault(await readVault())
+      setCompanion(await readCompanion())
       pending.resolve({
         status: 'ok',
         revision: committed.revision,
@@ -1109,7 +1109,7 @@ function App() {
       pending.signal?.removeEventListener('abort', pending.onAbort)
       pendingCandidateImportRef.current = undefined
       setPendingCandidateImport(undefined)
-      setVault(await readVault())
+      setCompanion(await readCompanion())
       pending.resolve({
         status: committed.status === 'valid' ? 'ok' : 'invalid',
         revision: committed.revision,
@@ -1143,7 +1143,7 @@ function App() {
     setResult('建立 Blob、manifest 與 Markdown journal…')
     try {
       const { bundleBytes, lifecycle } = await runRoundTripTest()
-      setVault(await readVault())
+      setCompanion(await readCompanion())
       setResult(
         `通過：${bundleBytes} bytes ZIP 完全一致；${lifecycle.outfit}/${lifecycle.expression}；${lifecycle.layers.join(' → ')}`,
       )
@@ -1154,17 +1154,17 @@ function App() {
     }
   }
 
-  async function exportCurrentVault() {
+  async function exportCurrentCompanion() {
     setRunning(true)
     try {
-      const bundle = await createBundle(await readVault())
+      const bundle = await createBundle(await readCompanion())
       const url = URL.createObjectURL(bundle)
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = 'companion-vault.zip'
+      anchor.download = 'companion.zip'
       anchor.click()
       URL.revokeObjectURL(url)
-      setResult(`已匯出 companion-vault.zip（${bundle.size} bytes）`)
+      setResult(`已匯出 companion.zip（${bundle.size} bytes）`)
     } catch (error) {
       setResult(`匯出失敗：${error instanceof Error ? error.message : String(error)}`)
     } finally {
@@ -1177,7 +1177,7 @@ function App() {
     setResult('驗證並 hydrate bundle…')
     try {
       const restored = await importBundle(file)
-      setVault(restored)
+      setCompanion(restored)
       setResult(`匯入通過：${file.name}`)
     } catch (error) {
       setResult(`匯入失敗：${error instanceof Error ? error.message : String(error)}`)
@@ -1209,7 +1209,7 @@ function App() {
 
   return (
     <main>
-      <h1>IndexedDB Vault Bundle Spike</h1>
+      <h1>IndexedDB Companion Bundle Spike</h1>
       <dl>
         <dt>WebMCP</dt>
         <dd>document.modelContext</dd>
@@ -1217,18 +1217,18 @@ function App() {
         <dd>{agentCallAt ?? '等待 agent 呼叫 inspect_companion_spike'}</dd>
         <dt>Manifest</dt>
         <dd>
-          {vault.manifest
-            ? `${vault.manifest.metadata.id} · revision ${vault.manifest.state.revision}`
+          {companion.manifest
+            ? `${companion.manifest.metadata.id} · revision ${companion.manifest.state.revision}`
             : 'none'}
         </dd>
         <dt>Blob files</dt>
-        <dd>{vault.files.length}</dd>
+        <dd>{companion.files.length}</dd>
         <dt>Markdown journals</dt>
-        <dd>{vault.journals.length}</dd>
+        <dd>{companion.journals.length}</dd>
         <dt>Character documents</dt>
-        <dd>{vault.documents.length}</dd>
+        <dd>{companion.documents.length}</dd>
         <dt>Points</dt>
-        <dd>{vault.manifest?.state.points ?? 0}</dd>
+        <dd>{companion.manifest?.state.points ?? 0}</dd>
       </dl>
       <section className="character-candidate" aria-label="角色候選預覽">
         <h2>Momo canonical candidate 01</h2>
@@ -1384,8 +1384,8 @@ function App() {
         </button>
         <button
           type="button"
-          onClick={exportCurrentVault}
-          disabled={running || !vault.manifest}
+          onClick={exportCurrentCompanion}
+          disabled={running || !companion.manifest}
         >
           匯出 bundle
         </button>

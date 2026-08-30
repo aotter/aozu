@@ -18,7 +18,7 @@ import {
   type CharacterState,
 } from './character'
 
-const DB_NAME = 'companion-vault-spike'
+const DB_NAME = 'companion-spike'
 const DB_VERSION = 2
 const META_STORE = 'meta'
 const FILE_STORE = 'files'
@@ -46,9 +46,9 @@ export type JsonRecord = {
   updatedAt: string
 }
 
-export type VaultManifest = {
+export type CompanionManifest = {
   apiVersion: 'companion.local/v1alpha1'
-  kind: 'VaultManifest'
+  kind: 'CompanionManifest'
   metadata: {
     id: string
     name: string
@@ -71,8 +71,8 @@ export type BlobRecord = {
   updatedAt: string
 }
 
-export type VaultSnapshot = {
-  manifest?: VaultManifest
+export type CompanionSnapshot = {
+  manifest?: CompanionManifest
   files: BlobRecord[]
   journals: BlobRecord[]
   documents: JsonRecord[]
@@ -109,9 +109,9 @@ function openDatabase() {
   })
 }
 
-export async function readVault() {
+export async function readCompanion() {
   const db = await openDatabase()
-  return new Promise<VaultSnapshot>((resolve, reject) => {
+  return new Promise<CompanionSnapshot>((resolve, reject) => {
     const transaction = db.transaction(
       [META_STORE, FILE_STORE, JOURNAL_STORE],
       'readonly',
@@ -127,7 +127,7 @@ export async function readVault() {
     transaction.oncomplete = () => {
       db.close()
       resolve({
-        manifest: manifestRequest.result as VaultManifest | undefined,
+        manifest: manifestRequest.result as CompanionManifest | undefined,
         files: filesRequest.result as BlobRecord[],
         journals: journalsRequest.result as BlobRecord[],
         documents: metaKeysRequest.result.flatMap((key, index) =>
@@ -144,7 +144,7 @@ export async function readVault() {
   })
 }
 
-async function replaceVault(snapshot: VaultSnapshot) {
+async function replaceCompanion(snapshot: CompanionSnapshot) {
   const db = await openDatabase()
   return new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(
@@ -176,9 +176,9 @@ async function replaceVault(snapshot: VaultSnapshot) {
   })
 }
 
-export async function commitVaultSnapshot(
+export async function commitCompanionSnapshot(
   expectedRevision: number,
-  snapshot: VaultSnapshot & { manifest: VaultManifest },
+  snapshot: CompanionSnapshot & { manifest: CompanionManifest },
 ) {
   assertManifestMatches(snapshot)
   const db = await openDatabase()
@@ -194,14 +194,14 @@ export async function commitVaultSnapshot(
     let conflict: Error | undefined
 
     currentRequest.onsuccess = () => {
-      const current = currentRequest.result as VaultManifest | undefined
+      const current = currentRequest.result as CompanionManifest | undefined
       if (!current || current.state.revision !== expectedRevision) {
-        conflict = new Error('Vault 已被其他操作更新，請重試')
+        conflict = new Error('Companion 已被其他操作更新，請重試')
         transaction.abort()
         return
       }
-      // ponytail: small-vault atomic rewrite; switch to targeted writes when
-      // character vault size makes rewriting unchanged records measurable.
+      // ponytail: small-companion atomic rewrite; switch to targeted writes when
+      // character companion size makes rewriting unchanged records measurable.
       metaStore.clear()
       fileStore.clear()
       journalStore.clear()
@@ -225,7 +225,7 @@ export async function commitVaultSnapshot(
 
 async function commitJournalEvent(
   expectedRevision: number,
-  manifest: VaultManifest,
+  manifest: CompanionManifest,
   journal: BlobRecord,
 ) {
   const db = await openDatabase()
@@ -236,9 +236,9 @@ async function commitJournalEvent(
     let conflict: Error | undefined
 
     currentRequest.onsuccess = () => {
-      const current = currentRequest.result as VaultManifest | undefined
+      const current = currentRequest.result as CompanionManifest | undefined
       if (!current || current.state.revision !== expectedRevision) {
-        conflict = new Error('Vault 已被其他操作更新，請重試')
+        conflict = new Error('Companion 已被其他操作更新，請重試')
         transaction.abort()
         return
       }
@@ -263,9 +263,9 @@ async function appendJournalEvent(input: {
   body: string
   pointsDelta?: number
 }) {
-  const snapshot = await readVault()
+  const snapshot = await readCompanion()
   const manifest = snapshot.manifest
-  if (!manifest) throw new Error('請先建立或匯入 vault')
+  if (!manifest) throw new Error('請先建立或匯入 companion')
 
   const now = new Date()
   const at = now.toISOString()
@@ -293,7 +293,7 @@ async function appendJournalEvent(input: {
     date,
     eventIds: [...(existingManifestJournal?.eventIds ?? []), eventId],
   }
-  const nextManifest: VaultManifest = {
+  const nextManifest: CompanionManifest = {
     ...manifest,
     metadata: { ...manifest.metadata, updatedAt: at },
     state: {
@@ -349,7 +349,7 @@ export async function appendCompanionProgress(input: ProgressInput) {
 }
 
 function requireCharacterDocument<T extends { kind: string }>(
-  snapshot: VaultSnapshot,
+  snapshot: CompanionSnapshot,
   path: string,
   kind: T['kind'],
 ) {
@@ -361,7 +361,7 @@ function requireCharacterDocument<T extends { kind: string }>(
 }
 
 function putCharacterDocument(
-  snapshot: VaultSnapshot & { manifest: VaultManifest },
+  snapshot: CompanionSnapshot & { manifest: CompanionManifest },
   path: string,
   value: unknown,
   updatedAt: string,
@@ -385,7 +385,7 @@ function putCharacterDocument(
 }
 
 function putCharacterFile(
-  snapshot: VaultSnapshot & { manifest: VaultManifest },
+  snapshot: CompanionSnapshot & { manifest: CompanionManifest },
   path: string,
   blob: Blob,
   updatedAt: string,
@@ -401,7 +401,7 @@ function putCharacterFile(
 }
 
 async function appendCharacterEvent(
-  snapshot: VaultSnapshot & { manifest: VaultManifest },
+  snapshot: CompanionSnapshot & { manifest: CompanionManifest },
   kind:
     | 'asset_job_proposed'
     | 'asset_candidate_imported'
@@ -452,7 +452,7 @@ async function appendCharacterEvent(
 }
 
 export async function inspectCharacterWorkspace() {
-  const snapshot = await readVault()
+  const snapshot = await readCompanion()
   const pack = requireCharacterDocument<CharacterPack>(
     snapshot,
     CHARACTER_PATHS.pack,
@@ -485,7 +485,7 @@ export async function inspectCharacterWorkspace() {
 }
 
 function findCharacterDocumentPath(
-  snapshot: VaultSnapshot,
+  snapshot: CompanionSnapshot,
   kind: string,
   id: string,
 ) {
@@ -502,7 +502,7 @@ function findCharacterDocumentPath(
 export async function proposeCharacterAssetJob(proposal: AssetJobProposal) {
   const workspace = await inspectCharacterWorkspace()
   const manifest = workspace.snapshot.manifest
-  if (!manifest) throw new Error('請先建立或匯入 vault')
+  if (!manifest) throw new Error('請先建立或匯入 companion')
   if (
     workspace.jobs.some(
       (job) =>
@@ -517,7 +517,7 @@ export async function proposeCharacterAssetJob(proposal: AssetJobProposal) {
   const { job, productionBrief } = createAssetJob(workspace.pack, proposal)
   const updatedAt = new Date().toISOString()
   const expectedRevision = manifest.state.revision
-  const snapshot = workspace.snapshot as VaultSnapshot & { manifest: VaultManifest }
+  const snapshot = workspace.snapshot as CompanionSnapshot & { manifest: CompanionManifest }
   putCharacterDocument(snapshot, `character/jobs/${job.id}.json`, job, updatedAt)
   const eventId = await appendCharacterEvent(
     snapshot,
@@ -528,7 +528,7 @@ export async function proposeCharacterAssetJob(proposal: AssetJobProposal) {
   )
   snapshot.manifest.metadata.updatedAt = updatedAt
   snapshot.manifest.state.revision += 1
-  await commitVaultSnapshot(expectedRevision, snapshot)
+  await commitCompanionSnapshot(expectedRevision, snapshot)
   return {
     status: 'ok',
     revision: snapshot.manifest.state.revision,
@@ -578,7 +578,7 @@ export async function exportCharacterAssetJob(jobId: string) {
   if (job.status === 'proposed') {
     const expectedRevision = manifest.state.revision
     const updatedAt = new Date().toISOString()
-    const snapshot = workspace.snapshot as VaultSnapshot & { manifest: VaultManifest }
+    const snapshot = workspace.snapshot as CompanionSnapshot & { manifest: CompanionManifest }
     putCharacterDocument(
       snapshot,
       findCharacterDocumentPath(snapshot, 'AssetJob', job.id),
@@ -587,7 +587,7 @@ export async function exportCharacterAssetJob(jobId: string) {
     )
     snapshot.manifest.metadata.updatedAt = updatedAt
     snapshot.manifest.state.revision += 1
-    await commitVaultSnapshot(expectedRevision, snapshot)
+    await commitCompanionSnapshot(expectedRevision, snapshot)
   }
   const bytes = zipSync(entries, { level: 6 })
   return {
@@ -683,7 +683,7 @@ export async function importCharacterCandidateBundle(
 
   const workspace = await inspectCharacterWorkspace()
   const manifest = workspace.snapshot.manifest
-  if (!manifest) throw new Error('請先建立或匯入 vault')
+  if (!manifest) throw new Error('請先建立或匯入 companion')
   if (workspace.candidates.some(({ id }) => id === imported.candidateId)) {
     throw new Error(`candidate 已存在：${imported.candidateId}`)
   }
@@ -791,7 +791,7 @@ export async function importCharacterCandidateBundle(
   }
   const updatedAt = new Date().toISOString()
   const expectedRevision = manifest.state.revision
-  const snapshot = workspace.snapshot as VaultSnapshot & { manifest: VaultManifest }
+  const snapshot = workspace.snapshot as CompanionSnapshot & { manifest: CompanionManifest }
   for (const file of files) putCharacterFile(snapshot, file.path, file.blob, updatedAt)
   putCharacterDocument(
     snapshot,
@@ -828,7 +828,7 @@ export async function importCharacterCandidateBundle(
   )
   snapshot.manifest.metadata.updatedAt = updatedAt
   snapshot.manifest.state.revision += 1
-  await commitVaultSnapshot(expectedRevision, snapshot)
+  await commitCompanionSnapshot(expectedRevision, snapshot)
   return {
     status: candidate.status,
     revision: snapshot.manifest.state.revision,
@@ -859,7 +859,7 @@ export async function reviewCharacterCandidate(
 ) {
   const workspace = await inspectCharacterWorkspace()
   const manifest = workspace.snapshot.manifest
-  if (!manifest) throw new Error('請先建立或匯入 vault')
+  if (!manifest) throw new Error('請先建立或匯入 companion')
   const candidate = workspace.candidates.find(({ id }) => id === candidateId)
   if (!candidate) throw new Error(`找不到 candidate：${candidateId}`)
   if (candidate.status !== 'valid') throw new Error(`candidate 不能 review：${candidate.status}`)
@@ -868,7 +868,7 @@ export async function reviewCharacterCandidate(
 
   const updatedAt = new Date().toISOString()
   const expectedRevision = manifest.state.revision
-  const snapshot = workspace.snapshot as VaultSnapshot & { manifest: VaultManifest }
+  const snapshot = workspace.snapshot as CompanionSnapshot & { manifest: CompanionManifest }
   putCharacterDocument(
     snapshot,
     findCharacterDocumentPath(snapshot, 'AssetCandidate', candidate.id),
@@ -902,14 +902,14 @@ export async function reviewCharacterCandidate(
   )
   snapshot.manifest.metadata.updatedAt = updatedAt
   snapshot.manifest.state.revision += 1
-  await commitVaultSnapshot(expectedRevision, snapshot)
+  await commitCompanionSnapshot(expectedRevision, snapshot)
   return { status: decision, candidateId, eventId, revision: snapshot.manifest.state.revision }
 }
 
 export async function activateCharacterCandidate(candidateId: string) {
   const workspace = await inspectCharacterWorkspace()
   const manifest = workspace.snapshot.manifest
-  if (!manifest) throw new Error('請先建立或匯入 vault')
+  if (!manifest) throw new Error('請先建立或匯入 companion')
   const candidate = workspace.candidates.find(({ id }) => id === candidateId)
   if (!candidate || candidate.status !== 'approved') {
     throw new Error('candidate 必須先由使用者批准')
@@ -937,7 +937,7 @@ export async function activateCharacterCandidate(candidateId: string) {
 
   const updatedAt = new Date().toISOString()
   const expectedRevision = manifest.state.revision
-  const snapshot = workspace.snapshot as VaultSnapshot & { manifest: VaultManifest }
+  const snapshot = workspace.snapshot as CompanionSnapshot & { manifest: CompanionManifest }
   let pack = workspace.pack
   let state = workspace.state
   const activatedPaths: string[] = []
@@ -1086,7 +1086,7 @@ export async function activateCharacterCandidate(candidateId: string) {
   )
   snapshot.manifest.metadata.updatedAt = updatedAt
   snapshot.manifest.state.revision += 1
-  await commitVaultSnapshot(expectedRevision, snapshot)
+  await commitCompanionSnapshot(expectedRevision, snapshot)
   return {
     status: 'activated',
     candidateId,
@@ -1113,7 +1113,7 @@ async function commitCharacterState(
   const layers = resolveCharacterLayers(workspace.pack, nextState)
   const updatedAt = new Date().toISOString()
   const expectedRevision = manifest.state.revision
-  const snapshot = workspace.snapshot as VaultSnapshot & { manifest: VaultManifest }
+  const snapshot = workspace.snapshot as CompanionSnapshot & { manifest: CompanionManifest }
   putCharacterDocument(snapshot, CHARACTER_PATHS.state, nextState, updatedAt)
   const eventId = await appendCharacterEvent(
     snapshot,
@@ -1124,7 +1124,7 @@ async function commitCharacterState(
   )
   snapshot.manifest.metadata.updatedAt = updatedAt
   snapshot.manifest.state.revision += 1
-  await commitVaultSnapshot(expectedRevision, snapshot)
+  await commitCompanionSnapshot(expectedRevision, snapshot)
   return {
     status: 'ok',
     revision: snapshot.manifest.state.revision,
@@ -1207,13 +1207,13 @@ function isManifestJournal(value: unknown): value is ManifestJournal {
   )
 }
 
-function isManifest(value: unknown): value is VaultManifest {
+function isManifest(value: unknown): value is CompanionManifest {
   if (!isObject(value) || !isObject(value.metadata) || !isObject(value.state)) {
     return false
   }
   return (
     value.apiVersion === 'companion.local/v1alpha1' &&
-    value.kind === 'VaultManifest' &&
+    value.kind === 'CompanionManifest' &&
     typeof value.metadata.id === 'string' &&
     typeof value.metadata.name === 'string' &&
     typeof value.metadata.createdAt === 'string' &&
@@ -1236,7 +1236,7 @@ function parseManifest(text: string) {
   return value
 }
 
-function assertManifestMatches(snapshot: VaultSnapshot) {
+function assertManifestMatches(snapshot: CompanionSnapshot) {
   const manifest = snapshot.manifest
   if (!manifest) throw new Error('bundle 缺少 manifest')
 
@@ -1297,7 +1297,7 @@ function isCharacterReference(value: unknown) {
   )
 }
 
-async function assertCharacterSnapshot(snapshot: VaultSnapshot) {
+async function assertCharacterSnapshot(snapshot: CompanionSnapshot) {
   if (snapshot.documents.length === 0) return
   const allowedKinds = new Set([
     'CharacterPack',
@@ -1318,7 +1318,7 @@ async function assertCharacterSnapshot(snapshot: VaultSnapshot) {
     ({ value }) => isObject(value) && value.kind === 'CharacterState',
   )
   if (packs.length !== 1 || states.length !== 1) {
-    throw new Error('角色 vault 必須各有一份 CharacterPack 與 CharacterState')
+    throw new Error('角色 companion 必須各有一份 CharacterPack 與 CharacterState')
   }
   const packValue = requireObject(packs[0].value, 'CharacterPack')
   const contract = requireObject(packValue.contract, 'CharacterPack.contract')
@@ -1584,11 +1584,11 @@ async function assertCharacterSnapshot(snapshot: VaultSnapshot) {
   }
 }
 
-export async function createBundle(snapshot: VaultSnapshot) {
+export async function createBundle(snapshot: CompanionSnapshot) {
   assertManifestMatches(snapshot)
 
-  // ponytail: ZIP export loads the whole vault in memory; switch to a
-  // streaming archive when real vault sizes make this measurable.
+  // ponytail: ZIP export loads the whole companion in memory; switch to a
+  // streaming archive when real companion sizes make this measurable.
   const entries: Record<string, Uint8Array> = {
     [MANIFEST_FILE]: strToU8(JSON.stringify(snapshot.manifest, null, 2)),
   }
@@ -1648,7 +1648,7 @@ export async function importBundle(blob: Blob) {
     throw new Error('ZIP entry 與 manifest 索引不一致')
   }
 
-  const snapshot: VaultSnapshot = {
+  const snapshot: CompanionSnapshot = {
     manifest,
     files: manifest.files.map((entry) => ({
       path: entry.path,
@@ -1668,11 +1668,11 @@ export async function importBundle(blob: Blob) {
   }
   assertManifestMatches(snapshot)
   await assertCharacterSnapshot(snapshot)
-  await replaceVault(snapshot)
-  return readVault()
+  await replaceCompanion(snapshot)
+  return readCompanion()
 }
 
-export function createSampleVault(): VaultSnapshot & { manifest: VaultManifest } {
+export function createSampleCompanion(): CompanionSnapshot & { manifest: CompanionManifest } {
   const updatedAt = new Date().toISOString()
   const date = updatedAt.slice(0, 10)
   const filePath = 'attachments/evt_test_01.bin'
@@ -1690,12 +1690,12 @@ export function createSampleVault(): VaultSnapshot & { manifest: VaultManifest }
     { type: 'text/markdown' },
   )
 
-  const manifest: VaultManifest = {
+  const manifest: CompanionManifest = {
     apiVersion: 'companion.local/v1alpha1',
-    kind: 'VaultManifest',
+    kind: 'CompanionManifest',
     metadata: {
       id: 'momo-test',
-      name: 'Momo Test Vault',
+      name: 'Momo Test Companion',
       createdAt: updatedAt,
       updatedAt,
     },
@@ -1722,7 +1722,7 @@ export function createSampleVault(): VaultSnapshot & { manifest: VaultManifest }
     files: [{ path: filePath, blob: fileBlob, updatedAt }],
     journals: [{ path: journalPath, blob: journalBlob, updatedAt }],
     documents: [],
-  } satisfies VaultSnapshot
+  } satisfies CompanionSnapshot
 }
 
 async function createStructuralCandidateBundle(
@@ -1758,7 +1758,7 @@ async function createStructuralCandidateBundle(
 }
 
 async function runStoredCharacterLifecycleSelfCheck(
-  seedSnapshot: VaultSnapshot,
+  seedSnapshot: CompanionSnapshot,
   canonicalBlob: Blob,
 ) {
   try {
@@ -1910,16 +1910,16 @@ async function runStoredCharacterLifecycleSelfCheck(
       layers: afterReload.layers.map(({ id }) => id),
     }
   } finally {
-    await replaceVault(seedSnapshot)
+    await replaceCompanion(seedSnapshot)
   }
 }
 
 export async function runRoundTripTest() {
-  const liveVault = await readVault()
-  const hadLiveVault = Boolean(liveVault.manifest)
+  const liveCompanion = await readCompanion()
+  const hadLiveCompanion = Boolean(liveCompanion.manifest)
   try {
     runCharacterRuleSelfCheck()
-    const sample = createSampleVault()
+    const sample = createSampleCompanion()
   const candidateResponse = await fetch(
     '/assets/character/candidates/momo-canonical-01.png',
   )
@@ -1953,10 +1953,10 @@ export async function runRoundTripTest() {
     type: 'application/json',
     size: strToU8(JSON.stringify(document.value, null, 2)).length,
   }))
-  await replaceVault(sample)
+  await replaceCompanion(sample)
   const exported = await createBundle(sample)
   const expected = new Uint8Array(await exported.arrayBuffer())
-  await replaceVault({ files: [], journals: [], documents: [] })
+  await replaceCompanion({ files: [], journals: [], documents: [] })
   const restored = await importBundle(exported)
   const actual = new Uint8Array(await (await createBundle(restored)).arrayBuffer())
   if (
@@ -2000,17 +2000,17 @@ export async function runRoundTripTest() {
   }
   if (!tamperedRejected) throw new Error('竄改的 CharacterState 未被拒絕')
   const afterRejectedImport = new Uint8Array(
-    await (await createBundle(await readVault())).arrayBuffer(),
+    await (await createBundle(await readCompanion())).arrayBuffer(),
   )
   if (
     afterRejectedImport.length !== expected.length ||
     afterRejectedImport.some((byte, index) => byte !== expected[index])
   ) {
-    throw new Error('拒絕無效 ZIP 後 live vault 被改動')
+    throw new Error('拒絕無效 ZIP 後 live companion 被改動')
   }
     const lifecycle = await runStoredCharacterLifecycleSelfCheck(restored, candidateBlob)
     return { restored, bundleBytes: exported.size, tamperedRejected, lifecycle }
   } finally {
-    if (hadLiveVault) await replaceVault(liveVault)
+    if (hadLiveCompanion) await replaceCompanion(liveCompanion)
   }
 }

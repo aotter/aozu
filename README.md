@@ -1,19 +1,12 @@
-# Companion Vault browser capability spike
+# Companion
 
-Requires Node.js 22 or newer.
+正式版 React SPA 骨架，部署目標為 Cloudflare Workers Static Assets。
 
-Minimal React SPA testing:
-
-- WebMCP tool registration with `document.modelContext`
-- `showDirectoryPicker()` read/write
-- `FileSystemDirectoryHandle` persistence in IndexedDB
-- small UI metadata in localStorage
-- Cloudflare Workers Static Assets
-
-```sh
+```bash
+pnpm install
 pnpm dev
-pnpm cf:preview
+pnpm build
 pnpm deploy
 ```
 
-The file-system test creates `.companion-vault-spike.json` in the directory selected by the user.
+已驗證的 WebMCP／IndexedDB／角色資產 spike 保留在 [`poc/`](./poc/)。

@@ -1,0 +1,13 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #1f2328;
+  background: #fff;
+}
+
+body {
+  margin: 0;
+}
+
+code {
+  font-family: ui-monospace, monospace;
+}

@@ -2,7 +2,7 @@
 
 ## Outcome
 
-Companion Vault exposes a constrained character-asset workflow through WebMCP. An
+Companion exposes a constrained character-asset workflow through WebMCP. An
 agent can create stable candidates for expressions, outfits, and props, but cannot
 write arbitrary files, overwrite the active character, skip validation, approve its
 own work, or create an illegal equipment combination.
@@ -27,7 +27,7 @@ canonical reference
 - Outfits are complete character skin sets.
 - Expressions are complete skin variants within an outfit.
 - Props are one or two full-canvas transparent overlay layers.
-- IndexedDB is the runtime store; `.zip` is the portable vault format.
+- IndexedDB is the runtime store; `.zip` is the portable companion format.
 - Only `document.modelContext` is supported.
 - There is no image-generator compatibility or background-removal adapter inside
   the website. The agent may preprocess generated files before import.
@@ -401,7 +401,7 @@ The renderer never guesses crop offsets or scales individual props.
 
 The existing stores remain sufficient for the MVP:
 
-- `meta`: vault manifest, character pack, jobs, candidates, validation reports.
+- `meta`: companion manifest, character pack, jobs, candidates, validation reports.
 - `files`: canonical, candidate, active skin, and item layer Blobs keyed by path.
 - `journals`: append-only character lifecycle and equipment events.
 
@@ -420,8 +420,8 @@ journal/YYYY-MM-DD.md
 ```
 
 Import hydrates a temporary snapshot, validates every referenced path/hash/rule, then
-replaces the live vault in one transaction. Invalid imports never partially mutate the
-current vault.
+replaces the live companion in one transaction. Invalid imports never partially mutate the
+current companion.
 
 ## Journal Events
 
@@ -446,7 +446,7 @@ revision. Activation and equipment events include the resolved asset paths.
 ```text
 src/character.ts             contracts, state machine, rules, validation
 src/CharacterRenderer.tsx    fixed-canvas layered renderer
-src/vault.ts                 IndexedDB transactions and ZIP serialization
+src/companion.ts                 IndexedDB transactions and ZIP serialization
 src/App.tsx                  WebMCP registration and pending review/import UI
 public/assets/character/     development-only seeded candidates
 ```
