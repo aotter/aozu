@@ -21,34 +21,26 @@ import type {
   ViewQueryRequest,
   ViewQueryResult,
 } from "@aotter/mantle-runtime"
-import { ENTRY_STORE, openCompanionDatabase, requestResult, transactionDone } from "./database.ts"
+import {
+  type CompanionDatabase,
+  ENTRY_STORE,
+  openCompanionDatabase,
+  type StoredEntry,
+  toPublicEntry,
+} from "./database.ts"
 
 type EntryRow = Entry & { authorId: string | null }
-type StoredEntry = EntryRow & { bundleId: string }
 
 export async function importEntries(bundleId: string, entries: readonly Entry[]) {
   const database = await openCompanionDatabase()
-  try {
-    const transaction = database.transaction(ENTRY_STORE, 'readwrite')
-    const store = transaction.objectStore(ENTRY_STORE)
-    for (const entry of entries) {
-      store.add({ ...structuredClone(entry), bundleId, authorId: null })
-    }
-    await transactionDone(transaction)
-  } finally { database.close() }
+  const transaction = database.transaction(ENTRY_STORE, 'readwrite')
+  for (const entry of entries) {
+    await transaction.store.add({ ...structuredClone(entry), bundleId, authorId: null })
+  }
+  await transaction.done
 }
 type EntrySort = NonNullable<ListEntriesArgs["sort"]>
 
-const publicEntry = (entry: StoredEntry): Entry => ({
-  id: entry.id,
-  collection: entry.collection,
-  ...(typeof entry.data.locale === "string" ? { locale: entry.data.locale } : {}),
-  status: entry.status,
-  version: entry.version,
-  data: entry.data,
-  createdAt: entry.createdAt,
-  updatedAt: entry.updatedAt,
-})
 const valueAt = (entry: EntryRow, field: string) =>
   field in entry ? entry[field as keyof EntryRow] : entry.data[field]
 
@@ -60,22 +52,15 @@ const conflict = (kind: string, id: string, expected: unknown, actual: unknown) 
     actual,
   })
 
-async function allEntries(database: IDBDatabase, bundleId: string): Promise<StoredEntry[]> {
-  const transaction = database.transaction(ENTRY_STORE, "readonly")
-  return requestResult(transaction.objectStore(ENTRY_STORE).index("bundleId").getAll(bundleId))
-}
+const allEntries = (database: CompanionDatabase, bundleId: string): Promise<StoredEntry[]> =>
+  database.getAllFromIndex(ENTRY_STORE, "bundleId", bundleId)
 
 export function createIndexedDbEntryRepository(bundleId: string): EntryRepository & EntryReader {
-  const key = (id: string) => [bundleId, id]
+  const key = (id: string): [string, string] => [bundleId, id]
 
   async function read(id: string): Promise<StoredEntry | null> {
     const database = await openCompanionDatabase()
-    try {
-      const transaction = database.transaction(ENTRY_STORE, "readonly")
-      return (await requestResult(transaction.objectStore(ENTRY_STORE).get(key(id)))) ?? null
-    } finally {
-      database.close()
-    }
+    return (await database.get(ENTRY_STORE, key(id))) ?? null
   }
 
   async function select(
@@ -83,104 +68,80 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
     limit = Number.POSITIVE_INFINITY,
   ): Promise<StoredEntry[]> {
     const database = await openCompanionDatabase()
-    try {
-      return (await allEntries(database, bundleId)).filter(predicate).slice(0, limit)
-    } finally {
-      database.close()
-    }
+    return (await allEntries(database, bundleId)).filter(predicate).slice(0, limit)
   }
 
   return {
     async create(args: CreateEntryArgs) {
       const database = await openCompanionDatabase()
-      try {
-        const transaction = database.transaction(ENTRY_STORE, "readwrite")
-        const store = transaction.objectStore(ENTRY_STORE)
-        const existing = await requestResult(store.get(key(args.id)))
-        if (existing) throw conflict("EntryVersionConflict", args.id, "absent", existing.version)
-        const entry: StoredEntry = {
-          bundleId,
-          id: args.id,
-          collection: args.collection,
-          status: args.status,
-          version: 1,
-          data: structuredClone(args.data),
-          authorId: args.authorId,
-          createdAt: args.now,
-          updatedAt: args.now,
-        }
-        store.add(entry)
-        await transactionDone(transaction)
-        return entry
-      } finally {
-        database.close()
+      const transaction = database.transaction(ENTRY_STORE, "readwrite")
+      const existing = await transaction.store.get(key(args.id))
+      if (existing) throw conflict("EntryVersionConflict", args.id, "absent", existing.version)
+      const entry: StoredEntry = {
+        bundleId,
+        id: args.id,
+        collection: args.collection,
+        status: args.status,
+        version: 1,
+        data: structuredClone(args.data),
+        authorId: args.authorId,
+        createdAt: args.now,
+        updatedAt: args.now,
       }
+      await transaction.store.add(entry)
+      await transaction.done
+      return entry
     },
     async get(id) {
       return read(id)
     },
     async update(args: UpdateEntryArgs) {
       const database = await openCompanionDatabase()
-      try {
-        const transaction = database.transaction(ENTRY_STORE, "readwrite")
-        const store = transaction.objectStore(ENTRY_STORE)
-        const current = (await requestResult(store.get(key(args.id)))) as StoredEntry | undefined
-        if (!current || current.collection !== args.collection) {
-          throw conflict("EntryVersionConflict", args.id, args.expectedVersion, current?.version ?? 0)
-        }
-        if (current.version !== args.expectedVersion) {
-          throw conflict("EntryVersionConflict", args.id, args.expectedVersion, current.version)
-        }
-        const entry = { ...current, data: structuredClone(args.data), version: current.version + 1, updatedAt: args.now }
-        store.put(entry)
-        await transactionDone(transaction)
-        return entry
-      } finally {
-        database.close()
+      const transaction = database.transaction(ENTRY_STORE, "readwrite")
+      const current = await transaction.store.get(key(args.id))
+      if (!current || current.collection !== args.collection) {
+        throw conflict("EntryVersionConflict", args.id, args.expectedVersion, current?.version ?? 0)
       }
+      if (current.version !== args.expectedVersion) {
+        throw conflict("EntryVersionConflict", args.id, args.expectedVersion, current.version)
+      }
+      const entry = { ...current, data: structuredClone(args.data), version: current.version + 1, updatedAt: args.now }
+      await transaction.store.put(entry)
+      await transaction.done
+      return entry
     },
     async delete(args: DeleteEntryArgs) {
       const database = await openCompanionDatabase()
-      try {
-        const transaction = database.transaction(ENTRY_STORE, "readwrite")
-        const store = transaction.objectStore(ENTRY_STORE)
-        const current = (await requestResult(store.get(key(args.id)))) as StoredEntry | undefined
-        if (!current || current.collection !== args.collection) return { removed: false }
-        if (current.version !== args.expectedVersion) {
-          throw conflict("EntryVersionConflict", args.id, args.expectedVersion, current.version)
-        }
-        if (current.status !== args.expectedStatus) {
-          throw conflict("EntryStatusConflict", args.id, args.expectedStatus, current.status)
-        }
-        store.delete(key(args.id))
-        await transactionDone(transaction)
-        return { removed: true }
-      } finally {
-        database.close()
+      const transaction = database.transaction(ENTRY_STORE, "readwrite")
+      const current = await transaction.store.get(key(args.id))
+      if (!current || current.collection !== args.collection) return { removed: false }
+      if (current.version !== args.expectedVersion) {
+        throw conflict("EntryVersionConflict", args.id, args.expectedVersion, current.version)
       }
+      if (current.status !== args.expectedStatus) {
+        throw conflict("EntryStatusConflict", args.id, args.expectedStatus, current.status)
+      }
+      await transaction.store.delete(key(args.id))
+      await transaction.done
+      return { removed: true }
     },
     async transitionStatus(args: TransitionStatusArgs) {
       const database = await openCompanionDatabase()
-      try {
-        const transaction = database.transaction(ENTRY_STORE, "readwrite")
-        const store = transaction.objectStore(ENTRY_STORE)
-        const current = (await requestResult(store.get(key(args.id)))) as StoredEntry | undefined
-        if (!current || current.collection !== args.collection) {
-          throw conflict("EntryVersionConflict", args.id, args.expectedVersion ?? 0, current?.version ?? 0)
-        }
-        if (args.expectedStatus && current.status !== args.expectedStatus) {
-          throw conflict("EntryStatusConflict", args.id, args.expectedStatus, current.status)
-        }
-        if (args.expectedVersion !== undefined && current.version !== args.expectedVersion) {
-          throw conflict("EntryVersionConflict", args.id, args.expectedVersion, current.version)
-        }
-        const entry = { ...current, status: args.to, version: current.version + 1, updatedAt: args.now }
-        store.put(entry)
-        await transactionDone(transaction)
-        return entry
-      } finally {
-        database.close()
+      const transaction = database.transaction(ENTRY_STORE, "readwrite")
+      const current = await transaction.store.get(key(args.id))
+      if (!current || current.collection !== args.collection) {
+        throw conflict("EntryVersionConflict", args.id, args.expectedVersion ?? 0, current?.version ?? 0)
       }
+      if (args.expectedStatus && current.status !== args.expectedStatus) {
+        throw conflict("EntryStatusConflict", args.id, args.expectedStatus, current.status)
+      }
+      if (args.expectedVersion !== undefined && current.version !== args.expectedVersion) {
+        throw conflict("EntryVersionConflict", args.id, args.expectedVersion, current.version)
+      }
+      const entry = { ...current, status: args.to, version: current.version + 1, updatedAt: args.now }
+      await transaction.store.put(entry)
+      await transaction.done
+      return entry
     },
     async list(args: ListEntriesArgs): Promise<ListEntriesResult> {
       const offset = args.cursor ? Number(args.cursor) : 0
@@ -220,18 +181,18 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
     },
     async readById(id) {
       const entry = await read(id)
-      return entry ? publicEntry(entry) : null
+      return entry ? toPublicEntry(entry) : null
     },
     async readBySlug(args: ReadEntryBySlugArgs) {
       const entry = (await select(matchesData({ ...args, field: "slug", value: args.slug }), 1))[0]
-      return entry ? publicEntry(entry) : null
+      return entry ? toPublicEntry(entry) : null
     },
     async readByDataField(args: ReadEntryByDataFieldArgs) {
       const entry = (await select(matchesData(args), 1))[0]
-      return entry ? publicEntry(entry) : null
+      return entry ? toPublicEntry(entry) : null
     },
     async readByDataFieldIn(args: ReadEntriesByDataFieldInArgs) {
-      return (await select((entry) => matchesData(args)(entry) && args.values.includes(entry.data[args.field] as never))).map(publicEntry)
+      return (await select((entry) => matchesData(args)(entry) && args.values.includes(entry.data[args.field] as never))).map(toPublicEntry)
     },
     async readPublished(args: ReadPublishedEntriesArgs = {}) {
       return (
@@ -242,10 +203,10 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
             localeMatches(entry, args.locale),
           args.limit,
         )
-      ).map(publicEntry)
+      ).map(toPublicEntry)
     },
     async findManyByDataField(args: FindManyEntriesByDataFieldArgs) {
-      return (await select(matchesData(args), args.limit)).map(publicEntry)
+      return (await select(matchesData(args), args.limit)).map(toPublicEntry)
     },
   }
 }
@@ -309,7 +270,7 @@ export function createIndexedDbViewQueryExecutor(bundleId: string, plan: Runtime
       const selected = rows.slice(start, start + show + 1)
       const projected = selected.slice(0, show).map((entry) => {
         const fields = query.fields
-        if (!fields) return publicEntry(entry as StoredEntry)
+        if (!fields) return toPublicEntry(entry as StoredEntry)
         return Object.fromEntries(fields.map((field) => [field, valueAt(entry, field)]))
       }) as R[]
       return { rows: projected, page, show, hasMore: selected.length > show }

@@ -1,35 +1,18 @@
-import { ASSET_STORE, openCompanionDatabase, requestResult, transactionDone } from './database.ts'
-
-export interface StoredAsset {
-  bundleId: string
-  id: string
-  blob: Blob
-}
+import { ASSET_STORE, openCompanionDatabase, type StoredAsset } from './database.ts'
 
 export function createIndexedDbAssetRepository(bundleId: string) {
   return {
     async put(id: string, blob: Blob) {
       const database = await openCompanionDatabase()
-      try {
-        const transaction = database.transaction(ASSET_STORE, 'readwrite')
-        transaction.objectStore(ASSET_STORE).add({ bundleId, id, blob })
-        await transactionDone(transaction)
-      } finally { database.close() }
+      await database.add(ASSET_STORE, { bundleId, id, blob })
     },
     async get(id: string): Promise<Blob | null> {
       const database = await openCompanionDatabase()
-      try {
-        const transaction = database.transaction(ASSET_STORE, 'readonly')
-        const asset = await requestResult<StoredAsset | undefined>(transaction.objectStore(ASSET_STORE).get([bundleId, id]))
-        return asset?.blob ?? null
-      } finally { database.close() }
+      return (await database.get(ASSET_STORE, [bundleId, id]))?.blob ?? null
     },
     async list(): Promise<StoredAsset[]> {
       const database = await openCompanionDatabase()
-      try {
-        const transaction = database.transaction(ASSET_STORE, 'readonly')
-        return requestResult(transaction.objectStore(ASSET_STORE).index('bundleId').getAll(bundleId))
-      } finally { database.close() }
+      return database.getAllFromIndex(ASSET_STORE, 'bundleId', bundleId)
     },
   }
 }

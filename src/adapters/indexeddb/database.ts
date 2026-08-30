@@ -1,3 +1,8 @@
+import type { Entry } from '@aotter/mantle-spec'
+import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
+
+import type { BundleRecord } from '../../core/bundle.ts'
+
 const DATABASE_NAME = 'companion'
 const DATABASE_VERSION = 4
 
@@ -6,39 +11,60 @@ export const ENTRY_STORE = 'entries'
 export const BUNDLE_STORE = 'bundles'
 export const ASSET_STORE = 'assets'
 
-export const requestResult = <T>(request: IDBRequest<T>) =>
-  new Promise<T>((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
+export type StoredEntry = Entry & { bundleId: string; authorId: string | null }
+export interface StoredAsset {
+  bundleId: string
+  id: string
+  blob: Blob
+}
 
-export const transactionDone = (transaction: IDBTransaction) =>
-  new Promise<void>((resolve, reject) => {
-    transaction.oncomplete = () => resolve()
-    transaction.onabort = transaction.onerror = () => reject(transaction.error)
-  })
+export const toPublicEntry = (entry: StoredEntry): Entry => ({
+  id: entry.id,
+  collection: entry.collection,
+  ...(typeof entry.data.locale === 'string' ? { locale: entry.data.locale } : {}),
+  status: entry.status,
+  version: entry.version,
+  data: entry.data,
+  createdAt: entry.createdAt,
+  updatedAt: entry.updatedAt,
+})
 
-export function openCompanionDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION)
+interface CompanionDatabaseSchema extends DBSchema {
+  [META_STORE]: { key: string; value: string }
+  [ENTRY_STORE]: { key: [string, string]; value: StoredEntry; indexes: { bundleId: string } }
+  [BUNDLE_STORE]: { key: string; value: BundleRecord }
+  [ASSET_STORE]: { key: [string, string]; value: StoredAsset; indexes: { bundleId: string } }
+}
 
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(META_STORE)) {
-        request.result.createObjectStore(META_STORE)
-      }
-      if (!request.result.objectStoreNames.contains(ENTRY_STORE)) {
-        const store = request.result.createObjectStore(ENTRY_STORE, { keyPath: ['bundleId', 'id'] })
+export type CompanionDatabase = IDBPDatabase<CompanionDatabaseSchema>
+let databasePromise: Promise<CompanionDatabase> | undefined
+
+export function openCompanionDatabase(): Promise<CompanionDatabase> {
+  databasePromise ??= openDB<CompanionDatabaseSchema>(DATABASE_NAME, DATABASE_VERSION, {
+    upgrade(database) {
+      if (!database.objectStoreNames.contains(META_STORE)) database.createObjectStore(META_STORE)
+      if (!database.objectStoreNames.contains(ENTRY_STORE)) {
+        const store = database.createObjectStore(ENTRY_STORE, { keyPath: ['bundleId', 'id'] })
         store.createIndex('bundleId', 'bundleId')
       }
-      if (!request.result.objectStoreNames.contains(BUNDLE_STORE)) {
-        request.result.createObjectStore(BUNDLE_STORE, { keyPath: 'id' })
+      if (!database.objectStoreNames.contains(BUNDLE_STORE)) {
+        database.createObjectStore(BUNDLE_STORE, { keyPath: 'id' })
       }
-      if (!request.result.objectStoreNames.contains(ASSET_STORE)) {
-        const store = request.result.createObjectStore(ASSET_STORE, { keyPath: ['bundleId', 'id'] })
+      if (!database.objectStoreNames.contains(ASSET_STORE)) {
+        const store = database.createObjectStore(ASSET_STORE, { keyPath: ['bundleId', 'id'] })
         store.createIndex('bundleId', 'bundleId')
       }
-    }
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
+    },
+    blocking() {
+      void databasePromise?.then((database) => database.close())
+      databasePromise = undefined
+    },
+    terminated() {
+      databasePromise = undefined
+    },
+  }).catch((error: unknown) => {
+    databasePromise = undefined
+    throw error
   })
+  return databasePromise
 }
