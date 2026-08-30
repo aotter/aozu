@@ -103,10 +103,10 @@ interface PendingAgentTurn {
 ```
 
 An agent resolution may return dialogue and validated effects in one operation.
-The Companion resolution repository applies them only when `expectedRevision`
-still matches. It atomically records the resolved turn ID with the resulting
-dialogue and effects; a repeated resolution is a no-op and a stale resolution
-fails without partial writes.
+The Companion `submit-action` repository from ADR-0003 applies them only when
+`expectedRevision` still matches. It atomically records the resolved turn ID
+with the resulting dialogue and effects; a repeated resolution is a no-op and a
+stale resolution fails without partial writes.
 
 There is no claim protocol while Companion has one agent consumer. If multiple
 consumers become a requirement, a later decision may add expiring leases rather

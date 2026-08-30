@@ -38,11 +38,17 @@ An item may provide a default appearance, but its gameplay identity is not an
 image asset. Character equipment and rendered appearance are separate state:
 
 ```ts
+type InventoryEntryId = string
+
 interface CharacterLoadout {
-  equipment: Readonly<Record<string, string | null>>
+  equipment: Readonly<Record<string, InventoryEntryId | null>>
   appearanceOverrides: Readonly<Record<string, AppearanceRef | null>>
 }
 ```
+
+Equipment references the Mantle entry ID of a specific inventory instance, not
+an item definition ID. This preserves charges, durability, and other per-instance
+state when multiple items share one definition.
 
 Equipping an item uses its default appearance unless the player has selected an
 override compatible with the active rig profile. Removing or changing that
@@ -64,7 +70,6 @@ interface ItemDefinition {
   defaultAppearance?: AppearanceRef
   grants?: readonly string[]
   actionIds?: readonly string[]
-  ruleIds?: readonly string[]
   stackable?: boolean
   maxQuantity?: number
   stateSchema?: JsonSchema
@@ -83,7 +88,13 @@ interface InventoryItemData {
 
 `stateSchema` validates item-specific state such as charges, durability, upgrade
 level, acquisition context, or a linked memory. Mantle's entry envelope supplies
-the instance ID and optimistic version.
+the instance ID and optimistic version. Without `stateSchema`, `state` must be an
+empty object.
+
+Inventory item and loadout entries are the canonical current state. Current
+inventory, equipment, and action projections derive from those entries. Each
+mutation appends a progress event in the same action transaction for journal and
+audit use; the event is not a second source of current inventory truth.
 
 ### Initial affordance model
 
@@ -94,13 +105,13 @@ The first version supports four composable mechanisms:
 2. **Action grants** add validated actions such as taking a photograph, using a
    ticket, or starting an outdoor run to the current-stage projection.
 3. **Rule participation** lets existing Gameplay Rules react to item ownership,
-   equipment, appearance tags, state, or use.
+   equipment, trusted appearance facts, state, or use.
 4. **Consumable state** changes quantity or declared item state through trusted
    Procedures and the closed Effect vocabulary.
 
 The Condition fact vocabulary adds only versioned item facts required by these
 mechanisms, including inventory ownership, equipped item, granted capability,
-appearance tag, quantity, and schema-declared item state.
+trusted appearance fact, quantity, and schema-declared item state.
 
 The Effect vocabulary adds only versioned operations required to grant,
 consume, equip, unequip, and update declared item state. Agent-authored code and
@@ -108,20 +119,24 @@ arbitrary formulas are not item effects.
 
 Item actions execute through the same deterministic ordering, limits,
 expected-revision checks, idempotency, and all-or-nothing action transaction
-defined by ADR-0004. Inventory changes are recorded as progress events; balances
-and loadouts remain deterministic projections.
+defined by ADR-0003 and ADR-0004. The transaction updates canonical inventory
+and loadout entries and records its progress event together.
 
 ### Pack trust boundary
 
 A Character Pack from ADR-0005 is visual by default. It may provide assets,
-layer compositions, display metadata, semantic appearance tags, attribution,
-and license information. Installing it does not install metrics, rewards,
-Gameplay Rules, actions, Procedures, or hidden effects.
+layer compositions, display metadata, untrusted descriptive tags, attribution,
+and license information. Descriptive tags support browsing and presentation but
+are never exposed as Condition facts. Installing a Character Pack does not
+install metrics, rewards, Gameplay Rules, actions, Procedures, trusted facts, or
+hidden effects.
 
 Purpose Templates and agent-authored Playbooks bind visual appearances to
-functional item definitions. A separately distributed package that includes
-mechanics is an Experience Pack and must pass the complete Mantle and Companion
-validation pipeline from ADR-0002.
+functional item definitions. They also own the explicit mapping from a qualified
+`AppearanceRef` to any trusted appearance facts used by Gameplay Rules. A
+separately distributed package that includes mechanics or trusted fact bindings
+is an Experience Pack and must pass the complete Mantle and Companion validation
+pipeline from ADR-0002.
 
 Paid artwork does not gain gameplay advantages merely because it is paid. A
 functional item may use an open, paid, imported, or agent-generated appearance
@@ -131,21 +146,26 @@ without changing its mechanics.
 
 Candidate item definitions must satisfy all of the following:
 
-- referenced appearances, slots, actions, rules, metrics, stages, and assets
-  exist;
+- referenced appearances, equipment slots, capabilities, and actions exist;
 - an appearance matches the active rig profile and declared equipment slot;
 - capabilities, facts, conditions, and effects belong to the versioned closed
   vocabulary;
-- quantity, charge, durability, and limit fields cannot enter invalid negative
-  or non-finite states;
-- item state conforms to its declared JSON Schema;
+- quantity and `maxQuantity` are positive safe integers, a non-stackable item
+  always has quantity one, and reaching zero removes the inventory entry inside
+  the same action transaction;
+- charge, durability, and limit fields cannot enter invalid negative or
+  non-finite states;
+- item state conforms to its declared JSON Schema, or is empty when no schema is
+  declared;
+- equipment references an existing inventory entry compatible with the declared
+  equipment slot;
 - use, equip, and consume operations cannot bypass expected revisions or action
   transaction limits;
-- installing a Character Pack alone cannot change gameplay state or register
-  mechanics.
+- installing a Character Pack alone cannot change gameplay state, register
+  mechanics, or introduce trusted Condition facts.
 
 Invalid agent-authored item data is rejected with diagnostics. The runtime does
-not repair definitions or infer executable behavior from appearance tags.
+not repair definitions or infer executable behavior from descriptive tags.
 
 ### Deliberate initial limits
 
@@ -153,9 +173,7 @@ The initial model does not include arbitrary stat formulas, percentage-modifier
 stacking, random affixes, rarity tiers, procedural loot, scriptable items, or a
 general equipment-balance system. These require separate evidence and decisions.
 
-The same affordance model may later apply to scene objects, locations, or other
-entities, but the first implementation is limited to inventory and equipped
-items.
+The first implementation is limited to inventory and equipped items.
 
 ## Consequences
 

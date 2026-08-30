@@ -102,11 +102,13 @@ Migrations never rewrite the active namespace in place. They produce and
 validate a new candidate namespace, then use the same approval and pointer-swap
 activation path.
 
-Companion owns one additional semantic repository operation for resolving an
-agent turn. Its IndexedDB implementation checks the expected run revision,
-records dialogue and effects, and marks the pending turn resolved in one
-transaction. This product operation is deliberately narrower than a generic
-unit-of-work abstraction.
+Companion owns one additional semantic `submit-action` repository operation for
+product actions that must change multiple canonical entries atomically. Its
+IndexedDB implementation checks the expected run revision and commits all
+affected entries plus the progress event in one transaction. Agent-turn
+resolution uses the same operation and also marks the pending turn resolved.
+This product operation is deliberately narrower than a generic unit-of-work
+abstraction.
 
 ## Consequences
 
