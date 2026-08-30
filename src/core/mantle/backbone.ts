@@ -75,6 +75,14 @@ export const FIXED_BACKBONE_SOURCES = [
             narrative: { type: "string" },
             actions: { type: "array", items: actionSchema },
             progress: { type: "array", items: progressSchema },
+            scene: {
+              type: "object",
+              properties: {
+                backgroundAssetId: { type: "string" },
+                characterStateId: { type: "string" },
+              },
+              additionalProperties: false,
+            },
             terminal: { type: "boolean" },
             agentFallback: { type: "boolean" },
           },
