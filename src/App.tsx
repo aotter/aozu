@@ -1,16 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
+import { CharacterRenderer } from './CharacterRenderer'
 import {
   appendCheckIn,
   appendCompanionProgress,
+  activateCharacterCandidate,
   createBundle,
+  equipStoredCharacterItem,
+  exportCharacterAssetJob,
   importBundle,
+  importCharacterCandidateBundle,
+  inspectCharacterWorkspace,
+  proposeCharacterAssetJob,
+  readCharacterCandidate,
   readVault,
+  reviewCharacterCandidate,
   runRoundTripTest,
+  setStoredCharacterExpression,
+  setStoredCharacterOutfit,
+  unequipStoredCharacterItem,
   type CheckInInput,
   type ProgressInput,
   type VaultSnapshot,
 } from './vault'
+import type { AssetJobProposal, CharacterRenderLayer } from './character'
 
 type ModelContext = {
   registerTool(
@@ -58,6 +71,81 @@ type DialogueResult = {
   turnId: string
   choice?: string
   message?: string
+}
+
+type PendingCandidateReview = {
+  candidateId: string
+  canonicalUrl?: string
+  previewLayers: Array<CharacterRenderLayer & { src: string }>
+  urls: string[]
+  resolve: (value: unknown) => void
+  reject: (reason: unknown) => void
+  signal?: AbortSignal
+  onAbort: () => void
+}
+
+type PendingCandidateImport = {
+  jobId: string
+  resolve: (value: unknown) => void
+  reject: (reason: unknown) => void
+  signal?: AbortSignal
+  onAbort: () => void
+}
+
+function parseCandidateId(input: object) {
+  const { candidateId } = input as Record<string, unknown>
+  if (
+    typeof candidateId !== 'string' ||
+    !/^cand_[a-z0-9_]{1,80}$/.test(candidateId)
+  ) {
+    throw new Error('candidateId 格式不正確')
+  }
+  return candidateId
+}
+
+function parseEntityId(
+  input: object,
+  field: 'outfitId' | 'expressionId' | 'itemId' | 'jobId',
+) {
+  const value = (input as Record<string, unknown>)[field]
+  if (typeof value !== 'string' || !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value)) {
+    throw new Error(`${field} 格式不正確`)
+  }
+  return value
+}
+
+function parseAssetJobProposal(input: object): AssetJobProposal {
+  const { workflow, prompt, target, candidateCount = 2 } = input as Record<string, unknown>
+  if (
+    !['expression-variant', 'outfit-skin', 'wearable-prop'].includes(String(workflow)) ||
+    typeof prompt !== 'string' ||
+    prompt.length < 1 ||
+    prompt.length > 1000 ||
+    typeof target !== 'object' ||
+    target === null ||
+    !Number.isInteger(candidateCount) ||
+    ![2, 3, 4].includes(candidateCount as number)
+  ) {
+    throw new Error('asset job 格式不正確')
+  }
+  const parsedTarget = Object.fromEntries(
+    Object.entries(target).map(([key, value]) => {
+      if (
+        !['outfitId', 'expressionId', 'part', 'itemId'].includes(key) ||
+        typeof value !== 'string' ||
+        !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value)
+      ) {
+        throw new Error(`target.${key} 格式不正確`)
+      }
+      return [key, value]
+    }),
+  )
+  return {
+    workflow: workflow as AssetJobProposal['workflow'],
+    prompt,
+    target: parsedTarget,
+    candidateCount: candidateCount as 2 | 3 | 4,
+  }
 }
 
 function parseCheckInInput(input: object): CheckInInput {
@@ -143,6 +231,7 @@ async function inspectStorage() {
       type: journal.blob.type,
       size: journal.blob.size,
     })),
+    documents: snapshot.documents.map((document) => ({ path: document.path })),
   }
 }
 
@@ -177,7 +266,11 @@ function App() {
   const [toolState, setToolState] = useState<'registering' | 'ready' | 'failed'>(
     modelContext ? 'registering' : 'failed',
   )
-  const [vault, setVault] = useState<VaultSnapshot>({ files: [], journals: [] })
+  const [vault, setVault] = useState<VaultSnapshot>({
+    files: [],
+    journals: [],
+    documents: [],
+  })
   const [result, setResult] = useState('尚未執行')
   const [running, setRunning] = useState(false)
   const [agentCallAt, setAgentCallAt] = useState<string>()
@@ -187,12 +280,508 @@ function App() {
   const pendingDialogueRef = useRef<PendingDialogue | undefined>(undefined)
   const lastDialogueResultRef = useRef<DialogueResult | undefined>(undefined)
   const [dialogueReply, setDialogueReply] = useState('')
+  const [pendingCandidateReview, setPendingCandidateReview] =
+    useState<PendingCandidateReview>()
+  const pendingCandidateReviewRef = useRef<PendingCandidateReview | undefined>(
+    undefined,
+  )
+  const [pendingCandidateImport, setPendingCandidateImport] =
+    useState<PendingCandidateImport>()
+  const pendingCandidateImportRef = useRef<PendingCandidateImport | undefined>(
+    undefined,
+  )
+  const [activeCharacterLayers, setActiveCharacterLayers] = useState<
+    Array<CharacterRenderLayer & { src: string }>
+  >([])
+
+  useEffect(() => {
+    let cancelled = false
+    const urls: string[] = []
+    inspectCharacterWorkspace()
+      .then(({ snapshot, layers }) => {
+        const renderLayers = layers.map((layer) => {
+          const file = snapshot.files.find(({ path }) => path === layer.asset)
+          if (!file) throw new Error(`active asset 不存在：${layer.asset}`)
+          const src = URL.createObjectURL(file.blob)
+          urls.push(src)
+          return { ...layer, src }
+        })
+        if (!cancelled) setActiveCharacterLayers(renderLayers)
+      })
+      .catch(() => {
+        if (!cancelled) setActiveCharacterLayers([])
+      })
+    return () => {
+      cancelled = true
+      for (const url of urls) URL.revokeObjectURL(url)
+    }
+  }, [vault])
 
   useEffect(() => {
     if (!modelContext) return
 
     const controller = new AbortController()
     Promise.all([
+      modelContext.registerTool(
+        {
+          name: 'inspect_character_contract',
+          title: 'Inspect Character Contract',
+          description:
+            'Required first step for character asset work. Returns the canonical contract, current identity, supported constrained workflows, part limits, and the next safe action. Never invent dimensions, layer order, or active IDs.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: true },
+          async execute() {
+            const { pack, state, jobs } = await inspectCharacterWorkspace()
+            return {
+              status: 'ok',
+              revision: state.revision,
+              data: {
+                contract: pack.contract,
+                identity: pack.identity,
+                parts: pack.parts,
+                activeState: state,
+                supportedWorkflows: [
+                  'canonical-character',
+                  'expression-variant',
+                  'outfit-skin',
+                  'wearable-prop',
+                ],
+                resumableJobs: jobs.filter(({ status }) => status !== 'activated'),
+              },
+              nextActions: pack.identity
+                ? [{ tool: 'inspect_character_state', required: true, reason: 'Read active render state before changing it.' }]
+                : [{ tool: 'list_asset_jobs', required: true, reason: 'Resume the validated canonical candidate; do not create a duplicate.' }],
+            }
+          },
+        },
+        { signal: controller.signal },
+      ),
+      modelContext.registerTool(
+        {
+          name: 'inspect_character_state',
+          title: 'Inspect Character State',
+          description:
+            'Read the active outfit, expression, equipped items, and resolved render layers. Use after activation or a runtime character change.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: true },
+          async execute() {
+            const { snapshot, pack, state, layers } = await inspectCharacterWorkspace()
+            return {
+              status: 'ok',
+              revision: snapshot.manifest?.state.revision ?? 0,
+              data: { identity: pack.identity, state, layers },
+              nextActions: [],
+            }
+          },
+        },
+        { signal: controller.signal },
+      ),
+      modelContext.registerTool(
+        {
+          name: 'list_asset_jobs',
+          title: 'List Character Asset Jobs',
+          description:
+            'List persisted jobs and candidates after a reload, timeout, or fresh chat. Resume these records instead of creating duplicate generation work.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: true },
+          async execute() {
+            const { snapshot, jobs, candidates } = await inspectCharacterWorkspace()
+            return {
+              status: 'ok',
+              revision: snapshot.manifest?.state.revision ?? 0,
+              data: { jobs, candidates },
+              nextActions: candidates
+                .filter(
+                  ({ status, jobId }) =>
+                    status === 'valid' &&
+                    jobs.find(({ id }) => id === jobId)?.status === 'valid',
+                )
+                .map(({ id }) => ({
+                  tool: 'review_asset_candidate',
+                  required: true,
+                  reason: `Candidate ${id} passed deterministic validation and requires a user decision.`,
+                })),
+            }
+          },
+        },
+        { signal: controller.signal },
+      ),
+      modelContext.registerTool(
+        {
+          name: 'propose_asset_job',
+          title: 'Propose Character Asset Job',
+          description:
+            'Create one constrained expression, complete-outfit, or wearable-prop job after inspect_character_contract. The runtime locks the active canonical SHA-256 and returns the production brief. Never create a duplicate target or generate from a previous variant.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              workflow: { type: 'string', enum: ['expression-variant', 'outfit-skin', 'wearable-prop'] },
+              prompt: { type: 'string', minLength: 1, maxLength: 1000 },
+              target: {
+                type: 'object',
+                properties: {
+                  outfitId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' },
+                  expressionId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' },
+                  part: { type: 'string', enum: ['headwear', 'hand', 'back', 'aura'] },
+                  itemId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' },
+                },
+                additionalProperties: false,
+              },
+              candidateCount: { type: 'integer', enum: [2, 3, 4], default: 2 },
+            },
+            required: ['workflow', 'prompt', 'target'],
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: false },
+          async execute(input) {
+            const committed = await proposeCharacterAssetJob(parseAssetJobProposal(input))
+            setVault(await readVault())
+            return {
+              status: 'ok',
+              revision: committed.revision,
+              data: { job: committed.job, productionBrief: committed.productionBrief },
+              nextActions: [{ tool: 'export_asset_job_bundle', required: true, reason: 'Use the locked canonical and exact candidate template for generation.' }],
+            }
+          },
+        },
+        { signal: controller.signal },
+      ),
+      modelContext.registerTool(
+        {
+          name: 'export_asset_job_bundle',
+          title: 'Export Character Asset Job Bundle',
+          description:
+            'Download a ZIP containing the job, canonical PNG, character contract, and exact candidate template. Generate only the declared files, then call request_candidate_import.',
+          inputSchema: {
+            type: 'object',
+            properties: { jobId: { type: 'string', pattern: '^job_[a-z0-9_]{1,80}$' } },
+            required: ['jobId'],
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: false },
+          async execute(input) {
+            const jobId = parseEntityId(input, 'jobId')
+            const exported = await exportCharacterAssetJob(jobId)
+            const url = URL.createObjectURL(exported.blob)
+            const anchor = document.createElement('a')
+            anchor.href = url
+            anchor.download = exported.filename
+            anchor.click()
+            URL.revokeObjectURL(url)
+            setVault(await readVault())
+            return {
+              status: 'ok',
+              revision: (await readVault()).manifest?.state.revision ?? 0,
+              data: { filename: exported.filename, candidateId: exported.candidateId, expectedAssets: exported.expectedAssets },
+              nextActions: [{ tool: 'request_candidate_import', required: true, reason: 'Import generated assets through the page for deterministic validation.' }],
+            }
+          },
+        },
+        { signal: controller.signal },
+      ),
+      modelContext.registerTool(
+        {
+          name: 'request_candidate_import',
+          title: 'Request Character Candidate Import',
+          description:
+            'Open a page file chooser for one candidate ZIP and wait. Repeat with unique candidateId values until the job has 2–4 candidates. The ZIP must contain candidate.json plus exactly the declared assets. Runtime verifies job lock, paths, SHA-256, dimensions, alpha, layer set, baseline, and center before committing; then call validate_asset_candidate.',
+          inputSchema: {
+            type: 'object',
+            properties: { jobId: { type: 'string', pattern: '^job_[a-z0-9_]{1,80}$' } },
+            required: ['jobId'],
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: false },
+          async execute(input, options) {
+            const jobId = parseEntityId(input, 'jobId')
+            if (pendingCandidateImportRef.current) throw new Error('已有待匯入的角色 candidate')
+            const { jobs } = await inspectCharacterWorkspace()
+            const job = jobs.find(({ id }) => id === jobId)
+            if (
+              !job ||
+              !['proposed', 'exported', 'valid', 'invalid'].includes(job.status)
+            ) {
+              throw new Error(`job 不能匯入：${job?.status ?? 'missing'}`)
+            }
+            return new Promise((resolve, reject) => {
+              const onAbort = () => {
+                if (pendingCandidateImportRef.current === pending) {
+                  pendingCandidateImportRef.current = undefined
+                  setPendingCandidateImport(undefined)
+                }
+                reject(options.signal?.reason ?? new DOMException('WebMCP 呼叫已中止', 'AbortError'))
+              }
+              const pending: PendingCandidateImport = {
+                jobId,
+                resolve,
+                reject,
+                signal: options.signal,
+                onAbort,
+              }
+              pendingCandidateImportRef.current = pending
+              setPendingCandidateImport(pending)
+              options.signal?.addEventListener('abort', onAbort, { once: true })
+            })
+          },
+        },
+        { signal: controller.signal },
+      ),
+      modelContext.registerTool(
+        {
+          name: 'validate_asset_candidate',
+          title: 'Validate Character Asset Candidate',
+          description:
+            'Read the persisted deterministic validation result produced during candidate import. A valid result still requires review_asset_candidate. For invalid output, report the reasons and retry from the locked canonical: fill the remaining batch slots, or propose a fresh batch when the quota is exhausted. Never review or activate invalid output.',
+          inputSchema: {
+            type: 'object',
+            properties: { candidateId: { type: 'string', pattern: '^cand_[a-z0-9_]{1,80}$' } },
+            required: ['candidateId'],
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: true },
+          async execute(input) {
+            const { candidate } = await readCharacterCandidate(parseCandidateId(input))
+            const workspace = await inspectCharacterWorkspace()
+            const job = workspace.jobs.find(({ id }) => id === candidate.jobId)
+            const remainingCandidates = job
+              ? job.candidateCount -
+                workspace.candidates.filter(({ jobId }) => jobId === job.id).length
+              : 0
+            return {
+              status: candidate.status === 'invalid' ? 'invalid' : 'ok',
+              revision: workspace.snapshot.manifest?.state.revision ?? 0,
+              data: { candidateId: candidate.id, status: candidate.status, validation: candidate.validation },
+              nextActions:
+                candidate.status === 'valid'
+                  ? [{ tool: 'review_asset_candidate', required: true, reason: 'Deterministic checks passed; identity and visual quality require the user.' }]
+                  : candidate.status === 'invalid' && remainingCandidates > 0
+                    ? [{ tool: 'request_candidate_import', required: true, reason: `Report the validation reasons, regenerate from the locked canonical, and fill one of ${remainingCandidates} remaining candidate slot(s).` }]
+                    : candidate.status === 'invalid'
+                      ? [{ tool: 'propose_asset_job', required: true, reason: 'Report that this candidate batch failed, then create a fresh 2–4 candidate batch from the canonical reference.' }]
+                      : [],
+            }
+          },
+        },
+        { signal: controller.signal },
+      ),
+      modelContext.registerTool(
+        {
+          name: 'review_asset_candidate',
+          title: 'Review Character Asset Candidate',
+          description:
+            'Show a validated candidate inside the page and wait for the user to Approve or Reject it. The agent cannot provide the decision. On approval, call activate_asset_candidate in the same turn.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              candidateId: { type: 'string', pattern: '^cand_[a-z0-9_]{1,80}$' },
+            },
+            required: ['candidateId'],
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: false },
+          async execute(input, options) {
+            const candidateId = parseCandidateId(input)
+            if (pendingCandidateReviewRef.current) throw new Error('已有待審核的角色候選')
+            const { candidate, job, assets } = await readCharacterCandidate(candidateId)
+            if (candidate.status !== 'valid') throw new Error(`candidate 不能 review：${candidate.status}`)
+            const workspace = await inspectCharacterWorkspace()
+            const urls: string[] = []
+            const createUrl = (blob: Blob) => {
+              const url = URL.createObjectURL(blob)
+              urls.push(url)
+              return url
+            }
+            const canonical = workspace.pack.identity
+              ? workspace.snapshot.files.find(
+                  ({ path }) => path === workspace.pack.identity?.canonicalAsset,
+                )
+              : undefined
+            const canonicalUrl = canonical ? createUrl(canonical.blob) : undefined
+            const previewLayers: Array<CharacterRenderLayer & { src: string }> =
+              assets.map((asset) => ({
+                id: `review:${candidateId}:${asset.layerId}`,
+                asset: asset.path,
+                src: createUrl(asset.blob),
+                placement:
+                  asset.layerId === 'back'
+                    ? 'item-back'
+                    : asset.layerId === 'front'
+                      ? 'item-front'
+                      : asset.layerId === 'aura'
+                        ? 'aura'
+                        : 'character-skin',
+                z:
+                  asset.layerId === 'back'
+                    ? 15
+                    : asset.layerId === 'front'
+                      ? 35
+                      : asset.layerId === 'aura'
+                        ? 55
+                        : 30,
+              }))
+            if (job.workflow === 'wearable-prop') {
+              const skin = workspace.layers.find(
+                ({ placement }) => placement === 'character-skin',
+              )
+              const skinFile = skin
+                ? workspace.snapshot.files.find(({ path }) => path === skin.asset)
+                : undefined
+              if (!skin || !skinFile) throw new Error('wearable preview 缺少 active skin')
+              previewLayers.push({ ...skin, src: createUrl(skinFile.blob) })
+              previewLayers.sort((a, b) => a.z - b.z)
+            }
+            return new Promise((resolve, reject) => {
+              const onAbort = () => {
+                if (pendingCandidateReviewRef.current === pending) {
+                  for (const url of urls) URL.revokeObjectURL(url)
+                  pendingCandidateReviewRef.current = undefined
+                  setPendingCandidateReview(undefined)
+                }
+                reject(options.signal?.reason ?? new DOMException('WebMCP 呼叫已中止', 'AbortError'))
+              }
+              const pending: PendingCandidateReview = {
+                candidateId,
+                canonicalUrl,
+                previewLayers,
+                urls,
+                resolve,
+                reject,
+                signal: options.signal,
+                onAbort,
+              }
+              pendingCandidateReviewRef.current = pending
+              setPendingCandidateReview(pending)
+              options.signal?.addEventListener('abort', onAbort, { once: true })
+            })
+          },
+        },
+        { signal: controller.signal },
+      ),
+      modelContext.registerTool(
+        {
+          name: 'activate_asset_candidate',
+          title: 'Activate Character Asset Candidate',
+          description:
+            'Activate a candidate only after review_asset_candidate returned approved. Runtime rechecks status, workflow, structure, and SHA-256 before atomically updating the CharacterPack, state, files, manifest, and journal.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              candidateId: { type: 'string', pattern: '^cand_[a-z0-9_]{1,80}$' },
+            },
+            required: ['candidateId'],
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: false },
+          async execute(input) {
+            const committed = await activateCharacterCandidate(parseCandidateId(input))
+            setVault(await readVault())
+            setResult(`已啟用 ${committed.candidateId} · revision ${committed.revision}`)
+            return {
+              status: 'ok',
+              revision: committed.revision,
+              data: committed,
+              nextActions: [{ tool: 'inspect_character_state', required: true, reason: 'Confirm the persisted active render layers.' }],
+            }
+          },
+        },
+        { signal: controller.signal },
+      ),
+      modelContext.registerTool(
+        {
+          name: 'set_character_outfit',
+          title: 'Set Character Outfit',
+          description:
+            'Switch to an activated complete outfit skin. Preserve the current expression when that outfit supports it; otherwise atomically resolve to neutral and report the resolved state.',
+          inputSchema: {
+            type: 'object',
+            properties: { outfitId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' } },
+            required: ['outfitId'],
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: false },
+          async execute(input) {
+            const committed = await setStoredCharacterOutfit(parseEntityId(input, 'outfitId'))
+            setVault(await readVault())
+            return { ...committed, data: { state: committed.state, layers: committed.layers }, nextActions: [] }
+          },
+        },
+        { signal: controller.signal },
+      ),
+      modelContext.registerTool(
+        {
+          name: 'set_character_expression',
+          title: 'Set Character Expression',
+          description:
+            'Switch expression only when the active outfit contains that activated full-skin variant. Reject missing expressions; never generate or silently substitute one.',
+          inputSchema: {
+            type: 'object',
+            properties: { expressionId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' } },
+            required: ['expressionId'],
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: false },
+          async execute(input) {
+            const committed = await setStoredCharacterExpression(parseEntityId(input, 'expressionId'))
+            setVault(await readVault())
+            return { ...committed, data: { state: committed.state, layers: committed.layers }, nextActions: [] }
+          },
+        },
+        { signal: controller.signal },
+      ),
+      modelContext.registerTool(
+        {
+          name: 'equip_character_item',
+          title: 'Equip Character Item',
+          description:
+            'Equip one activated item. Runtime enforces replacements, bilateral conflicts, requirements, per-part limits, unique layer IDs, and back/skin/front z ordering in one transaction.',
+          inputSchema: {
+            type: 'object',
+            properties: { itemId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' } },
+            required: ['itemId'],
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: false },
+          async execute(input) {
+            const committed = await equipStoredCharacterItem(parseEntityId(input, 'itemId'))
+            setVault(await readVault())
+            return { ...committed, data: { state: committed.state, layers: committed.layers }, nextActions: [] }
+          },
+        },
+        { signal: controller.signal },
+      ),
+      modelContext.registerTool(
+        {
+          name: 'unequip_character_item',
+          title: 'Unequip Character Item',
+          description:
+            'Unequip one active item. Runtime refuses an illegal empty required part and atomically inserts its configured fallback when needed.',
+          inputSchema: {
+            type: 'object',
+            properties: { itemId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' } },
+            required: ['itemId'],
+            additionalProperties: false,
+          },
+          annotations: { readOnlyHint: false },
+          async execute(input) {
+            const committed = await unequipStoredCharacterItem(parseEntityId(input, 'itemId'))
+            setVault(await readVault())
+            return { ...committed, data: { state: committed.state, layers: committed.layers }, nextActions: [] }
+          },
+        },
+        { signal: controller.signal },
+      ),
       modelContext.registerTool(
         {
           name: 'read_last_dialogue_response',
@@ -470,13 +1059,86 @@ function App() {
     pending.resolve(result)
   }
 
+  async function decideCandidateReview(decision: 'approved' | 'rejected') {
+    const pending = pendingCandidateReviewRef.current
+    if (!pending) return
+    setRunning(true)
+    try {
+      const committed = await reviewCharacterCandidate(pending.candidateId, decision)
+      pending.signal?.removeEventListener('abort', pending.onAbort)
+      for (const url of pending.urls) URL.revokeObjectURL(url)
+      pendingCandidateReviewRef.current = undefined
+      setPendingCandidateReview(undefined)
+      setVault(await readVault())
+      pending.resolve({
+        status: 'ok',
+        revision: committed.revision,
+        data: committed,
+        nextActions:
+          decision === 'approved'
+            ? [{ tool: 'activate_asset_candidate', required: true, reason: 'The user approved this validated candidate.' }]
+            : [],
+      })
+      setResult(`${decision === 'approved' ? '已批准' : '已拒絕'} ${pending.candidateId}`)
+    } catch (error) {
+      pending.signal?.removeEventListener('abort', pending.onAbort)
+      for (const url of pending.urls) URL.revokeObjectURL(url)
+      pendingCandidateReviewRef.current = undefined
+      setPendingCandidateReview(undefined)
+      pending.reject(error)
+      setResult(`候選審核失敗：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  async function importCandidate(file: File) {
+    const pending = pendingCandidateImportRef.current
+    if (!pending) return
+    setRunning(true)
+    try {
+      const committed = await importCharacterCandidateBundle(file, pending.jobId)
+      pending.signal?.removeEventListener('abort', pending.onAbort)
+      pendingCandidateImportRef.current = undefined
+      setPendingCandidateImport(undefined)
+      setVault(await readVault())
+      pending.resolve({
+        status: committed.status === 'valid' ? 'ok' : 'invalid',
+        revision: committed.revision,
+        data: { candidate: committed.candidate },
+        nextActions: [
+          { tool: 'validate_asset_candidate', required: true, reason: 'Read the persisted deterministic report before review.' },
+          ...(committed.remainingCandidates > 0
+            ? [{ tool: 'request_candidate_import', required: false, reason: `The job accepts ${committed.remainingCandidates} more candidate(s).` }]
+            : []),
+        ],
+      })
+      setResult(`candidate ${committed.candidate.id}：${committed.status}`)
+    } catch (error) {
+      setResult(`candidate 匯入失敗：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  function cancelCandidateImport() {
+    const pending = pendingCandidateImportRef.current
+    if (!pending) return
+    pending.signal?.removeEventListener('abort', pending.onAbort)
+    pendingCandidateImportRef.current = undefined
+    setPendingCandidateImport(undefined)
+    pending.resolve({ status: 'cancelled', nextActions: [] })
+  }
+
   async function runTest() {
     setRunning(true)
     setResult('建立 Blob、manifest 與 Markdown journal…')
     try {
-      const { restored, bundleBytes } = await runRoundTripTest()
-      setVault(restored)
-      setResult(`通過：匯出 ${bundleBytes} bytes，清空後匯入並完全一致`)
+      const { bundleBytes, lifecycle } = await runRoundTripTest()
+      setVault(await readVault())
+      setResult(
+        `通過：${bundleBytes} bytes ZIP 完全一致；${lifecycle.outfit}/${lifecycle.expression}；${lifecycle.layers.join(' → ')}`,
+      )
     } catch (error) {
       setResult(`失敗：${error instanceof Error ? error.message : String(error)}`)
     } finally {
@@ -555,9 +1217,89 @@ function App() {
         <dd>{vault.files.length}</dd>
         <dt>Markdown journals</dt>
         <dd>{vault.journals.length}</dd>
+        <dt>Character documents</dt>
+        <dd>{vault.documents.length}</dd>
         <dt>Points</dt>
         <dd>{vault.manifest?.state.points ?? 0}</dd>
       </dl>
+      <section className="character-candidate" aria-label="角色候選預覽">
+        <h2>Momo canonical candidate 01</h2>
+        <CharacterRenderer
+          label="Momo 水獺任務隊長角色候選"
+          layers={[
+            {
+              id: 'candidate:canonical',
+              asset:
+                'character/candidates/cand_momo_canonical_01/assets/canonical.png',
+              src: '/assets/character/candidates/momo-canonical-01.png',
+              placement: 'character-skin',
+              z: 30,
+            },
+          ]}
+        />
+        <p>512×768 · transparent PNG · 尚未啟用</p>
+      </section>
+      {activeCharacterLayers.length > 0 && (
+        <section className="character-candidate" aria-label="目前角色">
+          <h2>目前角色</h2>
+          <CharacterRenderer label="目前啟用的 Momo 角色" layers={activeCharacterLayers} />
+          <p>{activeCharacterLayers.map(({ id }) => id).join(' → ')}</p>
+        </section>
+      )}
+      {pendingCandidateReview && (
+        <section className="character-candidate" aria-label="待審核角色候選">
+          <h2>批准角色候選？</h2>
+          {pendingCandidateReview.canonicalUrl && (
+            <>
+              <h3>Canonical reference</h3>
+              <CharacterRenderer
+                label="Canonical 角色參考"
+                layers={[{
+                  id: 'review:canonical',
+                  asset: 'canonical',
+                  src: pendingCandidateReview.canonicalUrl,
+                  placement: 'character-skin',
+                  z: 30,
+                }]}
+              />
+            </>
+          )}
+          <h3>Candidate composite</h3>
+          <CharacterRenderer
+            label={`角色候選 ${pendingCandidateReview.candidateId}`}
+            layers={pendingCandidateReview.previewLayers}
+          />
+          <p>批准只會標記候選；agent 還必須再呼叫啟用工具。</p>
+          <div className="actions">
+            <button type="button" disabled={running} onClick={() => decideCandidateReview('approved')}>
+              批准
+            </button>
+            <button type="button" disabled={running} onClick={() => decideCandidateReview('rejected')}>
+              拒絕
+            </button>
+          </div>
+        </section>
+      )}
+      {pendingCandidateImport && (
+        <section aria-label="待匯入角色 candidate">
+          <h2>匯入 candidate ZIP</h2>
+          <p>{pendingCandidateImport.jobId}</p>
+          <label htmlFor="candidate-zip">Candidate ZIP</label>
+          <input
+            id="candidate-zip"
+            type="file"
+            accept=".zip,application/zip"
+            disabled={running}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0]
+              if (file) void importCandidate(file)
+            }}
+          />
+          <button type="button" disabled={running} onClick={cancelCandidateImport}>
+            取消
+          </button>
+        </section>
+      )}
       {pendingCheckIn && (
         <section aria-label="待確認 check-in">
           <h2>待確認 check-in</h2>
