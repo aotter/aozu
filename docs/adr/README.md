@@ -22,3 +22,4 @@ decision that changes one must add a new ADR and mark the old one as superseded.
 | [0003](0003-indexeddb-mantle-storage-adapter.md) | Accepted | Persist Mantle runtime state through a semantic IndexedDB adapter |
 | [0004](0004-progress-loops-and-precompiled-playbooks.md) | Accepted | Compose experiences from Progress Loops and precompiled Playbooks |
 | [0005](0005-character-rig-and-pack-ecosystem.md) | Accepted | Separate visual rigs and character packs from experience mechanics |
+| [0006](0006-functional-items-and-appearance-separation.md) | Accepted | Give items validated gameplay affordances without coupling function to artwork |
