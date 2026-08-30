@@ -23,7 +23,12 @@ import {
   type ProgressInput,
   type VaultSnapshot,
 } from './vault'
-import type { AssetJobProposal, CharacterRenderLayer } from './character'
+import {
+  CHARACTER_PATHS,
+  type AssetCandidate,
+  type AssetJobProposal,
+  type CharacterRenderLayer,
+} from './character'
 
 type ModelContext = {
   registerTool(
@@ -293,6 +298,9 @@ function App() {
   const [activeCharacterLayers, setActiveCharacterLayers] = useState<
     Array<CharacterRenderLayer & { src: string }>
   >([])
+  const canonicalCandidate = vault.documents.find(
+    ({ path }) => path === CHARACTER_PATHS.seedCandidate,
+  )?.value as AssetCandidate | undefined
 
   useEffect(() => {
     let cancelled = false
@@ -1237,7 +1245,10 @@ function App() {
             },
           ]}
         />
-        <p>512×768 · transparent PNG · 尚未啟用</p>
+        <p>
+          512×768 · transparent PNG ·{' '}
+          {canonicalCandidate?.status === 'activated' ? '已啟用' : '尚未啟用'}
+        </p>
       </section>
       {activeCharacterLayers.length > 0 && (
         <section className="character-candidate" aria-label="目前角色">
