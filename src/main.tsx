@@ -12,6 +12,11 @@ createRoot(document.getElementById('root')!).render(
     <App
       loadStartup={application.loadStartup}
       createPresetSeed={application.createPresetSeed}
+      openCharacterDraft={application.openCharacterDraft}
+      updateCharacterDraft={application.updateCharacterDraft}
+      saveCharacterAsset={application.saveCharacterAsset}
+      prepareCharacter={application.prepareCharacter}
+      clearCharacterDraft={application.clearCharacterDraft}
       preparePreset={application.preparePreset}
       approveCandidate={application.approveCandidate}
       submitAction={application.submitAction}

@@ -16,7 +16,7 @@ import {
 
 const menuItems = ['character', 'wardrobe', 'story', 'tasks', 'journal', 'data', 'settings'] as const
 
-export function AppMenu({ exportData, prepareImport }: { exportData(): Promise<Blob>; prepareImport(blob: Blob): Promise<void> }) {
+export function AppMenu({ exportData, prepareImport, onCreateCharacter }: { exportData(): Promise<Blob>; prepareImport(blob: Blob): Promise<void>; onCreateCharacter(): void }) {
   const { t } = useTranslation()
 
   return (
@@ -37,7 +37,7 @@ export function AppMenu({ exportData, prepareImport }: { exportData(): Promise<B
             {menuItems.map((item) => item === 'data' ? (
               <DataControls key={item} exportData={exportData} prepareImport={prepareImport} />
             ) : (
-              <Button key={item} variant="ghost" className="justify-start">
+              <Button key={item} variant="ghost" className="justify-start" disabled={item !== 'character'} onClick={item === 'character' ? onCreateCharacter : undefined}>
                 {t(`navigation.items.${item}`)}
               </Button>
             ))}

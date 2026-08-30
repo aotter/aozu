@@ -18,8 +18,11 @@ Status: **Active — 2026-08-30**
 1. **Candidate review boundary — completed 2026-08-30** — edit a preset seed,
    stage preset and ZIP candidates, present a minimal preview, and activate only
    from an explicit user action.
-2. **Authoring editor** — let preset and current content edit character,
-   wardrobe, story, and task data before one validated publish operation.
+2. **Authoring editor — character stage 1 completed 2026-08-30** — create a
+   character from a persistent blank draft; accept user uploads and WebMCP
+   candidates for fixed full-body, whole-head expression, outfit, and two-layer
+   prop slots; validate, preview, explicitly approve, activate, and round-trip
+   the result. Story and task editing remain later slices.
 3. **Bundle library** — list retained valid bundles and switch the single active
    pointer without copying their data.
 4. **Cross-pack wardrobe** — resolve qualified appearances from installed packs

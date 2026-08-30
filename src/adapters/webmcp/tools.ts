@@ -1,4 +1,5 @@
 import type { AgentCapability } from '../../core/application/ports.ts'
+import { CHARACTER_CREATION_ROLES, type CharacterCreationRole } from '../../core/domain/character.ts'
 
 type ModelContext = {
   registerTool(tool: {
@@ -22,6 +23,7 @@ export function createAgentCapability(document: Document): AgentCapability {
 export function registerCompanionTools(document: Document, useCases: {
   inspect(): Promise<unknown>
   inspectCharacter(): Promise<unknown>
+  submitCharacterAsset(input: { role: CharacterCreationRole; filename: string; dataUrl: string }): Promise<unknown>
   submit(input: { actionId: string; expectedRevision: number; idempotencyKey: string }): Promise<unknown>
   resolve(input: { turnId: string; idempotencyKey: string; dialogue: string; effects: unknown }): Promise<unknown>
 }) {
@@ -36,6 +38,27 @@ export function registerCompanionTools(document: Document, useCases: {
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true },
       execute: () => useCases.inspectCharacter(),
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'submit_character_asset_candidate',
+      title: 'Submit Character Asset Candidate',
+      description: 'Fill one open character-creation slot with a final PNG candidate. Inspect the contract first. Send a data:image/png;base64 URL only after producing an exact 512×768 RGBA image with real transparency. Whole-head expression assets include the complete aligned head, hairstyle, and facial hair; hairstyle and facial hair are fixed identity features, not separate editable slots. This stages a draft candidate only and never approves or activates it.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          role: { type: 'string', enum: CHARACTER_CREATION_ROLES },
+          filename: { type: 'string', minLength: 1, maxLength: 200 },
+          dataUrl: { type: 'string', pattern: '^data:image/png;base64,', maxLength: 7_100_000 },
+        },
+        required: ['role', 'filename', 'dataUrl'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: (input) => useCases.submitCharacterAsset({
+        role: String(input.role) as CharacterCreationRole,
+        filename: String(input.filename),
+        dataUrl: String(input.dataUrl),
+      }),
     }, { signal: controller.signal }),
     modelContext.registerTool({
       name: 'inspect_companion',

@@ -2,10 +2,11 @@ import type { ActiveCompanion } from '../domain/companion.ts'
 import type { StageProjection } from '../domain/companion.ts'
 import type { AgentCapability, BundleActivationRepository, EntryRepositoryFactory } from './ports.ts'
 import { loadStage } from './stage.ts'
+import type { ResolvedCharacterLayer } from '../domain/character.ts'
 
 export type CompanionStartup =
   | { status: 'start'; webmcpAvailable: boolean }
-  | { status: 'main'; companion: ActiveCompanion; bundleId: string; runId: string; stage: StageProjection; dialogue?: string; pendingTurns: number; webmcpAvailable: boolean }
+  | { status: 'main'; companion: ActiveCompanion; bundleId: string; runId: string; stage: StageProjection; dialogue?: string; pendingTurns: number; webmcpAvailable: boolean; character?: Array<ResolvedCharacterLayer & { blob: Blob }> }
 
 export async function loadCompanionStartup(
   agent: AgentCapability,

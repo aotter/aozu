@@ -9,6 +9,7 @@ const pack: CharacterPack = {
   assets: [
     { id: 'hat-back', blobId: 'hat-back', mediaType: 'image/png', size: 10, sha256: inspection.sha256 },
     { id: 'skin', blobId: 'skin', mediaType: 'image/png', size: 10, sha256: inspection.sha256 },
+    { id: 'head', blobId: 'head', mediaType: 'image/png', size: 10, sha256: inspection.sha256 },
     { id: 'hat-front', blobId: 'hat-front', mediaType: 'image/png', size: 10, sha256: inspection.sha256 },
   ],
   appearances: [
@@ -17,14 +18,16 @@ const pack: CharacterPack = {
       { asset: { packId: 'guide', packVersion: 1, assetId: 'hat-front' }, slot: 'item-front', order: 1 },
     ] },
     { id: 'default', layers: [{ asset: { packId: 'guide', packVersion: 1, assetId: 'skin' }, slot: 'character-skin', order: 1 }] },
+    { id: 'neutral', layers: [{ asset: { packId: 'guide', packVersion: 1, assetId: 'head' }, slot: 'expression-head', order: 1 }] },
   ],
   defaultComposition: [
     { packId: 'guide', packVersion: 1, appearanceId: 'hat' },
     { packId: 'guide', packVersion: 1, appearanceId: 'default' },
+    { packId: 'guide', packVersion: 1, appearanceId: 'neutral' },
   ],
 }
 const inspections = new Map(pack.assets.map(({ blobId }) => [blobId, inspection]))
-assert.deepEqual(validateCharacterPack(pack, inspections).map(({ slot }) => slot), ['item-back', 'character-skin', 'item-front'])
+assert.deepEqual(validateCharacterPack(pack, inspections).map(({ slot }) => slot), ['item-back', 'character-skin', 'expression-head', 'item-front'])
 assert.throws(() => validateCharacterPack({ ...pack, license: { ...pack.license, embedding: 'denied' as never } }, inspections), /embedded/)
 assert.throws(() => validateCharacterPack(pack, new Map([['skin', { ...inspection, genuineRgba: false }]])), /asset/)
 console.log('character: ok')

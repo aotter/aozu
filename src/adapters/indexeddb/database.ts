@@ -2,14 +2,16 @@ import type { Entry } from '@aotter/mantle-spec'
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 
 import type { BundleRecord } from '../../core/bundle.ts'
+import type { CharacterDraft } from '../../core/domain/character.ts'
 
 const DATABASE_NAME = 'companion'
-const DATABASE_VERSION = 4
+const DATABASE_VERSION = 5
 
 export const META_STORE = 'meta'
 export const ENTRY_STORE = 'entries'
 export const BUNDLE_STORE = 'bundles'
 export const ASSET_STORE = 'assets'
+export const CHARACTER_DRAFT_STORE = 'character-drafts'
 
 export type StoredEntry = Entry & { bundleId: string; authorId: string | null }
 export interface StoredAsset {
@@ -34,6 +36,7 @@ interface CompanionDatabaseSchema extends DBSchema {
   [ENTRY_STORE]: { key: [string, string]; value: StoredEntry; indexes: { bundleId: string } }
   [BUNDLE_STORE]: { key: string; value: BundleRecord }
   [ASSET_STORE]: { key: [string, string]; value: StoredAsset; indexes: { bundleId: string } }
+  [CHARACTER_DRAFT_STORE]: { key: string; value: CharacterDraft }
 }
 
 export type CompanionDatabase = IDBPDatabase<CompanionDatabaseSchema>
@@ -53,6 +56,9 @@ export function openCompanionDatabase(): Promise<CompanionDatabase> {
       if (!database.objectStoreNames.contains(ASSET_STORE)) {
         const store = database.createObjectStore(ASSET_STORE, { keyPath: ['bundleId', 'id'] })
         store.createIndex('bundleId', 'bundleId')
+      }
+      if (!database.objectStoreNames.contains(CHARACTER_DRAFT_STORE)) {
+        database.createObjectStore(CHARACTER_DRAFT_STORE, { keyPath: 'id' })
       }
     },
     blocking() {

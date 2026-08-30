@@ -71,6 +71,12 @@ repositioning, bone rigging, or attachment-anchor system. A layer is compatible
 only when its dimensions and slot match the selected profile. A later ADR may
 add another rendering model without changing the first profile.
 
+Rig version 2 inserts `expression-head` between `character-skin` and
+`item-front`. An expression is a full-canvas transparent layer containing the
+complete aligned head, not cropped facial features. Hair and facial hair are
+fixed identity pixels repeated consistently in body skins and head-expression
+layers; they are not separate v2 customization slots.
+
 ### Character pack
 
 A pack is a versioned set of visual assets and composition definitions for one
@@ -91,7 +97,7 @@ interface CharacterPack {
   }
   license: {
     id: string
-    url: string
+    url?: string
     embedding: "allowed"
   }
   assets: CharacterAsset[]
@@ -161,7 +167,8 @@ Validation requires:
 - exact canvas dimensions for every raster layer;
 - supported media types and the rig slot's alpha policy: `required` has at least
   one non-opaque pixel, `opaque` has none, and `either` accepts both;
-- creator and license URLs, when present, to use `https`;
+- creator and license URLs, when present, to use `https`; private local
+  authoring may use a `private-use` declaration without an external URL;
 - archive paths and sizes within the browser import profile from ADR-0003.
 
 An invalid pack is rejected with diagnostics for its producer. The website does
@@ -180,7 +187,7 @@ there is no independent active-pack pointer or cleanup race. ZIP export remains
 self-contained and offline restoration never depends on a pack registry.
 
 Pack licensing is independent of the framework's software license. A pack must
-identify its creator, license URL, attribution, and an explicit machine-readable
+identify its creator, license or private-use declaration, attribution, and an explicit machine-readable
 declaration that embedding is allowed. Initial imports reject packs without
 that declaration.
 
