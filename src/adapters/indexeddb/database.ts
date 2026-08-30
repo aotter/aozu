@@ -1,8 +1,21 @@
 const DATABASE_NAME = 'companion'
-const DATABASE_VERSION = 2
+const DATABASE_VERSION = 3
 
 export const META_STORE = 'meta'
 export const ENTRY_STORE = 'entries'
+export const BUNDLE_STORE = 'bundles'
+
+export const requestResult = <T>(request: IDBRequest<T>) =>
+  new Promise<T>((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+
+export const transactionDone = (transaction: IDBTransaction) =>
+  new Promise<void>((resolve, reject) => {
+    transaction.oncomplete = () => resolve()
+    transaction.onabort = transaction.onerror = () => reject(transaction.error)
+  })
 
 export function openCompanionDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -15,6 +28,9 @@ export function openCompanionDatabase(): Promise<IDBDatabase> {
       if (!request.result.objectStoreNames.contains(ENTRY_STORE)) {
         const store = request.result.createObjectStore(ENTRY_STORE, { keyPath: ['bundleId', 'id'] })
         store.createIndex('bundleId', 'bundleId')
+      }
+      if (!request.result.objectStoreNames.contains(BUNDLE_STORE)) {
+        request.result.createObjectStore(BUNDLE_STORE, { keyPath: 'id' })
       }
     }
     request.onsuccess = () => resolve(request.result)

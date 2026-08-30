@@ -21,23 +21,11 @@ import type {
   ViewQueryRequest,
   ViewQueryResult,
 } from "@aotter/mantle-runtime"
-import { ENTRY_STORE, openCompanionDatabase } from "./database.ts"
+import { ENTRY_STORE, openCompanionDatabase, requestResult, transactionDone } from "./database.ts"
 
 type EntryRow = Entry & { authorId: string | null }
 type StoredEntry = EntryRow & { bundleId: string }
 type EntrySort = NonNullable<ListEntriesArgs["sort"]>
-
-const result = <T>(request: IDBRequest<T>) =>
-  new Promise<T>((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-  })
-
-const done = (transaction: IDBTransaction) =>
-  new Promise<void>((resolve, reject) => {
-    transaction.oncomplete = () => resolve()
-    transaction.onabort = transaction.onerror = () => reject(transaction.error)
-  })
 
 const publicEntry = (entry: StoredEntry): Entry => ({
   id: entry.id,
@@ -62,7 +50,7 @@ const conflict = (kind: string, id: string, expected: unknown, actual: unknown) 
 
 async function allEntries(database: IDBDatabase, bundleId: string): Promise<StoredEntry[]> {
   const transaction = database.transaction(ENTRY_STORE, "readonly")
-  return result(transaction.objectStore(ENTRY_STORE).index("bundleId").getAll(bundleId))
+  return requestResult(transaction.objectStore(ENTRY_STORE).index("bundleId").getAll(bundleId))
 }
 
 export function createIndexedDbEntryRepository(bundleId: string): EntryRepository & EntryReader {
@@ -72,7 +60,7 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
     const database = await openCompanionDatabase()
     try {
       const transaction = database.transaction(ENTRY_STORE, "readonly")
-      return (await result(transaction.objectStore(ENTRY_STORE).get(key(id)))) ?? null
+      return (await requestResult(transaction.objectStore(ENTRY_STORE).get(key(id)))) ?? null
     } finally {
       database.close()
     }
@@ -96,7 +84,7 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
       try {
         const transaction = database.transaction(ENTRY_STORE, "readwrite")
         const store = transaction.objectStore(ENTRY_STORE)
-        const existing = await result(store.get(key(args.id)))
+        const existing = await requestResult(store.get(key(args.id)))
         if (existing) throw conflict("EntryVersionConflict", args.id, "absent", existing.version)
         const entry: StoredEntry = {
           bundleId,
@@ -110,7 +98,7 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
           updatedAt: args.now,
         }
         store.add(entry)
-        await done(transaction)
+        await transactionDone(transaction)
         return entry
       } finally {
         database.close()
@@ -124,7 +112,7 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
       try {
         const transaction = database.transaction(ENTRY_STORE, "readwrite")
         const store = transaction.objectStore(ENTRY_STORE)
-        const current = (await result(store.get(key(args.id)))) as StoredEntry | undefined
+        const current = (await requestResult(store.get(key(args.id)))) as StoredEntry | undefined
         if (!current || current.collection !== args.collection) {
           throw conflict("EntryVersionConflict", args.id, args.expectedVersion, current?.version ?? 0)
         }
@@ -133,7 +121,7 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
         }
         const entry = { ...current, data: structuredClone(args.data), version: current.version + 1, updatedAt: args.now }
         store.put(entry)
-        await done(transaction)
+        await transactionDone(transaction)
         return entry
       } finally {
         database.close()
@@ -144,7 +132,7 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
       try {
         const transaction = database.transaction(ENTRY_STORE, "readwrite")
         const store = transaction.objectStore(ENTRY_STORE)
-        const current = (await result(store.get(key(args.id)))) as StoredEntry | undefined
+        const current = (await requestResult(store.get(key(args.id)))) as StoredEntry | undefined
         if (!current || current.collection !== args.collection) return { removed: false }
         if (current.version !== args.expectedVersion) {
           throw conflict("EntryVersionConflict", args.id, args.expectedVersion, current.version)
@@ -153,7 +141,7 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
           throw conflict("EntryStatusConflict", args.id, args.expectedStatus, current.status)
         }
         store.delete(key(args.id))
-        await done(transaction)
+        await transactionDone(transaction)
         return { removed: true }
       } finally {
         database.close()
@@ -164,7 +152,7 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
       try {
         const transaction = database.transaction(ENTRY_STORE, "readwrite")
         const store = transaction.objectStore(ENTRY_STORE)
-        const current = (await result(store.get(key(args.id)))) as StoredEntry | undefined
+        const current = (await requestResult(store.get(key(args.id)))) as StoredEntry | undefined
         if (!current || current.collection !== args.collection) {
           throw conflict("EntryVersionConflict", args.id, args.expectedVersion ?? 0, current?.version ?? 0)
         }
@@ -176,7 +164,7 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
         }
         const entry = { ...current, status: args.to, version: current.version + 1, updatedAt: args.now }
         store.put(entry)
-        await done(transaction)
+        await transactionDone(transaction)
         return entry
       } finally {
         database.close()
