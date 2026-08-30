@@ -12,11 +12,12 @@ type ScreenState = CompanionStartup | { status: 'loading' } | { status: 'error' 
 
 type AppProps = {
   loadStartup(): Promise<CompanionStartup>
+  createPreset(): Promise<unknown>
 }
 
 const startOptions = ['custom', 'preset', 'bundle'] as const
 
-function App({ loadStartup }: AppProps) {
+function App({ loadStartup, createPreset }: AppProps) {
   const { t } = useTranslation()
   const [screen, setScreen] = useState<ScreenState>({ status: 'loading' })
 
@@ -38,11 +39,18 @@ function App({ loadStartup }: AppProps) {
   if (screen.status === 'error') {
     return <StatusScreen>{t('startup.error')}</StatusScreen>
   }
-  if (screen.status === 'start') return <StartScreen webmcpAvailable={screen.webmcpAvailable} />
+  if (screen.status === 'start') {
+    return <StartScreen webmcpAvailable={screen.webmcpAvailable} onCreate={async () => {
+      await createPreset()
+      setScreen({ status: 'loading' })
+      setScreen(await loadStartup())
+    }} />
+  }
 
   return (
     <MainScreen
       companionName={screen.companion.name}
+      stage={screen.stage}
       webmcpAvailable={screen.webmcpAvailable}
     />
   )
@@ -56,8 +64,10 @@ function StatusScreen({ children }: { children: React.ReactNode }) {
   )
 }
 
-function StartScreen({ webmcpAvailable }: { webmcpAvailable: boolean }) {
+function StartScreen({ webmcpAvailable, onCreate }: { webmcpAvailable: boolean; onCreate(): Promise<void> }) {
   const { t } = useTranslation()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(false)
 
   return (
     <div className="min-h-svh">
@@ -74,12 +84,21 @@ function StartScreen({ webmcpAvailable }: { webmcpAvailable: boolean }) {
               <p className="mt-2 text-sm leading-5 text-muted-foreground">
                 {t(`start.options.${option}.description`)}
               </p>
-              <Button className="mt-auto" disabled>
-                {t('start.unavailable')}
+              <Button
+                className="mt-auto"
+                disabled={option !== 'preset' || busy}
+                onClick={option === 'preset' ? async () => {
+                  setBusy(true)
+                  setError(false)
+                  try { await onCreate() } catch { setError(true); setBusy(false) }
+                } : undefined}
+              >
+                {option === 'preset' ? (busy ? t('start.creating') : t('start.createPreset')) : t('start.unavailable')}
               </Button>
             </section>
           ))}
         </div>
+        {error && <p role="alert" className="mt-4 text-sm text-destructive">{t('startup.error')}</p>}
       </main>
     </div>
   )
@@ -87,9 +106,11 @@ function StartScreen({ webmcpAvailable }: { webmcpAvailable: boolean }) {
 
 function MainScreen({
   companionName,
+  stage,
   webmcpAvailable,
 }: {
   companionName: string
+  stage: import('@/core/domain/companion.ts').StageProjection
   webmcpAvailable: boolean
 }) {
   const { t } = useTranslation()
@@ -109,10 +130,8 @@ function MainScreen({
         >
           <div className="flex aspect-2/3 max-h-[65svh] w-full max-w-sm items-center justify-center rounded-3xl border bg-background shadow-sm">
             <div className="text-center text-muted-foreground">
-              <h1 id="stage-title" className="text-base font-medium text-foreground">
-                {t('main.stageTitle')}
-              </h1>
-              <p className="mt-1 text-sm">{t('main.placeholder')}</p>
+              <h1 id="stage-title" className="text-base font-medium text-foreground">{stage.title}</h1>
+              <p className="mt-1 text-sm">{stage.narrative}</p>
             </div>
           </div>
         </section>
@@ -124,7 +143,9 @@ function MainScreen({
             <h2 id="dialogue-title" className="font-heading text-sm font-medium">
               {t('main.dialogueTitle')}
             </h2>
-            <p className="mt-2 text-sm text-muted-foreground">{t('main.dialoguePlaceholder')}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {stage.actions.map((action) => <Button key={action.id} variant="outline" disabled>{action.label}</Button>)}
+            </div>
           </div>
         </section>
       </main>

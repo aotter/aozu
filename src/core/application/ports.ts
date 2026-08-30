@@ -1,12 +1,9 @@
-import type { ActiveCompanion } from '../domain/companion.ts'
 import type { Entry } from '@aotter/mantle-spec'
+import type { EntryReader, EntryRepository } from '@aotter/mantle-runtime'
+import type { BundleRecord, ValidatedBundle } from '../bundle.ts'
 
 export type AgentCapability = {
   isAvailable(): boolean
-}
-
-export type CompanionRepository = {
-  hydrateActive(): Promise<ActiveCompanion | null>
 }
 
 export interface CommitActionInput {
@@ -43,3 +40,11 @@ export interface PendingTurnRepository {
     now: number
   }): Promise<Entry>
 }
+
+export interface BundleActivationRepository {
+  stageCandidate(record: BundleRecord): Promise<ValidatedBundle>
+  activate(id: string, approved: true): Promise<ValidatedBundle>
+  getActive(): Promise<ValidatedBundle | null>
+}
+
+export type EntryRepositoryFactory = (bundleId: string) => EntryRepository & EntryReader

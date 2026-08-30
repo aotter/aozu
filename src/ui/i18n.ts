@@ -14,6 +14,8 @@ const en = {
     title: 'Create your companion',
     description: 'Choose how to begin. Confirmed data is saved locally.',
     unavailable: 'Not available yet',
+    creating: 'Creating…',
+    createPreset: 'Start Trail Guide',
     options: {
       custom: {
         title: 'Create a character',

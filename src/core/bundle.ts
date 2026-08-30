@@ -14,6 +14,7 @@ export interface BundleRecord {
   semanticFingerprint: string
   identity: BundleIdentity
   createdAt: number
+  metadata?: { name: string; runId: string }
 }
 
 export interface ValidatedBundle {

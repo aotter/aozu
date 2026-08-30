@@ -9,6 +9,6 @@ const application = createApplication(document)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App loadStartup={application.loadStartup} />
+    <App loadStartup={application.loadStartup} createPreset={application.createPreset} />
   </StrictMode>,
 )
