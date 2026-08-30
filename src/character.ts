@@ -186,8 +186,8 @@ export function createAssetJob(pack: CharacterPack, proposal: AssetJobProposal) 
         'Start from the canonical reference, never from a generated variant.',
         'Return one complete 512×768 image per declared layer.',
         'Use genuine transparent alpha; do not paint a checkerboard.',
-        'Before packaging, inspect every generated file for exact dimensions and alpha; retry generation instead of uploading a known-invalid file.',
-        'Do not resize, chroma-key, or remove a background to make invalid output pass.',
+        'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
+        'Submit only the final RGBA assets. The website validates but never repairs candidate images.',
         workflow === 'wearable-prop'
           ? 'Return isolated prop pixels only; never include character pixels.'
           : 'Return one complete full-body character skin.',

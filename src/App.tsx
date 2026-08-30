@@ -471,7 +471,7 @@ function App() {
           name: 'export_asset_job_bundle',
           title: 'Export Character Asset Job Bundle',
           description:
-            'Download a ZIP containing the job, canonical PNG, character contract, and exact candidate template. Generate only the declared files, then call request_candidate_import.',
+            'Download a ZIP containing the job, canonical PNG, character contract, and exact candidate template. Generate only the declared files. Before import, preprocess them outside the website: remove backgrounds, place each asset on the exact 512×768 canvas without changing alignment, and verify genuine RGBA alpha. Then call request_candidate_import.',
           inputSchema: {
             type: 'object',
             properties: { jobId: { type: 'string', pattern: '^job_[a-z0-9_]{1,80}$' } },
@@ -504,7 +504,7 @@ function App() {
           name: 'request_candidate_import',
           title: 'Request Character Candidate Import',
           description:
-            'Open a page file chooser for one candidate ZIP and wait. Repeat with unique candidateId values until the job has 2–4 candidates. The ZIP must contain candidate.json plus exactly the declared assets. Runtime verifies job lock, paths, SHA-256, dimensions, alpha, layer set, baseline, and center before committing; then call validate_asset_candidate.',
+            'Open a page file chooser for one candidate ZIP and wait. Before calling, preprocess generated assets outside the website: remove the background, place them on the exact 512×768 canvas without changing alignment, and verify genuine RGBA alpha. Submit only final assets. The website never repairs images. Repeat with unique candidateId values until the job has 2–4 candidates. The ZIP must contain candidate.json plus exactly the declared assets. Runtime verifies job lock, paths, SHA-256, dimensions, alpha, layer set, baseline, and center before committing; then call validate_asset_candidate.',
           inputSchema: {
             type: 'object',
             properties: { jobId: { type: 'string', pattern: '^job_[a-z0-9_]{1,80}$' } },
@@ -575,7 +575,7 @@ function App() {
                 candidate.status === 'valid'
                   ? [{ tool: 'review_asset_candidate', required: true, reason: 'Deterministic checks passed; identity and visual quality require the user.' }]
                   : candidate.status === 'invalid' && remainingCandidates > 0
-                    ? [{ tool: 'request_candidate_import', required: true, reason: `Report the validation reasons, regenerate from the locked canonical, and fill one of ${remainingCandidates} remaining candidate slot(s).` }]
+                    ? [{ tool: 'request_candidate_import', required: true, reason: `Report the validation reasons, regenerate from the locked canonical, preprocess outside the website to final 512×768 RGBA, and fill one of ${remainingCandidates} remaining candidate slot(s).` }]
                     : candidate.status === 'invalid'
                       ? [{ tool: 'propose_asset_job', required: true, reason: 'Report that this candidate batch failed, then create a fresh 2–4 candidate batch from the canonical reference.' }]
                       : [],

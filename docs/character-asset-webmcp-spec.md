@@ -29,7 +29,8 @@ canonical reference
 - Props are one or two full-canvas transparent overlay layers.
 - IndexedDB is the runtime store; `.zip` is the portable vault format.
 - Only `document.modelContext` is supported.
-- There is no image-generator compatibility or background-removal adapter.
+- There is no image-generator compatibility or background-removal adapter inside
+  the website. The agent may preprocess generated files before import.
 
 Not in the MVP: arbitrary poses, Live2D, skeleton animation, cropped props, freeform
 image generation, automatic visual approval, or a full Picrew-style creator UI.
@@ -267,9 +268,11 @@ candidate-template.json
 ```
 
 The host agent uses its own image-generation capability. The web page does not receive
-or store model credentials. Before packaging a candidate, the agent checks exact dimensions
-and alpha locally and retries known-invalid generation. This preflight saves batch quota but
-never replaces the browser's independent validation.
+or store model credentials. Before packaging a candidate, the agent preprocesses generated
+assets outside the website: remove the background, place each asset on the exact 512×768
+canvas without changing alignment, and verify genuine RGBA alpha. Only final assets are
+submitted. This preflight saves batch quota but never replaces the browser's independent
+validation; the website validates but never repairs candidate images.
 
 #### `request_candidate_import({ jobId })`
 
