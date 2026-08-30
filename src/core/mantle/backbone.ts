@@ -24,6 +24,8 @@ const actionSchema = objectSchema(
   {
     id: { type: "string", minLength: 1 },
     label: { type: "string", minLength: 1 },
+    phrases: { type: "array", items: { type: "string", minLength: 1 } },
+    effects: { type: "array", items: { type: "object" } },
   },
   ["id", "label"],
 )
@@ -55,8 +57,31 @@ export const FIXED_BACKBONE_SOURCES = [
             revision: { type: "integer", minimum: 0 },
             status: { enum: ["active", "completed", "blocked"] },
             currentDialogueId: { type: "string" },
+            metrics: { type: "object", additionalProperties: { type: "number" } },
+            flags: { type: "object", additionalProperties: { type: "boolean" } },
           },
           ["currentStageId", "revision", "status"],
+        ),
+      },
+    ),
+  ),
+  source(
+    "fixed/rule.yaml",
+    envelope(
+      "Schema",
+      "rules",
+      {
+        title: "Rules",
+        lifecycle: "operational",
+        indexes: [["priority", "ruleId"]],
+        schema: objectSchema(
+          {
+            ruleId: { type: "string", minLength: 1 },
+            priority: { type: "integer" },
+            when: { type: "object" },
+            effects: { type: "array", items: { type: "object" } },
+          },
+          ["ruleId", "priority", "when", "effects"],
         ),
       },
     ),

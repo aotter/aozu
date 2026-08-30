@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict'
+
+import { executePlaybook, resolvePreparedAction } from '../src/core/application/playbook.ts'
+
+const actions = [
+  { id: 'train', label: 'Train', phrases: ["  Let's TRAIN  "], effects: [{ type: 'addMetric', metricId: 'xp', amount: 2 }] },
+  { id: 'rest', label: 'Rest', phrases: ['rest'], effects: [] },
+]
+assert.equal(resolvePreparedAction(actions, { actionId: 'train' }).path, 'hot')
+assert.equal(resolvePreparedAction(actions, { text: "let's train" }).path, 'warm')
+assert.deepEqual(resolvePreparedAction(actions, { text: 'unknown' }), { path: 'cold', reason: 'unmatched' })
+
+const next = executePlaybook(
+  { currentStageId: 'one', metrics: { xp: 0 }, flags: {} },
+  [{ type: 'addMetric', metricId: 'xp', amount: 2 }],
+  [
+    { id: 'b', priority: 1, when: { fact: 'metric', id: 'xp', op: 'gte', value: 2 }, effects: [{ type: 'setFlag', flagId: 'ready', value: true }] },
+    { id: 'a', priority: 1, when: { fact: 'flag', id: 'ready', value: true }, effects: [{ type: 'changeStage', stageId: 'two' }] },
+  ],
+)
+assert.deepEqual(next, { currentStageId: 'one', metrics: { xp: 2 }, flags: { ready: true } })
+console.log('playbook: ok')

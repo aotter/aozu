@@ -3,6 +3,7 @@ import type { EntryReader } from '@aotter/mantle-runtime'
 
 import type { StageProjection } from '../domain/companion.ts'
 import type { ActionRepository } from './ports.ts'
+import { executePlaybook, parsePlaybookRule, resolvePreparedAction } from './playbook.ts'
 
 const record = (value: unknown, label: string): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Invalid ${label}`)
@@ -81,24 +82,50 @@ export async function submitAction(
   },
 ): Promise<StageProjection> {
   const before = await loadStage(entries, input.runId)
-  const action = before.actions.find(({ id }) => id === input.actionId)
-  if (!action) throw new Error(`Action not available: ${input.actionId}`)
   const run = await entries.readById(input.runId)
   if (!run) throw new Error(`Run not found: ${input.runId}`)
+  const stage = await entries.readById(before.stageId)
+  if (!stage) throw new Error(`Stage not found: ${before.stageId}`)
+  const resolved = resolvePreparedAction(Array.isArray(stage.data.actions) ? stage.data.actions : [], { actionId: input.actionId })
+  if (resolved.path === 'cold') throw new Error(`Action not available: ${input.actionId}`)
+  const rules = (await entries.readPublished({ collection: 'rules' })).map((entry) => parsePlaybookRule(entry.data))
+  const nextRunData = executePlaybook(run.data, resolved.action.effects, rules)
   const now = input.now ?? Date.now()
   const commit = await actions.commit({
     ...input,
-    nextRunData: { ...run.data, revision: input.expectedRevision + 1 },
+    nextRunData: { ...nextRunData, revision: input.expectedRevision + 1 },
     eventData: {
       runId: input.runId,
       actionId: input.actionId,
       idempotencyKey: input.idempotencyKey,
-      summary: action.label,
+      summary: resolved.action.label,
       createdAtMs: now,
     },
     now,
   })
-  const stage = await entries.readById(string(commit.run.data.currentStageId, 'current stage id'))
-  if (!stage) throw new Error('Committed stage is missing')
-  return projectStage(commit.run, stage)
+  const committedStage = await entries.readById(string(commit.run.data.currentStageId, 'current stage id'))
+  if (!committedStage) throw new Error('Committed stage is missing')
+  return projectStage(commit.run, committedStage)
+}
+
+export async function submitInteraction(
+  entries: EntryReader,
+  actions: ActionRepository,
+  input: {
+    bundleId: string
+    runId: string
+    expectedRevision: number
+    idempotencyKey: string
+    actionId?: string
+    text?: string
+    now?: number
+  },
+) {
+  const current = await loadStage(entries, input.runId)
+  const stage = await entries.readById(current.stageId)
+  if (!stage) throw new Error(`Stage not found: ${current.stageId}`)
+  const resolved = resolvePreparedAction(Array.isArray(stage.data.actions) ? stage.data.actions : [], input)
+  if (resolved.path === 'cold') return resolved
+  const projection = await submitAction(entries, actions, { ...input, actionId: resolved.action.id })
+  return { path: resolved.path, projection } as const
 }

@@ -25,6 +25,9 @@ const entries = {
   async readById(id: string) {
     return id === run.id ? storedRun : id === stage.id ? stage : null
   },
+  async readPublished() {
+    return []
+  },
 }
 const result = await submitAction(entries as never, {
   async commit(input) {
