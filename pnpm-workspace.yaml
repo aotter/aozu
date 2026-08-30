@@ -1,3 +1,7 @@
+packages:
+  - .
+  - poc
+
 allowBuilds:
   esbuild: true
   workerd: true
