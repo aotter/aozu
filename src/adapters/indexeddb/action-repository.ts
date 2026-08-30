@@ -37,6 +37,17 @@ export function createIndexedDbActionRepository(): ActionRepository {
         const current = (await requestResult(store.get(runKey))) as StoredEntry | undefined
         if (!current || current.collection !== 'runs') throw new Error(`Run not found: ${input.runId}`)
         if (existingEvent) return { run: publicEntry(current), event: publicEntry(existingEvent), replayed: true }
+        const turn = input.resolveTurnId
+          ? ((await requestResult(store.get([input.bundleId, input.resolveTurnId]))) as StoredEntry | undefined)
+          : undefined
+        if (input.resolveTurnId && (!turn || turn.collection !== 'pending-agent-turns')) {
+          throw new Error(`Pending turn not found: ${input.resolveTurnId}`)
+        }
+        if (turn && (turn.data.runId !== input.runId || turn.data.expectedRevision !== input.expectedRevision)) {
+          throw new Error(`Pending turn does not match run revision: ${turn.id}`)
+        }
+        if (turn?.data.status === 'resolved') throw new Error(`Resolved turn is missing its event: ${turn.id}`)
+        if (turn && turn.data.status !== 'pending') throw new Error(`Pending turn is not resolvable: ${turn.id}`)
         const actualRevision = current.data.revision
         if (!Number.isSafeInteger(actualRevision) || actualRevision !== input.expectedRevision) {
           throw conflict(input.expectedRevision, Number(actualRevision))
@@ -60,6 +71,19 @@ export function createIndexedDbActionRepository(): ActionRepository {
         }
         store.put(run)
         store.add(event)
+        if (turn) {
+          store.put({
+            ...turn,
+            version: turn.version + 1,
+            updatedAt: input.now,
+            data: {
+              ...turn.data,
+              status: 'resolved',
+              resolutionDialogue: input.resolutionDialogue ?? '',
+              resolutionEventId: eventId,
+            },
+          })
+        }
         await transactionDone(transaction)
         return { run: publicEntry(run), event: publicEntry(event), replayed: false }
       } finally {

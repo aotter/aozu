@@ -44,6 +44,31 @@ export const FIXED_BACKBONE_VERSION = "1"
 
 export const FIXED_BACKBONE_SOURCES = [
   source(
+    "fixed/pending-agent-turn.yaml",
+    envelope(
+      "Schema",
+      "pending-agent-turns",
+      {
+        title: "Pending agent turns",
+        lifecycle: "operational",
+        indexes: [["runId"]],
+        schema: objectSchema(
+          {
+            runId: { type: "string", minLength: 1 },
+            nodeId: { type: "string", minLength: 1 },
+            userText: { type: "string", minLength: 1, maxLength: 4000 },
+            expectedRevision: { type: "integer", minimum: 0 },
+            status: { type: "string", enum: ["pending", "resolved", "failed"] },
+            createdAtMs: { type: "integer", minimum: 0 },
+            resolutionDialogue: { type: "string" },
+            resolutionEventId: { type: "string" },
+          },
+          ["runId", "nodeId", "userText", "expectedRevision", "status", "createdAtMs"],
+        ),
+      },
+    ),
+  ),
+  source(
     "fixed/run.yaml",
     envelope(
       "Schema",

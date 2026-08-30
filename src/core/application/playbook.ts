@@ -114,6 +114,11 @@ function parseEffect(value: unknown): Effect {
   throw new Error(`Unsupported effect: ${String(effect.type)}`)
 }
 
+export const parseEffects = (value: unknown): Effect[] => {
+  if (!Array.isArray(value)) throw new Error('Invalid effects')
+  return value.map(parseEffect)
+}
+
 function evaluate(condition: Condition, data: Record<string, unknown>): boolean {
   if ('all' in condition) return condition.all.every((item) => evaluate(item, data))
   if ('any' in condition) return condition.any.some((item) => evaluate(item, data))

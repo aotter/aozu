@@ -18,6 +18,8 @@ export interface CommitActionInput {
   nextRunData: Record<string, unknown>
   eventData: Record<string, unknown>
   now: number
+  resolveTurnId?: string
+  resolutionDialogue?: string
 }
 
 export interface ActionCommit {
@@ -28,4 +30,16 @@ export interface ActionCommit {
 
 export interface ActionRepository {
   commit(input: CommitActionInput): Promise<ActionCommit>
+}
+
+export interface PendingTurnRepository {
+  create(input: {
+    bundleId: string
+    runId: string
+    nodeId: string
+    userText: string
+    expectedRevision: number
+    idempotencyKey: string
+    now: number
+  }): Promise<Entry>
 }
