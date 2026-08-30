@@ -23,16 +23,17 @@ const LEGACY_CHARACTER_RIG = {
   ],
 } as const
 
-export const CHARACTER_CREATION_ROLES = [
-  'body-base',
-  'head-neutral',
-  'head-happy',
-  'body-outfit',
-  'prop-back',
-  'prop-front',
-] as const
+export const CHARACTER_VARIANT_GROUPS = ['body', 'expression', 'outfit', 'headwear', 'prop'] as const
+export const CHARACTER_VARIANT_LAYERS = {
+  body: ['body'],
+  expression: ['head'],
+  outfit: ['body'],
+  headwear: ['back', 'front'],
+  prop: ['back', 'front'],
+} as const
 
-export type CharacterCreationRole = typeof CHARACTER_CREATION_ROLES[number]
+export type CharacterVariantGroup = typeof CHARACTER_VARIANT_GROUPS[number]
+export type CharacterVariantLayer = 'body' | 'head' | 'back' | 'front'
 
 export interface CharacterDraftAsset {
   blob: Blob
@@ -41,13 +42,32 @@ export interface CharacterDraftAsset {
   inspection: CharacterAssetInspection
 }
 
+export interface CharacterDraftVariant {
+  id: string
+  group: CharacterVariantGroup
+  label: string
+  layers: Partial<Record<CharacterVariantLayer, CharacterDraftAsset>>
+}
+
+export interface CharacterAssetTarget {
+  group: CharacterVariantGroup
+  variantId: string
+  label: string
+  layer: CharacterVariantLayer
+}
+
 export interface CharacterDraft {
   id: 'current'
+  schemaVersion: 2
   packId: string
   name: string
-  assets: Partial<Record<CharacterCreationRole, CharacterDraftAsset>>
-  selectedBody: 'body-base' | 'body-outfit'
-  selectedExpression: 'head-neutral' | 'head-happy'
+  variants: CharacterDraftVariant[]
+  selected: {
+    expression: string
+    outfit?: string
+    headwear?: string
+    prop?: string
+  }
   updatedAt: number
 }
 

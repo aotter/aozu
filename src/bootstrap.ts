@@ -15,12 +15,13 @@ import {
 import { approveCandidate as approveStagedCandidate } from './core/application/candidate.ts'
 import { loadCompanionStartup } from './core/application/companion.ts'
 import { loadStage, submitInteraction } from './core/application/stage.ts'
-import { CHARACTER_RIG } from './core/domain/character.ts'
-import { CHARACTER_CREATION_ROLES, type CharacterCreationRole, type CharacterDraft } from './core/domain/character.ts'
+import { CHARACTER_RIG, type CharacterAssetTarget, type CharacterDraft } from './core/domain/character.ts'
 import {
-  CHARACTER_CREATION_SLOTS,
+  CHARACTER_CREATION_GROUPS,
+  REQUIRED_CHARACTER_TARGETS,
   createCharacterDraft,
   loadCharacterProjection,
+  migrateCharacterDraft,
   saveCharacterDraftAsset,
   stageCharacterDraft,
 } from './core/application/character-creation.ts'
@@ -42,7 +43,11 @@ export function createApplication(document: Document) {
 
   const openCharacterDraft = async () => {
     const existing = await drafts.get()
-    if (existing) return existing
+    if (existing) {
+      const draft = migrateCharacterDraft(existing)
+      if (draft !== existing) await drafts.put(draft)
+      return draft
+    }
     const draft = createCharacterDraft()
     await drafts.put(draft)
     return draft
@@ -74,8 +79,8 @@ export function createApplication(document: Document) {
       await drafts.put(next)
       return next
     },
-    async saveCharacterAsset(draft: CharacterDraft, role: CharacterCreationRole, blob: Blob, filename: string, source: 'user' | 'agent' = 'user') {
-      return saveCharacterDraftAsset(drafts, inspectCharacterImage, draft, role, blob, filename, source)
+    async saveCharacterAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string, source: 'user' | 'agent' = 'user') {
+      return saveCharacterDraftAsset(drafts, inspectCharacterImage, draft, target, blob, filename, source)
     },
     prepareCharacter: (draft: CharacterDraft) => stageCharacterDraft(
       bundles,
@@ -115,50 +120,56 @@ export function createApplication(document: Document) {
   }
   registerCompanionTools(document, {
     async inspectCharacter() {
-      const draft = await drafts.get()
+      const draft = await openCharacterDraft()
+      const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
       return {
         status: 'ok',
         data: {
           rig: CHARACTER_RIG,
-          creationSlots: CHARACTER_CREATION_SLOTS.map((slot) => ({
-            ...slot,
-            filled: Boolean(draft?.assets[slot.role]),
+          creationGroups: CHARACTER_CREATION_GROUPS,
+          variants: draft.variants.map((variant) => ({
+            group: variant.group,
+            id: variant.id,
+            label: variant.label,
+            layers: CHARACTER_CREATION_GROUPS.find(({ group }) => group === variant.group)!.layers.map((layer) => ({ layer, filled: Boolean(variant.layers[layer]) })),
           })),
-          draft: draft ? { name: draft.name, selectedBody: draft.selectedBody, selectedExpression: draft.selectedExpression } : null,
-          canonicalReference: draft?.assets['body-base'] ? {
-            filename: draft.assets['body-base'].filename,
-            sha256: draft.assets['body-base'].inspection.sha256,
-            dataUrl: await readDataUrl(draft.assets['body-base'].blob),
+          draft: { name: draft.name, selected: draft.selected },
+          canonicalReference: canonical ? {
+            filename: canonical.filename,
+            sha256: canonical.inspection.sha256,
+            dataUrl: await readDataUrl(canonical.blob),
           } : null,
           productionBrief: [
-            'The first body-base candidate becomes the canonical character. Generate every later slot from that canonical reference, never from another generated variant.',
+            'The first body/base/body candidate becomes the canonical character. Generate every later variant from that canonical reference, never from another generated variant.',
             'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
             'Submit only final RGBA PNG layers. The website validates but never repairs candidate images.',
             'Expression layers replace the whole aligned head, including the same fixed hairstyle and facial hair. Hair and facial hair are not customizable slots.',
-            'A wearable may use multiple layers such as item-back and item-front.',
+            'Expressions are variants of one whole-head slot. The canonical set is neutral, happy, sad, angry, surprised, and sleepy; additional expression variants are allowed.',
+            'Outfits are full-body variants. Headwear and props are logical appearances that may each contain back and front layers.',
           ],
         },
-        nextActions: CHARACTER_CREATION_SLOTS
-          .filter(({ required, role }) => required && !draft?.assets[role])
-          .map(({ role }) => ({ tool: 'submit_character_asset_candidate', required: true, reason: `Fill ${role}.` })),
+        nextActions: REQUIRED_CHARACTER_TARGETS
+          .filter((target) => !draft.variants.find(({ group, id }) => group === target.group && id === target.variantId)?.layers[target.layer])
+          .map((target) => ({ tool: 'submit_character_asset_candidate', required: true, reason: `Fill ${target.group}/${target.variantId}/${target.layer}.` })),
       }
     },
-    async submitCharacterAsset({ role, filename, dataUrl }: { role: CharacterCreationRole; filename: string; dataUrl: string }) {
-      if (!CHARACTER_CREATION_ROLES.includes(role)) throw new Error('Unknown character asset role')
+    async submitCharacterAsset({ target, filename, dataUrl }: { target: CharacterAssetTarget; filename: string; dataUrl: string }) {
       const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl)
       if (!match || dataUrl.length > 7_100_000) throw new Error('Expected a PNG data URL under 5 MiB')
       const binary = atob(match[1])
       const bytes = new Uint8Array(binary.length)
       for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
       const current = await openCharacterDraft()
-      if (role !== 'body-base' && !current.assets['body-base']) throw new Error('Submit body-base before derived character assets')
-      const draft = await application.saveCharacterAsset(current, role, new Blob([bytes], { type: 'image/png' }), filename, 'agent')
+      const canonical = current.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
+      if (!(target.group === 'body' && target.variantId === 'base' && target.layer === 'body') && !canonical) throw new Error('Submit body/base/body before derived character assets')
+      const draft = await application.saveCharacterAsset(current, target, new Blob([bytes], { type: 'image/png' }), filename, 'agent')
       document.defaultView?.dispatchEvent(new Event('character-draft-updated'))
       return {
         status: 'ok',
-        data: { role, filename, byteLength: bytes.byteLength },
-        nextActions: CHARACTER_CREATION_SLOTS.filter(({ required, role: requiredRole }) => required && !draft.assets[requiredRole])
-          .map(({ role: missingRole }) => ({ tool: 'submit_character_asset_candidate', required: true, reason: `Fill ${missingRole}.` })),
+        data: { target, filename, byteLength: bytes.byteLength },
+        nextActions: REQUIRED_CHARACTER_TARGETS
+          .filter((required) => !draft.variants.find(({ group, id }) => group === required.group && id === required.variantId)?.layers[required.layer])
+          .map((required) => ({ tool: 'submit_character_asset_candidate', required: true, reason: `Fill ${required.group}/${required.variantId}/${required.layer}.` })),
       }
     },
     async inspect() {

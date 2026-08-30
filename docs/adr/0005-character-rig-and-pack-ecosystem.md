@@ -129,6 +129,20 @@ declares an order within its slot, and final rendering sorts by slot order,
 layer order, then qualified asset ID. Duplicate slot or layer orders are
 rejected rather than relying on manifest insertion order.
 
+### Character authoring draft
+
+The local authoring draft groups appearances by semantic intent rather than by
+PNG filename: `body`, `expression`, `outfit`, `headwear`, and `prop`. Each group
+contains named variants. A body or outfit variant owns one full-body layer, an
+expression owns one whole-head layer, and headwear or prop variants may own both
+back and front layers. The base body and neutral expression are required.
+
+Neutral, happy, sad, angry, surprised, and sleepy are initial expression
+variants, not a closed expression vocabulary. Users and agents may add, name,
+and populate more variants through the same contract. Draft schema changes are
+versioned and migrated in IndexedDB; candidate staging compiles the draft into
+the Character Pack appearances and qualified assets defined above.
+
 ### Sources and activation
 
 Character creation supports four equivalent candidate sources:

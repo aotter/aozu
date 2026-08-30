@@ -8,10 +8,7 @@ export function CharacterRenderer({ label, layers }: { label: string; layers: La
 
   return (
     <div className="relative aspect-2/3 w-full overflow-hidden rounded-3xl border bg-muted/40" role="img" aria-label={label}>
-      {!sources.length && <svg aria-hidden="true" viewBox="0 0 512 768" className="absolute inset-0 size-full text-muted-foreground/20">
-        <circle cx="256" cy="170" r="82" fill="currentColor" />
-        <path d="M145 690c12-104 28-181 46-230-45-47-54-113-20-164 23-34 53-50 85-50s62 16 85 50c34 51 25 117-20 164 18 49 34 126 46 230H145Z" fill="currentColor" />
-      </svg>}
+      {!sources.length && <div className="absolute inset-0 p-8"><CharacterSlotPlaceholder src="/assets/character-slots/body-base.png" /></div>}
       {sources.map(({ id, src, slotOrder, layerOrder }) => <img
         key={id}
         src={src}
@@ -21,6 +18,25 @@ export function CharacterRenderer({ label, layers }: { label: string; layers: La
       />)}
     </div>
   )
+}
+
+export function CharacterSlotPlaceholder({ src, label }: { src: string; label?: string }) {
+  return <div
+    role={label ? 'img' : undefined}
+    aria-label={label}
+    aria-hidden={label ? undefined : true}
+    className="size-full bg-[#7b739e]/70"
+    style={{
+      WebkitMaskImage: `url("${src}")`,
+      maskImage: `url("${src}")`,
+      WebkitMaskPosition: 'center',
+      maskPosition: 'center',
+      WebkitMaskRepeat: 'no-repeat',
+      maskRepeat: 'no-repeat',
+      WebkitMaskSize: 'contain',
+      maskSize: 'contain',
+    }}
+  />
 }
 
 export function CharacterAssetImage({ blob }: { blob: Blob }) {
