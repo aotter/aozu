@@ -35,8 +35,10 @@ Experience Template / Progress Loops
 ```
 
 Purpose templates may recommend a visual pack but cannot depend on its art
-style. Runtime progress, dialogue, rules, and memories refer to a character
-composition or visual state through stable IDs.
+style. They may require named rig slots such as expressions or props, and pack
+validation verifies that the selected rig supplies them. Runtime progress,
+dialogue, rules, and memories refer to a character composition or visual state
+through stable qualified IDs.
 
 ### Rig profile
 
@@ -55,6 +57,7 @@ interface CharacterRigProfile {
     id: string
     order: number
     required?: boolean
+    alpha: "required" | "opaque" | "either"
   }>
 }
 ```
@@ -89,7 +92,7 @@ interface CharacterPack {
   license: {
     id: string
     url: string
-    distribution: "embedded" | "reference-only"
+    embedding: "allowed"
   }
   assets: CharacterAsset[]
   appearances: CharacterAppearance[]
@@ -101,10 +104,17 @@ One logical appearance item may contain multiple layer assets in different
 slots. A hat, hairstyle, outfit, expression, or prop is therefore not assumed
 to be one PNG.
 
-`CharacterComposition` stores selected appearance IDs, not copied image data.
-It resolves to an ordered layer list under the pack's rig profile. Items from
-different packs may be combined only when they declare the same rig profile and
-version.
+`CharacterComposition` stores qualified appearance references, not copied image
+data. Every reference contains `packId`, `packVersion`, and `appearanceId`;
+asset references are qualified the same way. This prevents collisions when two
+packs use the same local IDs.
+
+A composition resolves to an ordered layer list under the selected rig profile.
+Items from different packs may be combined only when they declare the same rig
+profile and version. Rig slot orders must be unique. Each appearance layer also
+declares an order within its slot, and final rendering sorts by slot order,
+layer order, then qualified asset ID. Duplicate slot or layer orders are
+rejected rather than relying on manifest insertion order.
 
 ### Sources and activation
 
@@ -130,11 +140,14 @@ Validation requires:
 - a valid and supported rig profile;
 - unique pack, appearance, item, and asset IDs;
 - a complete default composition;
+- fully qualified cross-pack appearance and asset references;
 - only declared layer slots;
-- deterministic slot ordering;
+- deterministic and unique slot and layer ordering;
 - every referenced asset to exist and match its recorded digest;
 - exact canvas dimensions for every raster layer;
-- supported media types and genuine RGBA alpha where transparency is required;
+- supported media types and the rig slot's alpha policy: `required` has at least
+  one non-opaque pixel, `opaque` has none, and `either` accepts both;
+- creator and license URLs, when present, to use `https`;
 - archive paths and sizes within the browser import profile from ADR-0003.
 
 An invalid pack is rejected with diagnostics for its producer. The website does
@@ -143,19 +156,27 @@ not repair candidate artwork.
 ### Persistence and distribution
 
 Raster data remains in the IndexedDB Blob asset store established by ADR-0003.
-Mantle entries store pack, composition, appearance, and asset IDs rather than
-base64 image data.
+Mantle entries store qualified pack, composition, appearance, and asset IDs
+rather than base64 image data.
+
+The initial browser profile embeds every selected pack manifest and asset into
+the resolved experience bundle namespace. Pack activation therefore uses the
+same candidate validation and atomic `activeBundleId` pointer swap as ADR-0003;
+there is no independent active-pack pointer or cleanup race. ZIP export remains
+self-contained and offline restoration never depends on a pack registry.
 
 Pack licensing is independent of the framework's software license. A pack must
-identify its creator, license URL, attribution, and distribution mode.
-
-- `embedded` assets may be included in a self-contained bundle export.
-- `reference-only` assets export the pack ID, exact version, composition, and
-  integrity information but not reusable source layers. Rehydration requires
-  the same pack to be installed or obtained through its entitlement provider.
+identify its creator, license URL, attribution, and an explicit machine-readable
+declaration that embedding is allowed. Initial imports reject packs without
+that declaration.
 
 The machine-readable license block is a routing and presentation aid. The
-linked license text remains authoritative.
+website presents it but does not interpret arbitrary legal terms. The linked
+license text remains authoritative.
+
+Reference-only packs, entitlement providers, and remote rehydration are outside
+the initial browser profile. They require a later ADR because they would change
+the self-contained export and offline recovery contract.
 
 ## Consequences
 
@@ -166,7 +187,7 @@ linked license text remains authoritative.
 - Full-canvas layers use more storage than cropped and transformed sprites, but
   preserve the alignment and deterministic renderer already proven by the POC.
 - Assets are not assumed to mix across rig profiles or profile versions.
-- Commercial packs can preserve user state portability without redistributing
-  reusable source artwork.
+- Cross-pack compositions remain deterministic because all references are
+  qualified and all selected assets are embedded in the resolved bundle.
 - Bone animation, arbitrary transforms, automatic recoloring, and cross-profile
   conversion remain outside the initial renderer.
