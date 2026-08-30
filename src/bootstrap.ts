@@ -7,6 +7,7 @@ import { queueAgentTurn, resolveAgentTurn } from './core/application/agent-turn.
 import { assembleAuthoredCandidate, DEFAULT_CUSTOMIZATION, installAuthoredCandidate } from './core/application/authoring.ts'
 import { loadCompanionStartup } from './core/application/companion.ts'
 import { loadStage, submitInteraction } from './core/application/stage.ts'
+import { CHARACTER_RIG } from './core/domain/character.ts'
 
 export function createApplication(document: Document) {
   const agent = createAgentCapability(document)
@@ -43,6 +44,20 @@ export function createApplication(document: Document) {
     },
   }
   registerCompanionTools(document, {
+    async inspectCharacter() {
+      return {
+        status: 'ok',
+        data: {
+          rig: CHARACTER_RIG,
+          productionBrief: [
+            'Start from the canonical character reference, never from a generated variant.',
+            'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
+            'Submit only final RGBA PNG layers. The website validates but never repairs candidate images.',
+            'A wearable may use multiple layers such as item-back and item-front.',
+          ],
+        },
+      }
+    },
     async inspect() {
       const { bundleId, runId, name } = await active()
       const entries = createIndexedDbEntryRepository(bundleId)

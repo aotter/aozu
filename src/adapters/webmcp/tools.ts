@@ -21,6 +21,7 @@ export function createAgentCapability(document: Document): AgentCapability {
 
 export function registerCompanionTools(document: Document, useCases: {
   inspect(): Promise<unknown>
+  inspectCharacter(): Promise<unknown>
   submit(input: { actionId: string; expectedRevision: number; idempotencyKey: string }): Promise<unknown>
   resolve(input: { turnId: string; idempotencyKey: string; dialogue: string; effects: unknown }): Promise<unknown>
 }) {
@@ -28,6 +29,14 @@ export function registerCompanionTools(document: Document, useCases: {
   if (!modelContext) return null
   const controller = new AbortController()
   void Promise.all([
+    modelContext.registerTool({
+      name: 'inspect_character_contract',
+      title: 'Inspect Character Contract',
+      description: 'Required first step before generating or changing character art. Returns the exact rig and production brief. Generate and preprocess assets outside the website, then submit only final 512×768 RGBA PNG layers. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true },
+      execute: () => useCases.inspectCharacter(),
+    }, { signal: controller.signal }),
     modelContext.registerTool({
       name: 'inspect_companion',
       title: 'Inspect Companion',

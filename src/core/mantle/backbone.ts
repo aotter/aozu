@@ -44,6 +44,42 @@ export const FIXED_BACKBONE_VERSION = "1"
 
 export const FIXED_BACKBONE_SOURCES = [
   source(
+    "fixed/character-pack.yaml",
+    envelope(
+      "Schema",
+      "character-packs",
+      {
+        title: "Character packs",
+        lifecycle: "operational",
+        schema: objectSchema(
+          {
+            pack: { type: "object" },
+          },
+          ["pack"],
+        ),
+      },
+    ),
+  ),
+  source(
+    "fixed/character-state.yaml",
+    envelope(
+      "Schema",
+      "character-states",
+      {
+        title: "Character states",
+        lifecycle: "operational",
+        schema: objectSchema(
+          {
+            packId: { type: "string", minLength: 1 },
+            packVersion: { type: "integer", minimum: 1 },
+            composition: { type: "array", items: { type: "object" } },
+          },
+          ["packId", "packVersion", "composition"],
+        ),
+      },
+    ),
+  ),
+  source(
     "fixed/pending-agent-turn.yaml",
     envelope(
       "Schema",
