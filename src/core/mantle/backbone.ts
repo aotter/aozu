@@ -44,6 +44,58 @@ export const FIXED_BACKBONE_VERSION = "1"
 
 export const FIXED_BACKBONE_SOURCES = [
   source(
+    "fixed/item-definition.yaml",
+    envelope(
+      "Schema",
+      "item-definitions",
+      {
+        title: "Item definitions",
+        lifecycle: "operational",
+        schema: objectSchema({ definition: { type: "object" } }, ["definition"]),
+      },
+    ),
+  ),
+  source(
+    "fixed/inventory-item.yaml",
+    envelope(
+      "Schema",
+      "inventory-items",
+      {
+        title: "Inventory items",
+        lifecycle: "operational",
+        indexes: [["definitionId"]],
+        schema: objectSchema(
+          {
+            definitionId: { type: "string", minLength: 1 },
+            quantity: { type: "integer", minimum: 1 },
+            state: { type: "object" },
+          },
+          ["definitionId", "quantity", "state"],
+        ),
+      },
+    ),
+  ),
+  source(
+    "fixed/character-loadout.yaml",
+    envelope(
+      "Schema",
+      "character-loadouts",
+      {
+        title: "Character loadouts",
+        lifecycle: "operational",
+        indexes: [["runId"]],
+        schema: objectSchema(
+          {
+            runId: { type: "string", minLength: 1 },
+            equipment: { type: "object" },
+            appearanceOverrides: { type: "object" },
+          },
+          ["runId", "equipment", "appearanceOverrides"],
+        ),
+      },
+    ),
+  ),
+  source(
     "fixed/character-pack.yaml",
     envelope(
       "Schema",

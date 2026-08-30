@@ -2,8 +2,9 @@ import type { EntryReader } from '@aotter/mantle-runtime'
 
 import type { StageProjection } from '../domain/companion.ts'
 import type { ActionRepository, PendingTurnRepository } from './ports.ts'
-import { executePlaybook, parseEffects, parsePlaybookRule } from './playbook.ts'
+import { executePlaybookPlan, parseEffects, parsePlaybookRule } from './playbook.ts'
 import { loadStage, projectStage } from './stage.ts'
+import { planItemEffects } from './items.ts'
 
 export async function queueAgentTurn(
   entries: EntryReader,
@@ -48,7 +49,9 @@ export async function resolveAgentTurn(
   const run = await entries.readById(runId)
   if (!run || run.collection !== 'runs') throw new Error(`Run not found: ${runId}`)
   const rules = (await entries.readPublished({ collection: 'rules' })).map((entry) => parsePlaybookRule(entry.data))
-  const next = executePlaybook(run.data, parseEffects(input.effects), rules)
+  const currentItems = await planItemEffects(entries, runId, [])
+  const execution = executePlaybookPlan(run.data, parseEffects(input.effects), rules, currentItems.projection)
+  const itemPlan = execution.itemEffects.length ? await planItemEffects(entries, runId, execution.itemEffects) : null
   const now = input.now ?? Date.now()
   const commit = await actions.commit({
     bundleId: input.bundleId,
@@ -56,7 +59,7 @@ export async function resolveAgentTurn(
     expectedRevision,
     actionId: 'agent-resolution',
     idempotencyKey: input.idempotencyKey,
-    nextRunData: { ...next, currentDialogue: input.dialogue, revision: expectedRevision + 1 },
+    nextRunData: { ...execution.runData, currentDialogue: input.dialogue, revision: expectedRevision + 1 },
     eventData: {
       runId,
       actionId: 'agent-resolution',
@@ -67,6 +70,7 @@ export async function resolveAgentTurn(
     now,
     resolveTurnId: turn.id,
     resolutionDialogue: input.dialogue,
+    ...(itemPlan ? { itemMutations: itemPlan.itemMutations } : {}),
   })
   const stage = await entries.readById(String(commit.run.data.currentStageId ?? ''))
   if (!stage) throw new Error('Committed stage is missing')

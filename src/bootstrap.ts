@@ -8,6 +8,7 @@ import { assembleAuthoredCandidate, DEFAULT_CUSTOMIZATION, installAuthoredCandid
 import { loadCompanionStartup } from './core/application/companion.ts'
 import { loadStage, submitInteraction } from './core/application/stage.ts'
 import { CHARACTER_RIG } from './core/domain/character.ts'
+import { planItemEffects } from './core/application/items.ts'
 
 export function createApplication(document: Document) {
   const agent = createAgentCapability(document)
@@ -64,7 +65,15 @@ export function createApplication(document: Document) {
       const pending = (await entries.readPublished({ collection: 'pending-agent-turns' }))
         .filter(({ data }) => data.status === 'pending')
         .map(({ id, data }) => ({ id, ...data }))
-      return { status: 'ok', data: { name, stage: await loadStage(entries, runId), pendingTurns: pending } }
+      return {
+        status: 'ok',
+        data: {
+          name,
+          stage: await loadStage(entries, runId),
+          loadout: (await planItemEffects(entries, runId, [])).projection,
+          pendingTurns: pending,
+        },
+      }
     },
     async submit({ actionId, expectedRevision, idempotencyKey }) {
       const result = await application.submitAction(actionId, expectedRevision, idempotencyKey)

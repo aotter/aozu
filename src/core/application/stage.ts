@@ -3,7 +3,8 @@ import type { EntryReader } from '@aotter/mantle-runtime'
 
 import type { StageProjection } from '../domain/companion.ts'
 import type { ActionRepository } from './ports.ts'
-import { executePlaybook, parsePlaybookRule, resolvePreparedAction } from './playbook.ts'
+import { executePlaybookPlan, parsePlaybookRule, resolvePreparedAction } from './playbook.ts'
+import { planItemEffects } from './items.ts'
 
 const record = (value: unknown, label: string): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Invalid ${label}`)
@@ -89,11 +90,13 @@ export async function submitAction(
   const resolved = resolvePreparedAction(Array.isArray(stage.data.actions) ? stage.data.actions : [], { actionId: input.actionId })
   if (resolved.path === 'cold') throw new Error(`Action not available: ${input.actionId}`)
   const rules = (await entries.readPublished({ collection: 'rules' })).map((entry) => parsePlaybookRule(entry.data))
-  const nextRunData = executePlaybook(run.data, resolved.action.effects, rules)
+  const currentItems = await planItemEffects(entries, input.runId, [])
+  const execution = executePlaybookPlan(run.data, resolved.action.effects, rules, currentItems.projection)
+  const itemPlan = execution.itemEffects.length ? await planItemEffects(entries, input.runId, execution.itemEffects) : null
   const now = input.now ?? Date.now()
   const commit = await actions.commit({
     ...input,
-    nextRunData: { ...nextRunData, revision: input.expectedRevision + 1 },
+    nextRunData: { ...execution.runData, revision: input.expectedRevision + 1 },
     eventData: {
       runId: input.runId,
       actionId: input.actionId,
@@ -102,6 +105,7 @@ export async function submitAction(
       createdAtMs: now,
     },
     now,
+    ...(itemPlan ? { itemMutations: itemPlan.itemMutations } : {}),
   })
   const committedStage = await entries.readById(string(commit.run.data.currentStageId, 'current stage id'))
   if (!committedStage) throw new Error('Committed stage is missing')

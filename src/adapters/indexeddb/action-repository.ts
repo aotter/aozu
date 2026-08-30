@@ -48,6 +48,15 @@ export function createIndexedDbActionRepository(): ActionRepository {
         }
         if (turn?.data.status === 'resolved') throw new Error(`Resolved turn is missing its event: ${turn.id}`)
         if (turn && turn.data.status !== 'pending') throw new Error(`Pending turn is not resolvable: ${turn.id}`)
+        const itemChanges: Array<{ mutation: NonNullable<typeof input.itemMutations>[number]; current?: StoredEntry }> = []
+        for (const mutation of input.itemMutations ?? []) {
+          const currentItem = (await requestResult(store.get([input.bundleId, mutation.id]))) as StoredEntry | undefined
+          const actual = currentItem?.version ?? null
+          if (actual !== mutation.expectedVersion || (currentItem && currentItem.collection !== mutation.collection)) {
+            throw Object.assign(new Error(`Item version conflict: ${mutation.id}`), { name: 'ItemVersionConflict' })
+          }
+          itemChanges.push({ mutation, current: currentItem })
+        }
         const actualRevision = current.data.revision
         if (!Number.isSafeInteger(actualRevision) || actualRevision !== input.expectedRevision) {
           throw conflict(input.expectedRevision, Number(actualRevision))
@@ -83,6 +92,24 @@ export function createIndexedDbActionRepository(): ActionRepository {
               resolutionEventId: eventId,
             },
           })
+        }
+        for (const { mutation, current: currentItem } of itemChanges) {
+          const key = [input.bundleId, mutation.id]
+          if (mutation.data === null) {
+            store.delete(key)
+          } else {
+            store.put({
+              bundleId: input.bundleId,
+              id: mutation.id,
+              collection: mutation.collection,
+              status: 'published',
+              version: (currentItem?.version ?? 0) + 1,
+              data: structuredClone(mutation.data),
+              authorId: null,
+              createdAt: currentItem?.createdAt ?? input.now,
+              updatedAt: input.now,
+            })
+          }
         }
         await transactionDone(transaction)
         return { run: publicEntry(run), event: publicEntry(event), replayed: false }

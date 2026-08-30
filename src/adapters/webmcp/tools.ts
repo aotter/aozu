@@ -82,12 +82,26 @@ export function registerCompanionTools(document: Document, useCases: {
             items: {
               type: 'object',
               properties: {
-                type: { type: 'string', enum: ['addMetric', 'setFlag', 'changeStage'] },
+                type: { type: 'string', enum: ['addMetric', 'setFlag', 'changeStage', 'grantItem', 'consumeItem', 'equipItem', 'unequipItem', 'setItemState', 'setAppearanceOverride'] },
                 metricId: { type: 'string' },
                 amount: { type: 'number' },
                 flagId: { type: 'string' },
                 value: { type: 'boolean' },
                 stageId: { type: 'string' },
+                inventoryId: { type: 'string' },
+                definitionId: { type: 'string' },
+                quantity: { type: 'integer', minimum: 1 },
+                slot: { type: 'string' },
+                state: { type: 'object' },
+                appearance: {
+                  type: ['object', 'null'],
+                  properties: {
+                    packId: { type: 'string' },
+                    packVersion: { type: 'integer', minimum: 1 },
+                    appearanceId: { type: 'string' },
+                  },
+                  additionalProperties: false,
+                },
               },
               required: ['type'],
               additionalProperties: false,

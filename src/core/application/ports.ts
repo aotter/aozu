@@ -17,6 +17,12 @@ export interface CommitActionInput {
   now: number
   resolveTurnId?: string
   resolutionDialogue?: string
+  itemMutations?: Array<{
+    id: string
+    collection: 'inventory-items' | 'character-loadouts'
+    expectedVersion: number | null
+    data: Record<string, unknown> | null
+  }>
 }
 
 export interface ActionCommit {

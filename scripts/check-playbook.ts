@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { executePlaybook, resolvePreparedAction } from '../src/core/application/playbook.ts'
+import { executePlaybook, executePlaybookPlan, resolvePreparedAction } from '../src/core/application/playbook.ts'
 
 const actions = [
   { id: 'train', label: 'Train', phrases: ["  Let's TRAIN  "], effects: [{ type: 'addMetric', metricId: 'xp', amount: 2 }] },
@@ -19,4 +19,14 @@ const next = executePlaybook(
   ],
 )
 assert.deepEqual(next, { currentStageId: 'one', metrics: { xp: 2 }, flags: { ready: true } })
+const itemRule = executePlaybookPlan(
+  { currentStageId: 'one', metrics: {}, flags: {} },
+  [],
+  [{ id: 'rain', priority: 1, when: { fact: 'capability', id: 'explore.in-rain' }, effects: [{ type: 'setFlag', flagId: 'rain-ready', value: true }] }],
+  {
+    capabilities: ['explore.in-rain'], actionIds: [], trustedAppearanceFacts: [], appearances: {},
+    ownedDefinitionIds: ['rain-cloak'], equippedDefinitionIds: ['rain-cloak'], quantities: { 'rain-cloak': 1 }, itemStates: {},
+  },
+)
+assert.equal((itemRule.runData.flags as Record<string, boolean>)['rain-ready'], true)
 console.log('playbook: ok')
