@@ -109,6 +109,13 @@ data. Every reference contains `packId`, `packVersion`, and `appearanceId`;
 asset references are qualified the same way. This prevents collisions when two
 packs use the same local IDs.
 
+A pack's `defaultComposition` is self-contained: it references appearances in
+that pack, and each v1 appearance owns layers backed by assets in that pack.
+Cross-pack mixing belongs to the active character composition, which resolves
+qualified appearances from all installed packs that declare the same rig
+profile and version. This keeps an individual pack independently valid without
+preventing wardrobe combinations.
+
 A composition resolves to an ordered layer list under the selected rig profile.
 Items from different packs may be combined only when they declare the same rig
 profile and version. Rig slot orders must be unique. Each appearance layer also
@@ -125,10 +132,16 @@ Character creation supports four equivalent candidate sources:
 - an imported pack;
 - an agent-generated pack prepared outside the website.
 
+Selecting a bundled preset creates an editable authoring seed; it does not
+activate an immutable finished character. The seed may be changed before it is
+validated and staged. Import sources may stage immediately after validation,
+but remain inactive until review.
+
 All sources use the same activation path:
 
 ```text
 candidate
+→ editable draft when the source is authoring-capable
 → structural and asset validation
 → rendered preview
 → explicit user approval
@@ -140,7 +153,8 @@ Validation requires:
 - a valid and supported rig profile;
 - unique pack, appearance, item, and asset IDs;
 - a complete default composition;
-- fully qualified cross-pack appearance and asset references;
+- pack-local default appearance and asset references, plus qualified references
+  in an active cross-pack composition;
 - only declared layer slots;
 - deterministic and unique slot and layer ordering;
 - every referenced asset to exist and match its recorded digest;

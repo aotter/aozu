@@ -4,6 +4,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 import { validateBundle, type BundleRecord } from '../../core/bundle.ts'
 import { validateCharacterPack, type CharacterPack } from '../../core/domain/character.ts'
 import { loadStage } from '../../core/application/stage.ts'
+import type { StagedCandidatePreview } from '../../core/application/candidate.ts'
 import { inspectCharacterImage } from '../browser/character-image.ts'
 import { createIndexedDbAssetRepository } from '../indexeddb/asset-repository.ts'
 import { createIndexedDbBundleRepository } from '../indexeddb/bundle-repository.ts'
@@ -140,8 +141,7 @@ export async function exportPortableBundle(): Promise<Blob> {
   return new Blob([zipSync(files, { level: 6 })], { type: 'application/zip' })
 }
 
-export async function importPortableBundle(blob: Blob, approved: true) {
-  if (approved !== true) throw new Error('Explicit approval required')
+export async function stagePortableBundle(blob: Blob): Promise<StagedCandidatePreview> {
   const archive = new Uint8Array(await blob.arrayBuffer())
   preflightPortableZip(archive)
   const files = unzipSync(archive)
@@ -160,7 +160,10 @@ export async function importPortableBundle(blob: Blob, approved: true) {
   }
   if (expectedPaths.size) throw new Error('Unlisted archive file')
   const descriptor = parseJson<Descriptor>(files['bundle.json']!, 'bundle descriptor')
-  if (descriptor.version !== 1 || !Array.isArray(descriptor.assets) || !descriptor.semanticFingerprint || !descriptor.identity) throw new Error('Unsupported portable bundle')
+  if (
+    descriptor.version !== 1 || !Array.isArray(descriptor.assets) ||
+    !descriptor.semanticFingerprint || !descriptor.identity || !descriptor.metadata
+  ) throw new Error('Unsupported portable bundle')
   for (const [path, item] of integrityByPath) {
     const expected = path.endsWith('.json') ? 'application/json' : path.startsWith('manifests/') ? 'application/yaml' : descriptor.assets.find((asset) => asset.path === path)?.mediaType
     if (!expected || item.mediaType !== expected) throw new Error(`Invalid media type: ${path}`)
@@ -245,9 +248,12 @@ export async function importPortableBundle(blob: Blob, approved: true) {
     const bytes = new Uint8Array(await asset.blob.arrayBuffer())
     if (asset.blob.type !== descriptorAsset.mediaType || bytes.byteLength !== expected.byteLength || await digest(bytes) !== expected.sha256) throw new Error(`Asset read-back failed: ${asset.id}`)
   }
-  if (record.metadata) {
-    await loadStage(storedEntries, record.metadata.runId)
+  await loadStage(storedEntries, descriptor.metadata.runId)
+  return {
+    source: 'import',
+    bundleId: id,
+    name: descriptor.metadata.name,
+    entryCount: entries.length,
+    assetCount: assets.size,
   }
-  await bundles.activate(id, true)
-  return { id, entries: entries.length, assets: assets.size }
 }

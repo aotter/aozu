@@ -3,6 +3,7 @@ import { EntryDataValidator } from '@aotter/mantle-spec'
 import { compileBundle, type BundleRecord } from '../bundle.ts'
 import { FIXED_BACKBONE_SOURCES, FIXED_BACKBONE_VERSION } from '../mantle/backbone.ts'
 import type { BundleActivationRepository, EntryRepositoryFactory } from './ports.ts'
+import type { StagedCandidatePreview } from './candidate.ts'
 import { parsePlaybookRule, parsePreparedAction, type Effect } from './playbook.ts'
 
 export interface AgentCustomization {
@@ -51,6 +52,9 @@ export const DEFAULT_CUSTOMIZATION: AgentCustomization = {
     },
   ],
 }
+
+export const createDefaultCustomizationSeed = (): AgentCustomization =>
+  structuredClone(DEFAULT_CUSTOMIZATION)
 
 export function assembleAuthoredCandidate(
   bundleId: string,
@@ -103,13 +107,11 @@ export function assembleAuthoredCandidate(
   }
 }
 
-export async function installAuthoredCandidate(
+export async function stageAuthoredCandidate(
   bundles: BundleActivationRepository,
   entriesFor: EntryRepositoryFactory,
   candidate: AuthoredCandidate,
-  approved: true,
-) {
-  if (approved !== true) throw new Error('Explicit approval required')
+): Promise<StagedCandidatePreview> {
   await bundles.stageCandidate(candidate.record)
   const repository = entriesFor(candidate.record.id)
   for (const entry of candidate.entries) {
@@ -117,8 +119,11 @@ export async function installAuthoredCandidate(
     const stored = await repository.readById(entry.id)
     if (!stored || JSON.stringify(stored.data) !== JSON.stringify(entry.data)) throw new Error(`Entry read-back failed: ${entry.id}`)
   }
-  await bundles.activate(candidate.record.id, true)
-  return candidate.preview
+  return {
+    source: 'preset',
+    bundleId: candidate.record.id,
+    ...candidate.preview,
+  }
 }
 
 function validateCustomization(customization: AgentCustomization) {

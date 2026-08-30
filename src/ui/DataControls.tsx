@@ -5,10 +5,10 @@ import { Button } from '@/ui/components/ui/button'
 
 export function DataControls({
   exportData,
-  importData,
+  prepareImport,
 }: {
   exportData?(): Promise<Blob>
-  importData(blob: Blob): Promise<unknown>
+  prepareImport(blob: Blob): Promise<void>
 }) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle')
@@ -35,7 +35,7 @@ export function DataControls({
           <input className="sr-only" type="file" accept=".zip,application/zip" disabled={status === 'busy'} onChange={(event) => {
             const file = event.target.files?.[0]
             event.target.value = ''
-            if (file) void run(() => importData(file).then(() => undefined))
+            if (file) void run(() => prepareImport(file))
           }} />
         </label>
       </Button>

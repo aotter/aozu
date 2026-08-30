@@ -2,6 +2,10 @@
 
 Status: **Completed — 2026-08-30**
 
+Follow-up product work is tracked in
+[next-implementation-plan.md](next-implementation-plan.md); this completed plan
+remains the historical record of the initial eleven slices.
+
 ## Build mode
 
 - Autonomous, sequential vertical slices.

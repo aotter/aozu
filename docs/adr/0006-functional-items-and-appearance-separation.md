@@ -60,7 +60,8 @@ capability facts. The two are not interchangeable.
 
 ### Item definition and inventory state
 
-An immutable item definition is Playbook data under the fixed Mantle backbone:
+A published item definition is authoring content under the fixed Mantle
+backbone:
 
 ```ts
 interface ItemDefinition {
@@ -95,6 +96,13 @@ Inventory item and loadout entries are the canonical current state. Current
 inventory, equipment, and action projections derive from those entries. Each
 mutation appends a progress event in the same action transaction for journal and
 audit use; the event is not a second source of current inventory truth.
+
+An item definition may be edited in place through expected-version and full
+reference validation, provided every current inventory instance and loadout
+remains valid under the result. The edit changes current semantics but never
+rewrites prior progress or journal records. A binary appearance replacement
+uses a new Blob ID and digest rather than overwriting bytes behind an existing
+asset identity.
 
 ### Initial affordance model
 

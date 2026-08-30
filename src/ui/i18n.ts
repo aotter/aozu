@@ -14,8 +14,7 @@ const en = {
     title: 'Create your companion',
     description: 'Choose how to begin. Confirmed data is saved locally.',
     unavailable: 'Not available yet',
-    creating: 'Creating…',
-    createPreset: 'Start Trail Guide',
+    createPreset: 'Customize Trail Guide',
     options: {
       custom: {
         title: 'Create a character',
@@ -30,6 +29,31 @@ const en = {
         description: 'Validate and restore a local file.',
       },
     },
+  },
+  draft: {
+    title: 'Customize your preset',
+    description: 'A preset is only a starting point. Change the supported fields before validation and staging.',
+    name: 'Companion name',
+    initialTitle: 'Initial scene title',
+    narrative: 'Initial scene narrative',
+    review: 'Validate and review',
+    validating: 'Validating…',
+    cancel: 'Not now',
+  },
+  candidate: {
+    title: 'Review before activation',
+    description: 'This validated candidate is stored locally but remains inactive until you approve it.',
+    source: {
+      preset: 'Preset seed',
+      import: 'Imported bundle',
+    },
+    stages: 'Stages',
+    initialStage: 'Initial stage',
+    entries: 'Entries',
+    assets: 'Assets',
+    approve: 'Activate companion',
+    activating: 'Activating…',
+    cancel: 'Not now',
   },
   navigation: {
     primary: 'Primary navigation',

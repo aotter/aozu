@@ -56,6 +56,9 @@ The active pointer is the only source of activation truth. Candidate and prior
 bundles are ordinary records; rejected imports are not retained by default.
 Physical IndexedDB keys are namespaced by bundle ID so a candidate can reuse the
 same logical entry IDs as the active or prior revision without overwriting it.
+One browser origin may retain many valid inactive bundles, but exactly zero or
+one bundle is active for the origin at a time. Activation is not scoped per tab.
+Inactive bundles remain available for a later library and switching surface.
 
 Application startup is deterministic:
 
@@ -102,6 +105,24 @@ Migrations never rewrite the active namespace in place. They produce and
 validate a new candidate namespace, then use the same approval and pointer-swap
 activation path.
 
+Normal authoring edits do not use bundle pointer-swap. Runs, stages, rules,
+memories, item definitions, inventory, loadouts, and other current entries may
+be updated in the active namespace after schema, reference, and expected-version
+validation. A change to the Fixed Backbone, manifest contract, template
+identity, imported archive, or the whole experience still produces a candidate
+namespace.
+
+`progress-events` and future journal entries are append-only historical
+records. Pending agent turns retain their original request and may only be
+resolved by the narrow action transaction. Generic entry update, delete, and
+status-transition operations reject these retained history collections. V1
+preserves their recorded summaries, dialogue, and timestamps but does not
+promise deterministic replay after authoring content changes.
+
+Portable ZIP integrity is a snapshot of one export. Valid active-entry edits do
+not invalidate IndexedDB; export recalculates file lengths and hashes from the
+current canonical state.
+
 Companion owns one additional semantic `submit-action` repository operation for
 product actions that must change multiple canonical entries atomically. Its
 IndexedDB implementation checks the expected run revision and commits all
@@ -122,4 +143,6 @@ abstraction.
   migrated independently.
 - Candidate writes cannot corrupt the active bundle, and activation is an
   atomic pointer change rather than an in-place replacement.
+- Users may edit current content without cloning a whole bundle, while history
+  rows remain append-only.
 - Asset storage remains simple until the full Mantle media workflow is needed.

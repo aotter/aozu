@@ -4,12 +4,18 @@ import { createIndexedDbActionRepository } from './adapters/indexeddb/action-rep
 import { createIndexedDbPendingTurnRepository } from './adapters/indexeddb/pending-turn-repository.ts'
 import { createAgentCapability, registerCompanionTools } from './adapters/webmcp/tools.ts'
 import { queueAgentTurn, resolveAgentTurn } from './core/application/agent-turn.ts'
-import { assembleAuthoredCandidate, DEFAULT_CUSTOMIZATION, installAuthoredCandidate } from './core/application/authoring.ts'
+import {
+  assembleAuthoredCandidate,
+  createDefaultCustomizationSeed,
+  stageAuthoredCandidate,
+  type AgentCustomization,
+} from './core/application/authoring.ts'
+import { approveCandidate as approveStagedCandidate } from './core/application/candidate.ts'
 import { loadCompanionStartup } from './core/application/companion.ts'
 import { loadStage, submitInteraction } from './core/application/stage.ts'
 import { CHARACTER_RIG } from './core/domain/character.ts'
 import { planItemEffects } from './core/application/items.ts'
-import { exportPortableBundle, importPortableBundle } from './adapters/zip/bundle.ts'
+import { exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
 
 export function createApplication(document: Document) {
   const agent = createAgentCapability(document)
@@ -22,9 +28,13 @@ export function createApplication(document: Document) {
   }
   const application = {
     loadStartup: () => loadCompanionStartup(agent, bundles, createIndexedDbEntryRepository),
-    async createPreset() {
-      const candidate = assembleAuthoredCandidate(`bundle:${crypto.randomUUID()}`, DEFAULT_CUSTOMIZATION)
-      return installAuthoredCandidate(bundles, createIndexedDbEntryRepository, candidate, true)
+    createPresetSeed: createDefaultCustomizationSeed,
+    async preparePreset(customization: AgentCustomization) {
+      const candidate = assembleAuthoredCandidate(`bundle:${crypto.randomUUID()}`, customization)
+      return stageAuthoredCandidate(bundles, createIndexedDbEntryRepository, candidate)
+    },
+    async approveCandidate(bundleId: string, approved: true) {
+      return approveStagedCandidate(bundles, bundleId, approved)
     },
     async submitAction(actionId: string, expectedRevision: number, idempotencyKey: string = crypto.randomUUID()) {
       const { bundleId, runId } = await active()
@@ -45,11 +55,7 @@ export function createApplication(document: Document) {
       return { path: 'cold' as const, turn }
     },
     exportData: exportPortableBundle,
-    async importData(blob: Blob) {
-      const result = await importPortableBundle(blob, true)
-      document.defaultView?.dispatchEvent(new Event('companion-updated'))
-      return result
-    },
+    prepareImport: stagePortableBundle,
   }
   registerCompanionTools(document, {
     async inspectCharacter() {

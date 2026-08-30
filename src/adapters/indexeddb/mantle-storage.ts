@@ -21,6 +21,7 @@ import type {
   ViewQueryRequest,
   ViewQueryResult,
 } from "@aotter/mantle-runtime"
+import { assertEntryMutationAllowed } from "../../core/domain/history.ts"
 import {
   type CompanionDatabase,
   ENTRY_STORE,
@@ -96,6 +97,7 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
       return read(id)
     },
     async update(args: UpdateEntryArgs) {
+      assertEntryMutationAllowed(args.collection)
       const database = await openCompanionDatabase()
       const transaction = database.transaction(ENTRY_STORE, "readwrite")
       const current = await transaction.store.get(key(args.id))
@@ -111,6 +113,7 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
       return entry
     },
     async delete(args: DeleteEntryArgs) {
+      assertEntryMutationAllowed(args.collection)
       const database = await openCompanionDatabase()
       const transaction = database.transaction(ENTRY_STORE, "readwrite")
       const current = await transaction.store.get(key(args.id))
@@ -126,6 +129,7 @@ export function createIndexedDbEntryRepository(bundleId: string): EntryRepositor
       return { removed: true }
     },
     async transitionStatus(args: TransitionStatusArgs) {
+      assertEntryMutationAllowed(args.collection)
       const database = await openCompanionDatabase()
       const transaction = database.transaction(ENTRY_STORE, "readwrite")
       const current = await transaction.store.get(key(args.id))

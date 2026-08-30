@@ -9,9 +9,10 @@ ADRs use the following sections:
 - **Decision** — the chosen architecture and its boundaries.
 - **Consequences** — the benefits, costs, and deliberate limitations.
 
-File names use a four-digit, monotonically increasing number. After the
-architecture baseline is committed, Accepted ADRs are immutable. A later
-decision that changes one must add a new ADR and mark the old one as superseded.
+File names use a four-digit, monotonically increasing number. Before the v1
+architecture freeze, Accepted ADRs may be amended with their rationale kept in
+Git history. After that freeze, a changed decision adds a new ADR and marks the
+old one as superseded.
 
 ## Index
 

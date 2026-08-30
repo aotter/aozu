@@ -16,7 +16,7 @@ import {
 
 const menuItems = ['character', 'wardrobe', 'story', 'tasks', 'journal', 'data', 'settings'] as const
 
-export function AppMenu({ exportData, importData }: { exportData(): Promise<Blob>; importData(blob: Blob): Promise<unknown> }) {
+export function AppMenu({ exportData, prepareImport }: { exportData(): Promise<Blob>; prepareImport(blob: Blob): Promise<void> }) {
   const { t } = useTranslation()
 
   return (
@@ -35,7 +35,7 @@ export function AppMenu({ exportData, importData }: { exportData(): Promise<Blob
         <ScrollArea className="min-h-0 flex-1 px-2">
           <nav aria-label={t('navigation.menu')} className="grid gap-1 py-2">
             {menuItems.map((item) => item === 'data' ? (
-              <DataControls key={item} exportData={exportData} importData={importData} />
+              <DataControls key={item} exportData={exportData} prepareImport={prepareImport} />
             ) : (
               <Button key={item} variant="ghost" className="justify-start">
                 {t(`navigation.items.${item}`)}
