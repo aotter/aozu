@@ -14,6 +14,8 @@ createRoot(document.getElementById('root')!).render(
       createPreset={application.createPreset}
       submitAction={application.submitAction}
       submitText={application.submitText}
+      exportData={application.exportData}
+      importData={application.importData}
     />
   </StrictMode>,
 )

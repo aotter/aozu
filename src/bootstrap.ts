@@ -9,6 +9,7 @@ import { loadCompanionStartup } from './core/application/companion.ts'
 import { loadStage, submitInteraction } from './core/application/stage.ts'
 import { CHARACTER_RIG } from './core/domain/character.ts'
 import { planItemEffects } from './core/application/items.ts'
+import { exportPortableBundle, importPortableBundle } from './adapters/zip/bundle.ts'
 
 export function createApplication(document: Document) {
   const agent = createAgentCapability(document)
@@ -42,6 +43,12 @@ export function createApplication(document: Document) {
         bundleId, runId, userText: text, expectedRevision, idempotencyKey,
       })
       return { path: 'cold' as const, turn }
+    },
+    exportData: exportPortableBundle,
+    async importData(blob: Blob) {
+      const result = await importPortableBundle(blob, true)
+      document.defaultView?.dispatchEvent(new Event('companion-updated'))
+      return result
     },
   }
   registerCompanionTools(document, {

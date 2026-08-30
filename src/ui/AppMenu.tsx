@@ -2,6 +2,7 @@ import { MenuIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/ui/components/ui/button'
+import { DataControls } from './DataControls'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
 import { Separator } from '@/ui/components/ui/separator'
 import {
@@ -15,7 +16,7 @@ import {
 
 const menuItems = ['character', 'wardrobe', 'story', 'tasks', 'journal', 'data', 'settings'] as const
 
-export function AppMenu() {
+export function AppMenu({ exportData, importData }: { exportData(): Promise<Blob>; importData(blob: Blob): Promise<unknown> }) {
   const { t } = useTranslation()
 
   return (
@@ -33,7 +34,9 @@ export function AppMenu() {
         <Separator />
         <ScrollArea className="min-h-0 flex-1 px-2">
           <nav aria-label={t('navigation.menu')} className="grid gap-1 py-2">
-            {menuItems.map((item) => (
+            {menuItems.map((item) => item === 'data' ? (
+              <DataControls key={item} exportData={exportData} importData={importData} />
+            ) : (
               <Button key={item} variant="ghost" className="justify-start">
                 {t(`navigation.items.${item}`)}
               </Button>

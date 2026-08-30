@@ -1,5 +1,7 @@
 # Companion Implementation Plan
 
+Status: **Completed — 2026-08-30**
+
 ## Build mode
 
 - Autonomous, sequential vertical slices.
@@ -53,3 +55,11 @@ pnpm build
 Trust-boundary slices also require adversarial fixtures. UI slices require an
 in-app browser smoke test with no console errors. The final slice must prove an
 export → clear → import round trip and the same user-visible state afterward.
+
+## Completion evidence
+
+- All eleven slices are committed locally on `main`.
+- `pnpm test`, `pnpm lint`, and `pnpm build` pass.
+- A fresh-origin browser round trip restored the same revision, stage,
+  actions, progress, loadout, and WebMCP projection with no console errors.
+- A tampered archive was rejected without changing the active bundle.

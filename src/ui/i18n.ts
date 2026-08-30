@@ -58,6 +58,13 @@ const en = {
     messagePlaceholder: 'Say anything…',
     send: 'Send',
   },
+  data: {
+    export: 'Export data',
+    import: 'Import data',
+    busy: 'Working…',
+    done: 'Data ready.',
+    error: 'The bundle could not be used.',
+  },
 } as const
 
 void i18n.use(initReactI18next).init({

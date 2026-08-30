@@ -25,6 +25,18 @@ import { ENTRY_STORE, openCompanionDatabase, requestResult, transactionDone } fr
 
 type EntryRow = Entry & { authorId: string | null }
 type StoredEntry = EntryRow & { bundleId: string }
+
+export async function importEntries(bundleId: string, entries: readonly Entry[]) {
+  const database = await openCompanionDatabase()
+  try {
+    const transaction = database.transaction(ENTRY_STORE, 'readwrite')
+    const store = transaction.objectStore(ENTRY_STORE)
+    for (const entry of entries) {
+      store.add({ ...structuredClone(entry), bundleId, authorId: null })
+    }
+    await transactionDone(transaction)
+  } finally { database.close() }
+}
 type EntrySort = NonNullable<ListEntriesArgs["sort"]>
 
 const publicEntry = (entry: StoredEntry): Entry => ({

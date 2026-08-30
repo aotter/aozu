@@ -7,6 +7,7 @@ import { Separator } from '@/ui/components/ui/separator'
 
 import { AppHeader } from './AppHeader'
 import { AppMenu } from './AppMenu'
+import { DataControls } from './DataControls'
 
 type ScreenState = CompanionStartup | { status: 'loading' } | { status: 'error' }
 
@@ -15,11 +16,13 @@ type AppProps = {
   createPreset(): Promise<unknown>
   submitAction(actionId: string, expectedRevision: number): Promise<unknown>
   submitText(text: string, expectedRevision: number): Promise<unknown>
+  exportData(): Promise<Blob>
+  importData(blob: Blob): Promise<unknown>
 }
 
 const startOptions = ['custom', 'preset', 'bundle'] as const
 
-function App({ loadStartup, createPreset, submitAction, submitText }: AppProps) {
+function App({ loadStartup, createPreset, submitAction, submitText, exportData, importData }: AppProps) {
   const { t } = useTranslation()
   const [screen, setScreen] = useState<ScreenState>({ status: 'loading' })
 
@@ -48,7 +51,7 @@ function App({ loadStartup, createPreset, submitAction, submitText }: AppProps) 
     return <StatusScreen>{t('startup.error')}</StatusScreen>
   }
   if (screen.status === 'start') {
-    return <StartScreen webmcpAvailable={screen.webmcpAvailable} onCreate={async () => {
+    return <StartScreen webmcpAvailable={screen.webmcpAvailable} importData={importData} onCreate={async () => {
       await createPreset()
       setScreen({ status: 'loading' })
       setScreen(await loadStartup())
@@ -62,6 +65,8 @@ function App({ loadStartup, createPreset, submitAction, submitText }: AppProps) 
       dialogue={screen.dialogue}
       pendingTurns={screen.pendingTurns}
       webmcpAvailable={screen.webmcpAvailable}
+      exportData={exportData}
+      importData={importData}
       onAction={async (actionId) => {
         await submitAction(actionId, screen.stage.revision)
         setScreen(await loadStartup())
@@ -82,7 +87,7 @@ function StatusScreen({ children }: { children: React.ReactNode }) {
   )
 }
 
-function StartScreen({ webmcpAvailable, onCreate }: { webmcpAvailable: boolean; onCreate(): Promise<void> }) {
+function StartScreen({ webmcpAvailable, onCreate, importData }: { webmcpAvailable: boolean; onCreate(): Promise<void>; importData(blob: Blob): Promise<unknown> }) {
   const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
@@ -102,7 +107,7 @@ function StartScreen({ webmcpAvailable, onCreate }: { webmcpAvailable: boolean; 
               <p className="mt-2 text-sm leading-5 text-muted-foreground">
                 {t(`start.options.${option}.description`)}
               </p>
-              <Button
+              {option === 'bundle' ? <DataControls importData={importData} /> : <Button
                 className="mt-auto"
                 disabled={option !== 'preset' || busy}
                 onClick={option === 'preset' ? async () => {
@@ -112,7 +117,7 @@ function StartScreen({ webmcpAvailable, onCreate }: { webmcpAvailable: boolean; 
                 } : undefined}
               >
                 {option === 'preset' ? (busy ? t('start.creating') : t('start.createPreset')) : t('start.unavailable')}
-              </Button>
+              </Button>}
             </section>
           ))}
         </div>
@@ -128,6 +133,8 @@ function MainScreen({
   dialogue,
   pendingTurns,
   webmcpAvailable,
+  exportData,
+  importData,
   onAction,
   onText,
 }: {
@@ -136,6 +143,8 @@ function MainScreen({
   dialogue?: string
   pendingTurns: number
   webmcpAvailable: boolean
+  exportData(): Promise<Blob>
+  importData(blob: Blob): Promise<unknown>
   onAction(actionId: string): Promise<void>
   onText(text: string): Promise<void>
 }) {
@@ -148,7 +157,7 @@ function MainScreen({
       <AppHeader
         title={companionName}
         webmcpAvailable={webmcpAvailable}
-        actions={<AppMenu />}
+        actions={<AppMenu exportData={exportData} importData={importData} />}
       />
 
       <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-5xl flex-col px-4">
