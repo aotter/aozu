@@ -40,7 +40,7 @@ const progressSchema = objectSchema(
   ["id", "label", "value"],
 )
 
-export const FIXED_BACKBONE_VERSION = "1"
+export const FIXED_BACKBONE_VERSION = "2"
 
 export const FIXED_BACKBONE_SOURCES = [
   source(
@@ -127,6 +127,23 @@ export const FIXED_BACKBONE_SOURCES = [
             composition: { type: "array", items: { type: "object" } },
           },
           ["packId", "packVersion", "composition"],
+        ),
+      },
+    ),
+  ),
+  source(
+    "fixed/journal-entry.yaml",
+    envelope(
+      "Schema",
+      "journal-entries",
+      {
+        title: "Journal entries",
+        lifecycle: "operational",
+        schema: objectSchema(
+          {
+            content: { type: "string", minLength: 1, maxLength: 100000 },
+          },
+          ["content"],
         ),
       },
     ),
