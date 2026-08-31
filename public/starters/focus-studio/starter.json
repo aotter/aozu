@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "id": "focus-studio",
+  "version": 1,
+  "name": "Focus Studio",
+  "description": "A calm visual foundation for an agent-authored study companion.",
+  "compatibility": {
+    "contractVersion": 1,
+    "backboneVersion": "4"
+  },
+  "assetFiles": [
+    {
+      "blobId": "focus-body",
+      "path": "assets/body.png",
+      "mediaType": "image/png"
+    },
+    {
+      "blobId": "focus-neutral-head",
+      "path": "assets/expression-neutral.png",
+      "mediaType": "image/png"
+    },
+    {
+      "blobId": "focus-studio-background",
+      "path": "assets/studio-background.webp",
+      "mediaType": "image/webp"
+    }
+  ],
+  "characterPack": {
+    "id": "focus-friend",
+    "version": 1,
+    "rigProfile": {
+      "id": "companion-fullbody",
+      "version": 2
+    },
+    "creator": {
+      "name": "Companion project"
+    },
+    "license": {
+      "id": "project-use",
+      "embedding": "allowed"
+    },
+    "assets": [
+      {
+        "id": "body",
+        "blobId": "focus-body",
+        "mediaType": "image/png",
+        "size": 181996,
+        "sha256": "480573e91ca3dc31047433760950d8ca78c36b2e58b64ca2b56092d02460265a"
+      },
+      {
+        "id": "neutral-head",
+        "blobId": "focus-neutral-head",
+        "mediaType": "image/png",
+        "size": 18646,
+        "sha256": "fb69def1054a964780af8cb8b45825da3539017304a37adadbdd46143cfbce5b"
+      }
+    ],
+    "appearances": [
+      {
+        "id": "body-base",
+        "layers": [
+          {
+            "asset": {
+              "packId": "focus-friend",
+              "packVersion": 1,
+              "assetId": "body"
+            },
+            "slot": "character-skin",
+            "order": 1
+          }
+        ]
+      },
+      {
+        "id": "expression-neutral",
+        "layers": [
+          {
+            "asset": {
+              "packId": "focus-friend",
+              "packVersion": 1,
+              "assetId": "neutral-head"
+            },
+            "slot": "expression-head",
+            "order": 1
+          }
+        ]
+      }
+    ],
+    "defaultComposition": [
+      {
+        "packId": "focus-friend",
+        "packVersion": 1,
+        "appearanceId": "body-base"
+      },
+      {
+        "packId": "focus-friend",
+        "packVersion": 1,
+        "appearanceId": "expression-neutral"
+      }
+    ]
+  },
+  "characterStates": [
+    {
+      "id": "character:focus-default",
+      "packId": "focus-friend",
+      "packVersion": 1,
+      "composition": [
+        {
+          "packId": "focus-friend",
+          "packVersion": 1,
+          "appearanceId": "body-base"
+        },
+        {
+          "packId": "focus-friend",
+          "packVersion": 1,
+          "appearanceId": "expression-neutral"
+        }
+      ]
+    }
+  ],
+  "scenePack": {
+    "id": "focus-studio-scenes",
+    "version": 1,
+    "assets": [
+      {
+        "id": "scene:focus-studio-background",
+        "blobId": "focus-studio-background",
+        "mediaType": "image/webp",
+        "width": 512,
+        "height": 768,
+        "size": 4500,
+        "sha256": "4b7b28eebfb0be9d55e5c1137821501aa13291901aa049a12dd3284ca5025b7d"
+      }
+    ],
+    "compositions": [
+      {
+        "id": "scene:focus-studio",
+        "layers": [
+          {
+            "id": "background",
+            "assetId": "scene:focus-studio-background",
+            "plane": "back",
+            "order": 1
+          }
+        ]
+      }
+    ]
+  },
+  "directions": [
+    {
+      "id": "daily-study",
+      "name": "Daily Study",
+      "summary": "Build a steady study rhythm and visible mastery without inventing a separate runtime.",
+      "seed": {
+        "kind": "task",
+        "directionId": "daily-study",
+        "loopIds": [
+          "rhythm",
+          "mastery"
+        ],
+        "completionMode": "continuous",
+        "brief": "Author a supportive daily study experience with clear local actions, measurable focus progress, and an explicit agent fallback only where open-ended coaching is useful."
+      },
+      "characterStateId": "character:focus-default",
+      "sceneCompositionId": "scene:focus-studio"
+    }
+  ],
+  "skeleton": {
+    "requiredStageIds": [
+      "study-session"
+    ],
+    "requiredMetricIds": [
+      "focus"
+    ],
+    "instructions": [
+      "Use study-session as the initial stage and bind it to the selected character state and scene composition.",
+      "Give every reachable non-terminal stage at least one unconditional local action or an explicit agent fallback.",
+      "Use the focus metric to make the rhythm and mastery recipe visible; author all labels, narratives, phrases, effects, and rules rather than relying on hidden defaults."
+    ]
+  }
+}

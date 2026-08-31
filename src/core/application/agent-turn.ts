@@ -21,6 +21,8 @@ export async function queueAgentTurn(
   if (!input.userText.trim()) throw new Error('Agent turn text is empty')
   const stage = await loadStage(entries, input.runId)
   if (stage.revision !== input.expectedRevision) throw new Error('Run revision conflict')
+  if (stage.status !== 'active') throw new Error(`Run is not active: ${stage.status}`)
+  if (!stage.agentFallback) throw new Error('Agent fallback is not available at this stage')
   return turns.create({
     ...input,
     nodeId: stage.stageId,
@@ -52,6 +54,8 @@ export async function resolveAgentTurn(
   const currentItems = await planItemEffects(entries, runId, [])
   const execution = executePlaybookPlan(run.data, parseEffects(input.effects), rules, currentItems.projection)
   const itemPlan = execution.itemEffects.length ? await planItemEffects(entries, runId, execution.itemEffects) : null
+  const nextStage = await entries.readById(String(execution.runData.currentStageId ?? ''))
+  if (!nextStage || nextStage.collection !== 'stages') throw new Error('Next stage is missing')
   const now = input.now ?? Date.now()
   const commit = await actions.commit({
     bundleId: input.bundleId,
@@ -59,7 +63,12 @@ export async function resolveAgentTurn(
     expectedRevision,
     actionId: 'agent-resolution',
     idempotencyKey: input.idempotencyKey,
-    nextRunData: { ...execution.runData, currentDialogue: input.dialogue, revision: expectedRevision + 1 },
+    nextRunData: {
+      ...execution.runData,
+      ...(nextStage.data.terminal === true ? { status: 'completed' } : {}),
+      currentDialogue: input.dialogue,
+      revision: expectedRevision + 1,
+    },
     eventData: {
       runId,
       actionId: 'agent-resolution',
@@ -72,7 +81,5 @@ export async function resolveAgentTurn(
     resolutionDialogue: input.dialogue,
     ...(itemPlan ? { itemMutations: itemPlan.itemMutations } : {}),
   })
-  const stage = await entries.readById(String(commit.run.data.currentStageId ?? ''))
-  if (!stage) throw new Error('Committed stage is missing')
-  return projectStage(commit.run, stage)
+  return projectStage(commit.run, nextStage)
 }

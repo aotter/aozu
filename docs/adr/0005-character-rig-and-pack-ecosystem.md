@@ -8,7 +8,7 @@
 Visual style strongly influences whether a player adopts a character-based
 experience. One fixed house style would exclude players who prefer pixel art,
 anime illustration, western cartoons, animals, monsters, or other forms. The
-framework must also support preset packs, agent-generated characters, imported
+framework must also support Starter packs, agent-generated characters, imported
 packs, and packs supplied by professional artists.
 
 Visual choices and experience mechanics vary independently. A fitness,
@@ -146,19 +146,19 @@ the Character Pack appearances and qualified assets defined above.
 
 ### Sources and activation
 
-Character creation supports four equivalent candidate sources:
+Character creation supports four equivalent pack sources:
 
-- a bundled preset pack;
+- a bundled Starter pack;
 - an installed artist pack;
 - an imported pack;
 - an agent-generated pack prepared outside the website.
 
-Selecting a bundled preset creates an editable authoring seed; it does not
-activate an immutable finished character. The seed may be changed before it is
-validated and staged. Import sources may stage immediately after validation,
-but remain inactive until review.
+Selecting a bundled Starter creates an Experience Draft under ADR-0007; it does
+not activate an immutable finished character. Standalone character authoring
+produces reusable Character Pack data. It never manufactures a Playbook or
+activates a Companion.
 
-All sources use the same activation path:
+All sources use the same pack-approval path:
 
 ```text
 candidate
@@ -166,7 +166,7 @@ candidate
 → structural and asset validation
 → rendered preview
 → explicit user approval
-→ activation
+→ reusable pack
 ```
 
 Validation requires:
@@ -188,6 +188,10 @@ Validation requires:
 
 An invalid pack is rejected with diagnostics for its producer. The website does
 not repair candidate artwork.
+
+Approving a Character Pack is not Companion activation. A complete resolved
+experience must still pass ADR-0007's candidate preview and explicit activation
+boundary.
 
 ### Persistence and distribution
 

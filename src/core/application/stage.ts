@@ -19,8 +19,9 @@ const string = (value: unknown, label: string) => {
 export function projectStage(run: Entry, stage: Entry): StageProjection {
   const runData = record(run.data, 'run')
   const stageData = record(stage.data, 'stage')
-  const status = runData.status
-  if (status !== 'active' && status !== 'completed' && status !== 'blocked') throw new Error('Invalid run status')
+  const storedStatus = runData.status
+  if (storedStatus !== 'active' && storedStatus !== 'completed' && storedStatus !== 'blocked') throw new Error('Invalid run status')
+  const status = stageData.terminal === true ? 'completed' : storedStatus
   if (!Number.isSafeInteger(runData.revision) || (runData.revision as number) < 0) throw new Error('Invalid run revision')
   const actions = Array.isArray(stageData.actions)
     ? stageData.actions.map((value) => {
@@ -48,6 +49,7 @@ export function projectStage(run: Entry, stage: Entry): StageProjection {
     stageId: stage.id,
     revision: runData.revision as number,
     status,
+    agentFallback: stageData.agentFallback === true,
     title: string(stageData.title, 'stage title'),
     narrative: string(stageData.narrative, 'stage narrative'),
     ...(compositionId
@@ -85,6 +87,7 @@ export async function submitAction(
   },
 ): Promise<StageProjection> {
   const before = await loadStage(entries, input.runId)
+  if (before.status !== 'active') throw new Error(`Run is not active: ${before.status}`)
   const run = await entries.readById(input.runId)
   if (!run) throw new Error(`Run not found: ${input.runId}`)
   const stage = await entries.readById(before.stageId)
@@ -95,10 +98,16 @@ export async function submitAction(
   const currentItems = await planItemEffects(entries, input.runId, [])
   const execution = executePlaybookPlan(run.data, resolved.action.effects, rules, currentItems.projection)
   const itemPlan = execution.itemEffects.length ? await planItemEffects(entries, input.runId, execution.itemEffects) : null
+  const nextStage = await entries.readById(string(execution.runData.currentStageId, 'current stage id'))
+  if (!nextStage || nextStage.collection !== 'stages') throw new Error('Next stage is missing')
   const now = input.now ?? Date.now()
   const commit = await actions.commit({
     ...input,
-    nextRunData: { ...execution.runData, revision: input.expectedRevision + 1 },
+    nextRunData: {
+      ...execution.runData,
+      ...(nextStage.data.terminal === true ? { status: 'completed' } : {}),
+      revision: input.expectedRevision + 1,
+    },
     eventData: {
       runId: input.runId,
       actionId: input.actionId,
@@ -109,9 +118,7 @@ export async function submitAction(
     now,
     ...(itemPlan ? { itemMutations: itemPlan.itemMutations } : {}),
   })
-  const committedStage = await entries.readById(string(commit.run.data.currentStageId, 'current stage id'))
-  if (!committedStage) throw new Error('Committed stage is missing')
-  return projectStage(commit.run, committedStage)
+  return projectStage(commit.run, nextStage)
 }
 
 export async function submitInteraction(

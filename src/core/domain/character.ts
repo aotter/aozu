@@ -67,6 +67,7 @@ export interface CharacterDraft {
     props: string[]
   }
   updatedAt: number
+  approvedAt?: number
 }
 
 export interface AppearanceRef {

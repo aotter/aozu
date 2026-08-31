@@ -6,7 +6,8 @@ Status: **Active — 2026-08-30**
 
 - One browser origin may retain many Companion bundles, with at most one active
   bundle selected by the global pointer.
-- A preset is an editable seed. Import and authoring candidates remain inactive
+- A static Starter selection is a persistent Experience Draft, not executable
+  content. An agent-completed candidate and imported bundle remain inactive
   until validation, preview, and explicit user approval complete.
 - Current operational and authoring entries may be updated with validation and
   optimistic concurrency. Progress and journal history is append-only.
@@ -15,14 +16,15 @@ Status: **Active — 2026-08-30**
 
 ## Slices
 
-1. **Candidate review boundary — completed 2026-08-30** — edit a preset seed,
-   stage preset and ZIP candidates, present a minimal preview, and activate only
+1. **Candidate review boundary — completed 2026-08-31** — select a data-driven
+   Starter, complete it through the WebMCP-to-Mantle Trigger boundary, stage
+   Starter and ZIP candidates, present a meaningful preview, and activate only
    from an explicit user action.
 2. **Authoring editor — character stage 1 completed 2026-08-30** — create a
    character from a persistent blank draft; accept user uploads and WebMCP
    candidates for fixed full-body, whole-head expression, outfit, and two-layer
-   prop slots; validate, preview, explicitly approve, activate, and round-trip
-   the result. Story and task editing remain later slices.
+   prop slots; validate, preview, and explicitly save reusable Character Pack
+   data without synthesizing or activating a Playbook.
 3. **Bundle library** — list retained valid bundles and switch the single active
    pointer without copying their data.
 4. **Cross-pack wardrobe** — resolve qualified appearances from installed packs

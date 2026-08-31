@@ -1,17 +1,17 @@
+import { runtimeDiagnostic, type Entry } from '@aotter/mantle-spec'
+import { bootMantleRuntime, InvokeFailure, type MantleRuntime } from '@aotter/mantle-runtime'
+
 import { createIndexedDbBundleRepository } from './adapters/indexeddb/bundle-repository.ts'
 import { createIndexedDbAssetRepository } from './adapters/indexeddb/asset-repository.ts'
 import { createIndexedDbCharacterDraftRepository } from './adapters/indexeddb/character-draft-repository.ts'
-import { createIndexedDbEntryRepository } from './adapters/indexeddb/mantle-storage.ts'
+import { ExperienceSubmissionConflict, persistTriggeredExperienceCandidate } from './adapters/indexeddb/experience-candidate-repository.ts'
+import { createIndexedDbEntryRepository, createIndexedDbMantleStorageAdapter } from './adapters/indexeddb/mantle-storage.ts'
 import { createIndexedDbActionRepository } from './adapters/indexeddb/action-repository.ts'
 import { createIndexedDbPendingTurnRepository } from './adapters/indexeddb/pending-turn-repository.ts'
 import { createAgentCapability, registerCompanionTools } from './adapters/webmcp/tools.ts'
+import { loadStarterCatalog } from './adapters/browser/starter-packages.ts'
 import { queueAgentTurn, resolveAgentTurn } from './core/application/agent-turn.ts'
-import {
-  assembleAuthoredCandidate,
-  createDefaultCustomizationSeed,
-  stageAuthoredCandidate,
-  type AgentCustomization,
-} from './core/application/authoring.ts'
+import { AUTHORING_NAMESPACE, assembleExperienceCandidate, ExperienceCandidateValidationError } from './core/application/authoring.ts'
 import { approveCandidate as approveStagedCandidate } from './core/application/candidate.ts'
 import { loadCompanionStartup } from './core/application/companion.ts'
 import { loadStage, submitInteraction } from './core/application/stage.ts'
@@ -23,7 +23,7 @@ import {
   loadCharacterProjection,
   migrateCharacterDraft,
   saveCharacterDraftAsset,
-  stageCharacterDraft,
+  reviewCharacterDraft,
 } from './core/application/character-creation.ts'
 import { inspectCharacterImage } from './adapters/browser/character-image.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
@@ -31,6 +31,8 @@ import { requestPersistentStorage } from './adapters/browser/storage-persistence
 import { planItemEffects } from './core/application/items.ts'
 import { loadSceneProjection } from './core/application/scene.ts'
 import { exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
+import { createExperienceDraftData, EXPERIENCE_LIMITS, validateLoadedStarterPackage, type ExperienceDraft } from './core/domain/starter.ts'
+import { compileFixedBackbone, FIXED_BACKBONE_VERSION } from './core/mantle/backbone.ts'
 
 const readDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader()
@@ -39,20 +41,138 @@ const readDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   reader.readAsDataURL(blob)
 })
 
+const toExperienceDraft = (entry: Entry): ExperienceDraft => ({
+  id: entry.id,
+  ...(structuredClone(entry.data) as unknown as Omit<ExperienceDraft, 'id' | 'createdAt' | 'updatedAt'>),
+  createdAt: entry.createdAt,
+  updatedAt: entry.updatedAt,
+})
+
 export function createApplication(document: Document) {
   const agent = createAgentCapability(document)
   const bundles = createIndexedDbBundleRepository()
-  const drafts = createIndexedDbCharacterDraftRepository()
+  const characterDrafts = createIndexedDbCharacterDraftRepository()
+  const browser = document.defaultView
+  let starterPackages: ReturnType<typeof loadStarterCatalog> | undefined
+  const loadStarters = () => starterPackages ??= loadStarterCatalog(
+    browser?.fetch.bind(browser) ?? fetch,
+    inspectCharacterImage,
+    inspectSceneImage,
+    FIXED_BACKBONE_VERSION,
+  )
+  const sameSeed = (left: ExperienceDraft['seed'], right: ExperienceDraft['seed']) =>
+    left.kind === right.kind &&
+    left.directionId === right.directionId &&
+    left.completionMode === right.completionMode &&
+    left.brief === right.brief &&
+    left.loopIds.length === right.loopIds.length &&
+    left.loopIds.every((id, index) => id === right.loopIds[index])
+  const loadDraftStarter = async (draft: ExperienceDraft) => {
+    const packaged = (await loadStarters()).find(({ starter }) =>
+      starter.id === draft.starter.id && starter.version === draft.starter.version,
+    )
+    if (!packaged) throw new Error(`Starter package is unavailable: ${draft.starter.id}@${draft.starter.version}`)
+    const direction = packaged.starter.directions.find(({ id }) => id === draft.direction.id)
+    if (
+      packaged.manifestSha256 !== draft.starter.manifestSha256 ||
+      packaged.starter.name !== draft.starter.name ||
+      !direction ||
+      direction.name !== draft.direction.name ||
+      direction.summary !== draft.direction.summary ||
+      direction.characterStateId !== draft.characterStateId ||
+      direction.characterStateId !== draft.direction.characterStateId ||
+      direction.sceneCompositionId !== draft.sceneCompositionId ||
+      direction.sceneCompositionId !== draft.direction.sceneCompositionId ||
+      !sameSeed(direction.seed, draft.seed) ||
+      !sameSeed(direction.seed, draft.direction.seed)
+    ) throw new Error('Starter package changed without a version change')
+    return packaged
+  }
+  let authoringRuntime: Promise<MantleRuntime> | undefined
+  let boundAuthoringRuntime: MantleRuntime | undefined
+
+  const authoringFailure = (code: string, path: string, message: string, value?: unknown, conflict = false) => new InvokeFailure(runtimeDiagnostic({
+    code: conflict ? 'CONFLICT' : 'INPUT_VALIDATION_FAILED',
+    severity: 'error',
+    path: `authoring/${code}/${path}`,
+    value,
+    expected: 'a valid revision-safe Experience candidate',
+    message,
+  }))
+
+  const getAuthoringRuntime = () => authoringRuntime ??= bootMantleRuntime({
+    plan: compileFixedBackbone(),
+    storage: createIndexedDbMantleStorageAdapter(AUTHORING_NAMESPACE),
+    handlers: {
+      'companion.submit-action': () => {
+        throw authoringFailure('unavailable', 'handler/companion.submit-action', 'Runtime actions require an active Companion namespace')
+      },
+      'companion.submit-experience-candidate': async (rawInput: unknown) => {
+        const input = rawInput as { draftId: string; expectedRevision: number; idempotencyKey: string; candidateJson: string }
+        try {
+          const entry = await boundAuthoringRuntime?.entries.readById(input.draftId)
+          if (!entry || entry.collection !== 'experience-drafts' || entry.status !== 'published') {
+            throw new ExperienceSubmissionConflict('draft_not_found')
+          }
+          const draft = toExperienceDraft(entry)
+          if (draft.lastSubmission?.idempotencyKey === input.idempotencyKey) {
+            return { bundleId: draft.lastSubmission.bundleId, revision: draft.revision, replayed: true }
+          }
+          const packaged = await loadDraftStarter(draft)
+          const resources = await validateLoadedStarterPackage(
+            { starter: structuredClone(packaged.starter), assets: structuredClone(packaged.assets) },
+            inspectCharacterImage,
+            inspectSceneImage,
+            FIXED_BACKBONE_VERSION,
+          )
+          let candidateInput: unknown
+          try {
+            candidateInput = JSON.parse(input.candidateJson)
+          } catch {
+            throw new ExperienceCandidateValidationError({ code: 'invalid_json', path: 'candidate', message: 'Candidate must be valid JSON' })
+          }
+          const candidate = assembleExperienceCandidate(`bundle:${crypto.randomUUID()}`, draft, resources, candidateInput)
+          const result = await persistTriggeredExperienceCandidate(
+            input.draftId,
+            input.expectedRevision,
+            input.idempotencyKey,
+            candidate,
+          )
+          if (!result.replayed) browser?.dispatchEvent(new browser.CustomEvent('experience-candidate-staged', { detail: candidate.preview }))
+          return result
+        } catch (error) {
+          if (error instanceof ExperienceCandidateValidationError) {
+            const diagnostic = error.diagnostics[0]!
+            throw authoringFailure(diagnostic.code, diagnostic.path, diagnostic.message)
+          }
+          if (error instanceof ExperienceSubmissionConflict) {
+            throw authoringFailure(error.code, 'experience-draft', error.message, error.currentRevision, true)
+          }
+          throw authoringFailure('invalid_starter', 'experience-draft.starter', error instanceof Error ? error.message : 'Starter validation failed')
+        }
+      },
+    },
+  }).then((runtime) => {
+    boundAuthoringRuntime = runtime
+    return runtime
+  })
+
+  const openExperienceDraft = async () => {
+    const entries = await (await getAuthoringRuntime()).entries.readPublished({ collection: 'experience-drafts' })
+    const current = [...entries]
+      .sort((left, right) => right.createdAt - left.createdAt || right.id.localeCompare(left.id))[0]
+    return current ? toExperienceDraft(current) : null
+  }
 
   const openCharacterDraft = async () => {
-    const existing = await drafts.get()
+    const existing = await characterDrafts.get()
     if (existing) {
       const draft = migrateCharacterDraft(existing)
-      if (draft !== existing) await drafts.put(draft)
+      if (draft !== existing) await characterDrafts.put(draft)
       return draft
     }
     const draft = createCharacterDraft()
-    await drafts.put(draft)
+    await characterDrafts.put(draft)
     return draft
   }
 
@@ -87,27 +207,37 @@ export function createApplication(document: Document) {
         } : {}),
       }
     },
-    createPresetSeed: createDefaultCustomizationSeed,
+    listStarters: loadStarters,
+    openExperienceDraft,
+    async selectStarter(starterId: string, starterVersion: number, directionId: string) {
+      const loaded = (await loadStarters()).find(({ starter }) => starter.id === starterId && starter.version === starterVersion)
+      if (!loaded) throw new Error(`Starter not found: ${starterId}@${starterVersion}`)
+      const result = await (await getAuthoringRuntime()).invokeTrigger<Entry>({
+        trigger: 'select-experience-draft',
+        input: createExperienceDraftData(loaded, directionId),
+        ctx: { user: null, staff: null, env: {} },
+      })
+      if (!result.ok) throw new Error(result.diagnostic.message ?? 'Experience Draft could not be saved')
+      await requestPersistentStorage(browser?.navigator.storage)
+      return toExperienceDraft(result.data)
+    },
     openCharacterDraft,
     async updateCharacterDraft(draft: CharacterDraft) {
-      const next = { ...draft, updatedAt: Date.now() }
-      await drafts.put(next)
+      const next = { ...draft, approvedAt: undefined, updatedAt: Date.now() }
+      await characterDrafts.put(next)
       return next
     },
     async saveCharacterAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string, source: 'user' | 'agent' = 'user') {
-      return saveCharacterDraftAsset(drafts, inspectCharacterImage, draft, target, blob, filename, source)
+      return saveCharacterDraftAsset(characterDrafts, inspectCharacterImage, draft, target, blob, filename, source)
     },
-    prepareCharacter: (draft: CharacterDraft) => stageCharacterDraft(
-      bundles,
-      createIndexedDbEntryRepository,
-      createIndexedDbAssetRepository,
-      inspectCharacterImage,
-      draft,
-    ),
-    clearCharacterDraft: () => drafts.clear(),
-    async preparePreset(customization: AgentCustomization) {
-      const candidate = assembleAuthoredCandidate(`bundle:${crypto.randomUUID()}`, customization)
-      return stageAuthoredCandidate(bundles, createIndexedDbEntryRepository, candidate)
+    prepareCharacter: (draft: CharacterDraft) => reviewCharacterDraft(inspectCharacterImage, draft),
+    async approveCharacterDraft() {
+      const draft = await characterDrafts.get()
+      if (!draft) throw new Error('Character draft not found')
+      await reviewCharacterDraft(inspectCharacterImage, draft)
+      const approved = { ...draft, approvedAt: Date.now(), updatedAt: Date.now() }
+      await characterDrafts.put(approved)
+      return approved
     },
     async approveCandidate(bundleId: string, approved: true) {
       return approveStagedCandidate(bundles, bundleId, approved)
@@ -131,6 +261,8 @@ export function createApplication(document: Document) {
         bundleId, runId, text, expectedRevision, idempotencyKey,
       })
       if (local.path !== 'cold') return local
+      const stage = await loadStage(entries, runId)
+      if (stage.status !== 'active' || !stage.agentFallback) return local
       const turn = await queueAgentTurn(entries, createIndexedDbPendingTurnRepository(), {
         bundleId, runId, userText: text, expectedRevision, idempotencyKey,
       })
@@ -140,6 +272,75 @@ export function createApplication(document: Document) {
     prepareImport: stagePortableBundle,
   }
   registerCompanionTools(document, {
+    async inspectExperience() {
+      const draft = await openExperienceDraft()
+      if (!draft) throw new Error('Select a Starter and Direction before asking the agent to author an experience')
+      const packaged = await loadDraftStarter(draft)
+      return {
+        status: 'ok',
+        data: {
+          contractVersion: 1,
+          draft: { id: draft.id, revision: draft.revision },
+          starter: draft.starter,
+          direction: draft.direction,
+          seed: draft.seed,
+          selectedVisuals: {
+            characterStateId: draft.characterStateId,
+            sceneCompositionId: draft.sceneCompositionId,
+          },
+          resources: {
+            characterAppearances: packaged.starter.characterPack.appearances.map(({ id }) => ({
+              packId: packaged.starter.characterPack.id,
+              packVersion: packaged.starter.characterPack.version,
+              appearanceId: id,
+            })),
+            characterStates: packaged.starter.characterStates,
+            sceneCompositions: packaged.starter.scenePack.compositions.map(({ id }) => ({
+              packId: packaged.starter.scenePack.id,
+              packVersion: packaged.starter.scenePack.version,
+              compositionId: id,
+            })),
+          },
+          skeleton: packaged.starter.skeleton,
+          vocabulary: {
+            conditions: ['metric', 'flag', 'stage', 'capability', 'inventory', 'equipped', 'appearance', 'quantity', 'itemState', 'all', 'any', 'not'],
+            effects: ['addMetric', 'setFlag', 'changeStage', 'grantItem', 'consumeItem', 'equipItem', 'unequipItem', 'setItemState', 'setAppearanceOverride'],
+          },
+          limits: EXPERIENCE_LIMITS,
+        },
+        nextActions: [{ tool: 'submit_experience_candidate', required: true, reason: 'Submit one complete declarative Playbook for this exact draft revision.' }],
+      }
+    },
+    async submitExperience(input) {
+      const result = await (await getAuthoringRuntime()).invokeTrigger<{
+        bundleId: string
+        revision: number
+        replayed: boolean
+      }>({
+        trigger: 'submit-experience-candidate',
+        input: {
+          draftId: input.draftId,
+          expectedRevision: input.expectedRevision,
+          idempotencyKey: input.idempotencyKey,
+          candidateJson: JSON.stringify(input.candidate),
+        },
+        ctx: { user: null, staff: null, env: {} },
+      })
+      return result.ok
+        ? {
+            status: 'ok',
+            data: { ...result.data, awaitingUserReview: true },
+            nextActions: [],
+          }
+        : {
+            status: 'error',
+            diagnostics: [{
+              code: result.diagnostic.code,
+              path: result.diagnostic.path,
+              message: result.diagnostic.message ?? 'Experience candidate was rejected',
+            }],
+          }
+    },
     async inspectCharacter() {
       const draft = await openCharacterDraft()
       const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body

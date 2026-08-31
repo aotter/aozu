@@ -1,14 +1,9 @@
 import type { BundleActivationRepository } from './ports.ts'
 import type { ResolvedCharacterLayer } from '../domain/character.ts'
+import type { ExperienceCandidatePreviewSnapshot } from '../domain/starter.ts'
 
 export type StagedCandidatePreview =
-  | {
-      source: 'preset'
-      bundleId: string
-      name: string
-      stageCount: number
-      initialTitle: string
-    }
+  | ExperienceCandidatePreviewSnapshot
   | {
       source: 'import'
       bundleId: string
@@ -18,7 +13,6 @@ export type StagedCandidatePreview =
     }
   | {
       source: 'character'
-      bundleId: string
       name: string
       appearanceCount: number
       layers: Array<ResolvedCharacterLayer & { blob: Blob }>

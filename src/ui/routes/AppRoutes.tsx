@@ -10,7 +10,7 @@ import { AppMenu } from '@/ui/AppMenu'
 import { CandidateReviewPage } from '@/ui/pages/CandidateReviewPage'
 import { CharacterDraftPage } from '@/ui/pages/CharacterDraftPage'
 import { CompanionPage } from '@/ui/pages/CompanionPage'
-import { PresetDraftPage } from '@/ui/pages/PresetDraftPage'
+import { StarterDraftPage } from '@/ui/pages/StarterDraftPage'
 import { StartPage } from '@/ui/pages/StartPage'
 import { StatusPage } from '@/ui/pages/StatusPage'
 
@@ -23,7 +23,6 @@ export function AppRoutes({ application }: { application: Application }) {
   const [startup, setStartup] = useState<CompanionStartup>()
   const [loadError, setLoadError] = useState(false)
   const [preview, setPreview] = useState<StagedCandidatePreview>()
-  const [presetSeed, setPresetSeed] = useState(application.createPresetSeed)
   const refresh = useCallback(async () => setStartup(await application.loadStartup()), [application])
 
   useEffect(() => {
@@ -48,6 +47,15 @@ export function AppRoutes({ application }: { application: Application }) {
     }
     window.addEventListener('character-draft-updated', onDraftUpdate)
     return () => window.removeEventListener('character-draft-updated', onDraftUpdate)
+  }, [location.pathname, navigate])
+
+  useEffect(() => {
+    const onCandidate = (event: Event) => {
+      setPreview((event as CustomEvent<StagedCandidatePreview>).detail)
+      navigate('/review', { state: { returnTo: location.pathname === '/companion' ? '/companion' : '/start' } })
+    }
+    window.addEventListener('experience-candidate-staged', onCandidate)
+    return () => window.removeEventListener('experience-candidate-staged', onCandidate)
   }, [location.pathname, navigate])
 
   if (loadError) return <><AppHeader webmcpAvailable={false} /><StatusPage>{t('startup.error')}</StatusPage></>
@@ -99,16 +107,15 @@ export function AppRoutes({ application }: { application: Application }) {
         await application.deleteCompanion(bundleId)
         await refresh()
       }}
-      onCreatePreset={() => {
-        setPresetSeed(application.createPresetSeed())
-        navigate('/preset', { state: { returnTo: '/start' } })
-      }}
+      onChooseStarter={() => navigate('/starter', { state: { returnTo: '/start' } })}
       onCreateCharacter={() => navigate('/character', { state: { returnTo: '/start' } })}
       prepareImport={(blob) => prepareReview(application.prepareImport(blob))}
     />} />
-    <Route path="/preset" element={<PresetDraftPage
-      seed={presetSeed}
-      onReview={(customization) => prepareReview(application.preparePreset(customization))}
+    <Route path="/starter" element={<StarterDraftPage
+      loadStarters={application.listStarters}
+      openDraft={application.openExperienceDraft}
+      selectStarter={application.selectStarter}
+      webmcpAvailable={startup.webmcpAvailable}
       onCancel={closeFlow}
     />} />
     <Route path="/character" element={characterDraftPage} />
@@ -116,11 +123,11 @@ export function AppRoutes({ application }: { application: Application }) {
     <Route path="/review" element={preview ? <CandidateReviewPage
       preview={preview}
       onApprove={async () => {
-        await application.approveCandidate(preview.bundleId, true)
-        if (preview.source === 'character') await application.clearCharacterDraft()
+        if (preview.source === 'character') await application.approveCharacterDraft()
+        else await application.approveCandidate(preview.bundleId, true)
         setPreview(undefined)
         await refresh()
-        navigate('/companion', { replace: true })
+        navigate(preview.source === 'character' ? '/start' : '/companion', { replace: true })
       }}
       onCancel={async () => {
         setPreview(undefined)

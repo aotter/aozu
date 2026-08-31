@@ -43,14 +43,14 @@ export function CompanionPage({ companionName, stage, dialogue, pendingTurns, ch
           {dialogue && <p className="mt-2 text-sm text-foreground">{dialogue}</p>}
           {pendingTurns > 0 && <p className="mt-2 text-sm text-muted-foreground">{t('main.waitingForAgent')}</p>}
           <div className="mt-3 flex flex-wrap gap-2">
-            {stage.actions.map((action) => <Button key={action.id} variant="outline" disabled={busy} onClick={async () => {
+            {stage.actions.map((action) => <Button key={action.id} variant="outline" disabled={busy || stage.status !== 'active'} onClick={async () => {
               setBusy(true)
               try { await onAction(action.id) } finally { setBusy(false) }
             }}>{action.label}</Button>)}
           </div>
           <form className="mt-3 flex gap-2" onSubmit={async (event) => {
             event.preventDefault()
-            if (!text.trim() || busy) return
+            if (!text.trim() || busy || stage.status !== 'active') return
             setBusy(true)
             try { await onText(text); setText('') } finally { setBusy(false) }
           }}>
@@ -62,7 +62,7 @@ export function CompanionPage({ companionName, stage, dialogue, pendingTurns, ch
               value={text}
               onChange={(event) => setText(event.target.value)}
             />
-            <Button type="submit" disabled={busy || !text.trim()}>{t('main.send')}</Button>
+            <Button type="submit" disabled={busy || !text.trim() || stage.status !== 'active'}>{t('main.send')}</Button>
           </form>
         </div>
       </section>

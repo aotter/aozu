@@ -17,13 +17,10 @@ import {
   type CharacterVariantGroup,
   type CharacterVariantLayer,
 } from '../domain/character.ts'
-import { assembleAuthoredCandidate, createDefaultCustomizationSeed, stageAuthoredCandidate } from './authoring.ts'
 import type { StagedCandidatePreview } from './candidate.ts'
 import type {
   AssetRepositoryFactory,
-  BundleActivationRepository,
   CharacterDraftRepository,
-  EntryRepositoryFactory,
 } from './ports.ts'
 
 export const CHARACTER_CREATION_GROUPS: ReadonlyArray<{
@@ -160,6 +157,7 @@ export async function saveCharacterDraftAsset(
   const existing = draft.variants.find((variant) => variant.group === target.group && variant.id === target.variantId)
   const next: CharacterDraft = {
     ...draft,
+    approvedAt: undefined,
     variants: existing
       ? draft.variants.map((variant) => variant === existing ? { ...variant, layers: { ...variant.layers, [target.layer]: asset } } : variant)
       : [...draft.variants, { group: target.group, id: target.variantId, label: target.label.trim(), layers: { [target.layer]: asset } }],
@@ -257,42 +255,29 @@ export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
   return pack
 }
 
-export async function stageCharacterDraft(
-  bundles: BundleActivationRepository,
-  entriesFor: EntryRepositoryFactory,
-  assetsFor: AssetRepositoryFactory,
+export async function reviewCharacterDraft(
   inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
   draft: CharacterDraft,
 ): Promise<StagedCandidatePreview> {
   const pack = buildCharacterPack(draft)
-  const customization = createDefaultCustomizationSeed()
-  customization.id = draft.packId
-  customization.name = draft.name.trim()
-  const candidate = assembleAuthoredCandidate(`bundle:${crypto.randomUUID()}`, customization)
-  candidate.entries.push(
-    { id: `pack:${pack.id}`, collection: 'character-packs', data: { pack } },
-    { id: `character:${pack.id}`, collection: 'character-states', data: { packId: pack.id, packVersion: pack.version, composition: pack.defaultComposition } },
-  )
-  await stageAuthoredCandidate(bundles, entriesFor, candidate)
-  const assets = assetsFor(candidate.record.id)
+  const blobs = new Map<string, Blob>()
   for (const variant of draft.variants) {
     for (const [layer, asset] of Object.entries(variant.layers)) {
-      await assets.put(assetKey(variant, layer as CharacterVariantLayer), asset!.blob)
+      blobs.set(assetKey(variant, layer as CharacterVariantLayer), asset!.blob)
     }
   }
   const storedInspections = new Map<string, CharacterAssetInspection>()
   for (const asset of pack.assets) {
-    const blob = await assets.get(asset.blobId)
+    const blob = blobs.get(asset.blobId)
     if (!blob) throw new Error(`Character asset read-back failed: ${asset.id}`)
     storedInspections.set(asset.blobId, await inspect(blob))
   }
   const layers = validateCharacterPack(pack, storedInspections)
   return {
     source: 'character',
-    bundleId: candidate.record.id,
     name: draft.name.trim(),
     appearanceCount: pack.appearances.length,
-    layers: await Promise.all(layers.map(async (layer) => ({ ...layer, blob: (await assets.get(layer.blobId))! }))),
+    layers: layers.map((layer) => ({ ...layer, blob: blobs.get(layer.blobId)! })),
   }
 }
 

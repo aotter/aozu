@@ -14,7 +14,17 @@ export interface BundleRecord {
   semanticFingerprint: string
   identity: BundleIdentity
   createdAt: number
-  metadata?: { name: string; runId: string }
+  metadata?: {
+    name: string
+    runId: string
+    starter?: {
+      id: string
+      version: number
+      manifestSha256: string
+      directionId: string
+      seed: import('./domain/starter.ts').ExperienceSeed
+    }
+  }
 }
 
 export interface ValidatedBundle {
