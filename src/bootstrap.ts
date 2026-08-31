@@ -26,8 +26,10 @@ import {
   stageCharacterDraft,
 } from './core/application/character-creation.ts'
 import { inspectCharacterImage } from './adapters/browser/character-image.ts'
+import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
 import { planItemEffects } from './core/application/items.ts'
+import { loadSceneProjection } from './core/application/scene.ts'
 import { exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
 
 const readDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
@@ -64,14 +66,25 @@ export function createApplication(document: Document) {
       const startup = await loadCompanionStartup(agent, bundles, createIndexedDbEntryRepository)
       if (startup.savedCompanions.length) void requestPersistentStorage(document.defaultView?.navigator.storage)
       if (startup.status !== 'main') return startup
+      const entries = createIndexedDbEntryRepository(startup.bundleId)
       return {
         ...startup,
         character: await loadCharacterProjection(
-          createIndexedDbEntryRepository(startup.bundleId),
+          entries,
           createIndexedDbAssetRepository,
           startup.bundleId,
           inspectCharacterImage,
+          startup.stage.scene?.characterStateId,
         ),
+        ...(startup.stage.scene ? {
+          scene: await loadSceneProjection(
+            entries,
+            createIndexedDbAssetRepository,
+            startup.bundleId,
+            startup.stage.scene.compositionId,
+            inspectSceneImage,
+          ),
+        } : {}),
       }
     },
     createPresetSeed: createDefaultCustomizationSeed,

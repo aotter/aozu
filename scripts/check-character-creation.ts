@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { buildCharacterPack, createCharacterDraft, migrateCharacterDraft, resolveCharacterDraftLayers } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, createCharacterDraft, loadCharacterProjection, migrateCharacterDraft, resolveCharacterDraftLayers } from '../src/core/application/character-creation.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 
@@ -52,4 +52,31 @@ const migratedV2 = migrateCharacterDraft({
 assert.equal(migratedV2.schemaVersion, 3)
 assert.deepEqual(migratedV2.variants.map(({ group, id }) => `${group}:${id}`), ['prop:hat-1', 'prop:prop-1'])
 assert.deepEqual(migratedV2.selected.props, ['hat-1', 'prop-1'])
+
+const state = {
+  id: 'character:base', collection: 'character-states', status: 'published' as const, version: 1, createdAt: 1, updatedAt: 1,
+  data: {
+    packId: pack.id,
+    packVersion: pack.version,
+    composition: [
+      { packId: pack.id, packVersion: pack.version, appearanceId: 'body-base' },
+      { packId: pack.id, packVersion: pack.version, appearanceId: 'expression-neutral' },
+    ],
+  },
+}
+const loaded = await loadCharacterProjection(
+  {
+    async readById(id: string) { return id === state.id ? state : null },
+    async readPublished({ collection }: { collection?: string } = {}) {
+      return collection === 'character-packs'
+        ? [{ id: `pack:${pack.id}`, collection: 'character-packs', status: 'published' as const, version: 1, createdAt: 1, updatedAt: 1, data: { pack } }]
+        : []
+    },
+  } as never,
+  () => ({ async get() { return asset.blob } }) as never,
+  'bundle-1',
+  async () => inspection,
+  state.id,
+)
+assert.deepEqual(loaded?.map(({ slot }) => slot), ['character-skin', 'expression-head'])
 console.log('character creation: ok')

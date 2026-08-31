@@ -40,7 +40,12 @@ const progressSchema = objectSchema(
   ["id", "label", "value"],
 )
 
-export const FIXED_BACKBONE_VERSION = "2"
+const sceneReferenceSchema = objectSchema({
+  compositionId: { type: "string", minLength: 1 },
+  characterStateId: { type: "string" },
+}, ["compositionId"])
+
+export const FIXED_BACKBONE_VERSION = "3"
 
 export const FIXED_BACKBONE_SOURCES = [
   source(
@@ -217,6 +222,58 @@ export const FIXED_BACKBONE_SOURCES = [
     ),
   ),
   source(
+    "fixed/scene-asset.yaml",
+    envelope(
+      "Schema",
+      "scene-assets",
+      {
+        title: "Scene assets",
+        lifecycle: "operational",
+        schema: objectSchema(
+          {
+            blobId: { type: "string", minLength: 1 },
+            mediaType: { enum: ["image/png", "image/jpeg", "image/webp"] },
+            width: { type: "integer", minimum: 1 },
+            height: { type: "integer", minimum: 1 },
+            size: { type: "integer", minimum: 1 },
+            sha256: { type: "string", pattern: "^[0-9a-f]{64}$" },
+          },
+          ["blobId", "mediaType", "width", "height", "size", "sha256"],
+        ),
+      },
+    ),
+  ),
+  source(
+    "fixed/scene-composition.yaml",
+    envelope(
+      "Schema",
+      "scene-compositions",
+      {
+        title: "Scene compositions",
+        lifecycle: "operational",
+        schema: objectSchema(
+          {
+            layers: {
+              type: "array",
+              minItems: 1,
+              maxItems: 32,
+              items: objectSchema(
+                {
+                  id: { type: "string", minLength: 1 },
+                  assetId: { type: "string", minLength: 1 },
+                  plane: { enum: ["back", "front"] },
+                  order: { type: "integer" },
+                },
+                ["id", "assetId", "plane", "order"],
+              ),
+            },
+          },
+          ["layers"],
+        ),
+      },
+    ),
+  ),
+  source(
     "fixed/stage.yaml",
     envelope(
       "Schema",
@@ -230,14 +287,7 @@ export const FIXED_BACKBONE_SOURCES = [
             narrative: { type: "string" },
             actions: { type: "array", items: actionSchema },
             progress: { type: "array", items: progressSchema },
-            scene: {
-              type: "object",
-              properties: {
-                backgroundAssetId: { type: "string" },
-                characterStateId: { type: "string" },
-              },
-              additionalProperties: false,
-            },
+            scene: sceneReferenceSchema,
             terminal: { type: "boolean" },
             agentFallback: { type: "boolean" },
           },
@@ -273,7 +323,7 @@ export const FIXED_BACKBONE_SOURCES = [
     envelope("View", "current-stage", {
       from: "stages",
       surface: "public",
-      fields: ["title", "narrative", "actions", "progress", "terminal"],
+      fields: ["title", "narrative", "scene", "actions", "progress", "terminal"],
       limit: 1,
     }),
   ),
@@ -296,6 +346,7 @@ export const FIXED_BACKBONE_SOURCES = [
         status: { enum: ["active", "completed", "blocked"] },
         title: { type: "string" },
         narrative: { type: "string" },
+        scene: sceneReferenceSchema,
         actions: { type: "array", items: actionSchema },
         progress: { type: "array", items: progressSchema },
       }),

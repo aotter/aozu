@@ -3,16 +3,19 @@ import { useTranslation } from 'react-i18next'
 
 import type { StageProjection } from '@/core/domain/companion.ts'
 import type { ResolvedCharacterLayer } from '@/core/domain/character.ts'
+import type { ResolvedSceneLayer } from '@/core/domain/scene.ts'
 import { CharacterRenderer } from '@/ui/CharacterRenderer'
+import { SceneRenderer } from '@/ui/SceneRenderer'
 import { Button } from '@/ui/components/ui/button'
 import { Separator } from '@/ui/components/ui/separator'
 
-export function CompanionPage({ companionName, stage, dialogue, pendingTurns, character, onAction, onText }: {
+export function CompanionPage({ companionName, stage, dialogue, pendingTurns, character, scene, onAction, onText }: {
   companionName: string
   stage: StageProjection
   dialogue?: string
   pendingTurns: number
   character?: Array<ResolvedCharacterLayer & { blob: Blob }>
+  scene?: Array<ResolvedSceneLayer & { blob: Blob }>
   onAction(actionId: string): Promise<void>
   onText(text: string): Promise<void>
 }) {
@@ -24,10 +27,11 @@ export function CompanionPage({ companionName, stage, dialogue, pendingTurns, ch
     <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-5xl flex-col px-4">
       <section aria-label={t('main.stageTitle')} className="flex min-h-0 flex-1 items-center justify-center py-6">
         <div className="flex aspect-2/3 max-h-[65svh] w-full max-w-sm items-center justify-center rounded-3xl bg-background shadow-sm">
-          {character ? <CharacterRenderer label={companionName} layers={character} /> : <div className="text-center text-muted-foreground">
-            <h1 id="stage-title" className="text-base font-medium text-foreground">{stage.title}</h1>
-            <p className="mt-1 text-sm">{stage.narrative}</p>
-          </div>}
+          <SceneRenderer label={t('main.sceneLabel', { name: stage.title })} layers={scene ?? []}>
+            {character ? <CharacterRenderer label={companionName} layers={character} className="size-full rounded-none border-0 bg-transparent" /> : <div className="grid size-full place-items-center p-6 text-center text-muted-foreground">
+              <div><h1 id="stage-title" className="text-base font-medium text-foreground">{stage.title}</h1><p className="mt-1 text-sm">{stage.narrative}</p></div>
+            </div>}
+          </SceneRenderer>
         </div>
       </section>
 

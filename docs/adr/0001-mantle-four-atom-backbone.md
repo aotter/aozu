@@ -70,7 +70,7 @@ interface StageProjection {
   title: string
   narrative: string
   scene?: {
-    backgroundAssetId?: string
+    compositionId: string
     characterStateId?: string
   }
   actions: Array<{ id: string; label: string }>
@@ -81,6 +81,13 @@ interface StageProjection {
 Purpose-specific data may remain in Mantle entries, but the React application
 does not render opaque collection data. New UI needs either an existing stable
 projection field or an explicit translation-layer change.
+
+Scene images are formal bundle assets. `scene-assets` entries hold Blob
+identity, media type, dimensions, byte size, and digest; `scene-compositions`
+entries hold ordered `back` and `front` layers. A stage references one
+composition by `scene.compositionId`. Rendering order is scene back layers,
+character layers, then scene front layers. Single-image backgrounds use the
+same model with one back layer.
 
 The initial browser profile supports:
 

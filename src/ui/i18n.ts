@@ -120,6 +120,7 @@ const en = {
     webmcpConnected: 'WebMCP connected',
     webmcpUnavailable: 'WebMCP unavailable',
     stageTitle: '2D character and scene stage',
+    sceneLabel: '{{name}} scene',
     placeholder: 'Placeholder',
     dialogueTitle: 'Dialogue',
     dialoguePlaceholder: 'Dialogue placeholder',
