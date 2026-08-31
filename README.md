@@ -9,4 +9,4 @@ pnpm build
 pnpm deploy
 ```
 
-已驗證的 WebMCP／IndexedDB／角色資產 spike 保留在 [`poc/`](./poc/)。
+WebMCP、IndexedDB／ZIP、Markdown journal 與角色資產流程均已整合至主程式；架構決策記錄於 [`docs/adr/`](./docs/adr/)。

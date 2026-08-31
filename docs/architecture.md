@@ -10,4 +10,3 @@ UI / WebMCP -> Application -> Domain
 - `bootstrap.ts` 是唯一的組裝點。
 - 啟動順序固定為 WebMCP capability → application orchestration → IndexedDB hydrate。
 - shadcn primitives 只放在 `src/ui/components/ui`。
-- `poc/` 保留已驗證的 spike，不直接成為正式版依賴。
