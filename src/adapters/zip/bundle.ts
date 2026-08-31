@@ -230,9 +230,15 @@ export async function stagePortableBundle(blob: Blob): Promise<StagedCandidatePr
     }
     validateCharacterPack(pack, inspections)
   }
-  const sceneAssets = new Map(entries
-    .filter(({ collection }) => collection === 'scene-assets')
+  const publishedCharacterStates = new Set(entries
+    .filter(({ collection, status }) => collection === 'character-states' && status === 'published')
+    .map(({ id: entryId }) => entryId))
+  const sceneAssetEntries = entries.filter(({ collection }) => collection === 'scene-assets')
+  const sceneAssets = new Map(sceneAssetEntries
     .map((entry) => [entry.id, { id: entry.id, ...entry.data } as unknown as SceneAsset]))
+  const publishedSceneAssets = new Set(sceneAssetEntries
+    .filter(({ status }) => status === 'published')
+    .map(({ id: entryId }) => entryId))
   const sceneInspections = new Map<string, SceneAssetInspection>()
   for (const asset of sceneAssets.values()) {
     const file = assets.get(asset.blobId)
@@ -241,16 +247,24 @@ export async function stagePortableBundle(blob: Blob): Promise<StagedCandidatePr
     validateSceneAsset(asset, inspection)
     sceneInspections.set(asset.blobId, inspection)
   }
-  const sceneCompositions = new Map(entries
-    .filter(({ collection }) => collection === 'scene-compositions')
+  const sceneCompositionEntries = entries.filter(({ collection }) => collection === 'scene-compositions')
+  const sceneCompositions = new Map(sceneCompositionEntries
     .map((entry) => [entry.id, { id: entry.id, ...entry.data } as unknown as SceneComposition]))
   for (const composition of sceneCompositions.values()) resolveSceneComposition(composition, sceneAssets, sceneInspections)
-  for (const stage of entries.filter(({ collection }) => collection === 'stages')) {
-    const scene = stage.data.scene as { compositionId?: unknown; backgroundAssetId?: unknown } | undefined
+  const publishedSceneCompositions = new Set(sceneCompositionEntries
+    .filter(({ status }) => status === 'published')
+    .map(({ id: entryId }) => entryId))
+  for (const entry of sceneCompositionEntries.filter(({ status }) => status === 'published')) {
+    const composition = sceneCompositions.get(entry.id)!
+    if (composition.layers.some(({ assetId }) => !publishedSceneAssets.has(assetId))) throw new Error(`Published scene composition references unpublished asset: ${entry.id}`)
+  }
+  for (const stage of entries.filter(({ collection, status }) => collection === 'stages' && status === 'published')) {
+    const scene = stage.data.scene as { compositionId?: unknown; characterStateId?: unknown; backgroundAssetId?: unknown } | undefined
     if (scene && typeof scene.compositionId !== 'string' && typeof scene.backgroundAssetId === 'string') continue
-    if (scene && (typeof scene.compositionId !== 'string' || !sceneCompositions.has(scene.compositionId))) {
+    if (scene && (typeof scene.compositionId !== 'string' || !publishedSceneCompositions.has(scene.compositionId))) {
       throw new Error(`Stage scene is missing: ${stage.id}`)
     }
+    if (scene && typeof scene.characterStateId === 'string' && !publishedCharacterStates.has(scene.characterStateId)) throw new Error(`Stage character state is missing: ${stage.id}`)
   }
   const bundles = createIndexedDbBundleRepository()
   await bundles.stageCandidate(record)

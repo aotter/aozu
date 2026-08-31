@@ -301,15 +301,26 @@ export async function loadCharacterProjection(
   assetsFor: AssetRepositoryFactory,
   bundleId: string,
   inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
+  stateId?: string,
 ): Promise<Array<ResolvedCharacterLayer & { blob: Blob }> | undefined> {
+  const requestedState = stateId ? await entries.readById(stateId) : undefined
+  if (stateId && (!requestedState || requestedState.collection !== 'character-states' || requestedState.status !== 'published')) {
+    throw new Error(`Character state not found: ${stateId}`)
+  }
   const packEntry = (await entries.readPublished({ collection: 'character-packs' }))
     .find(({ data }) => {
       const pack = data.pack as Partial<CharacterPack> | undefined
-      return Boolean(pack?.rigProfile && Array.isArray(pack.assets) && Array.isArray(pack.appearances) && Array.isArray(pack.defaultComposition))
+      return Boolean(
+        pack?.rigProfile && Array.isArray(pack.assets) && Array.isArray(pack.appearances) && Array.isArray(pack.defaultComposition) &&
+        (!requestedState || (requestedState.data.packId === pack.id && requestedState.data.packVersion === pack.version)),
+      )
     })
-  if (!packEntry) return undefined
+  if (!packEntry) {
+    if (stateId) throw new Error(`Character pack not found for state: ${stateId}`)
+    return undefined
+  }
   const pack = packEntry.data.pack as CharacterPack
-  const state = (await entries.readPublished({ collection: 'character-states' }))
+  const state = requestedState ?? (await entries.readPublished({ collection: 'character-states' }))
     .find(({ data }) => data.packId === pack.id && data.packVersion === pack.version)
   const assets = assetsFor(bundleId)
   const blobs = new Map<string, Blob>()

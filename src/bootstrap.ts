@@ -74,6 +74,7 @@ export function createApplication(document: Document) {
           createIndexedDbAssetRepository,
           startup.bundleId,
           inspectCharacterImage,
+          startup.stage.scene?.characterStateId,
         ),
         ...(startup.stage.scene ? {
           scene: await loadSceneProjection(

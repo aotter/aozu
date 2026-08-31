@@ -15,7 +15,7 @@ export function SceneRenderer({ label, layers, children }: { label: string; laye
       style={{ zIndex: layer.order }}
     />)
 
-  return <div className="relative aspect-2/3 w-full overflow-hidden rounded-3xl border bg-muted/40" role="img" aria-label={label}>
+  return <div className="relative aspect-2/3 w-full overflow-hidden rounded-3xl border bg-muted/40" role="group" aria-label={label}>
     <div className="absolute inset-0 z-0">{render('back')}</div>
     <div className="absolute inset-0 z-10">{children}</div>
     <div className="pointer-events-none absolute inset-0 z-20">{render('front')}</div>

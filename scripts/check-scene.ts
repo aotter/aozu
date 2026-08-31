@@ -38,4 +38,12 @@ const projected = await loadSceneProjection(
   async () => inspection,
 )
 assert.deepEqual(projected.map(({ id, blob: loaded }) => [id, loaded === blob]), [['sky', true], ['fog', true]])
+const draftEntries = new Map([...entries].map(([id, value]) => [id, { ...value, status: 'draft' as const }]))
+await assert.rejects(() => loadSceneProjection(
+  { async readById(id: string) { return draftEntries.get(id) ?? null } } as never,
+  () => ({ async get() { return blob } }) as never,
+  'bundle-1',
+  composition.id,
+  async () => inspection,
+), /not found/)
 console.log('scene: ok')
