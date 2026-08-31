@@ -9,4 +9,4 @@ pnpm build
 pnpm deploy
 ```
 
-WebMCP、IndexedDB／ZIP、Markdown journal 與角色資產流程均已整合至主程式；架構決策記錄於 [`docs/adr/`](./docs/adr/)。
+本專案源自 WebMCP POC；WebMCP、IndexedDB／ZIP、Markdown journal 與角色資產流程均已整合至主程式，架構決策記錄於 [`docs/adr/`](./docs/adr/)。
