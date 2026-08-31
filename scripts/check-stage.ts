@@ -43,5 +43,7 @@ const result = await submitAction(entries as never, {
 }, { bundleId: 'bundle-1', runId: run.id, actionId: 'go', expectedRevision: 0, idempotencyKey: 'once', now: 2 })
 assert.equal(result.revision, 1)
 assert.equal(result.stageId, secondStage.id)
+assert.equal(result.status, 'completed')
+assert.equal(storedRun.data.status, 'completed')
 assert.equal(result.scene?.compositionId, 'scene:second')
 console.log('stage: ok')

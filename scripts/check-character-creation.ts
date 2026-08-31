@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { buildCharacterPack, createCharacterDraft, loadCharacterProjection, migrateCharacterDraft, resolveCharacterDraftLayers } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, createCharacterDraft, loadCharacterProjection, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft } from '../src/core/application/character-creation.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 
@@ -27,6 +27,9 @@ assert.deepEqual(
   ['item-back', 'item-back', 'character-skin', 'expression-head', 'item-front', 'item-front'],
 )
 assert.deepEqual(resolveCharacterDraftLayers(draft).map(({ layerOrder }) => layerOrder), [1, 2, 1, 1, 1, 2])
+const preview = await reviewCharacterDraft(async () => inspection, draft)
+assert.equal(preview.source, 'character')
+assert.equal('bundleId' in preview, false)
 const incomplete = createCharacterDraft('incomplete')
 incomplete.variants.find(({ group, id }) => group === 'body' && id === 'base')!.layers.body = asset
 assert.throws(() => buildCharacterPack(incomplete), /required/)

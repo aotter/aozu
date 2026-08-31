@@ -45,7 +45,66 @@ const sceneReferenceSchema = objectSchema({
   characterStateId: { type: "string" },
 }, ["compositionId"])
 
-export const FIXED_BACKBONE_VERSION = "3"
+const experienceSeedSchema = objectSchema(
+  {
+    kind: { enum: ["story", "task"] },
+    directionId: { type: "string", minLength: 1 },
+    loopIds: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+    completionMode: { enum: ["finite", "continuous"] },
+    brief: { type: "string", minLength: 1, maxLength: 8000 },
+  },
+  ["kind", "directionId", "loopIds", "completionMode", "brief"],
+)
+
+const directionSchema = objectSchema(
+  {
+    id: { type: "string", minLength: 1 },
+    name: { type: "string", minLength: 1 },
+    summary: { type: "string", minLength: 1 },
+    seed: experienceSeedSchema,
+    characterStateId: { type: "string", minLength: 1 },
+    sceneCompositionId: { type: "string", minLength: 1 },
+  },
+  ["id", "name", "summary", "seed", "characterStateId", "sceneCompositionId"],
+)
+
+const experienceDraftProperties = {
+  schemaVersion: { const: 1 },
+  revision: { type: "integer", minimum: 0 },
+  starter: objectSchema(
+    {
+      id: { type: "string", minLength: 1 },
+      version: { type: "integer", minimum: 1 },
+      name: { type: "string", minLength: 1 },
+      manifestSha256: { type: "string", pattern: "^[0-9a-f]{64}$" },
+    },
+    ["id", "version", "name", "manifestSha256"],
+  ),
+  direction: directionSchema,
+  seed: experienceSeedSchema,
+  characterStateId: { type: "string", minLength: 1 },
+  sceneCompositionId: { type: "string", minLength: 1 },
+  lastSubmission: objectSchema(
+    {
+      idempotencyKey: { type: "string", minLength: 1, maxLength: 100 },
+      bundleId: { type: "string", minLength: 1 },
+    },
+    ["idempotencyKey", "bundleId"],
+  ),
+}
+
+const experienceDraftRequired = ["schemaVersion", "revision", "starter", "direction", "seed", "characterStateId", "sceneCompositionId"]
+const experienceDraftCreateProperties = {
+  schemaVersion: experienceDraftProperties.schemaVersion,
+  revision: experienceDraftProperties.revision,
+  starter: experienceDraftProperties.starter,
+  direction: experienceDraftProperties.direction,
+  seed: experienceDraftProperties.seed,
+  characterStateId: experienceDraftProperties.characterStateId,
+  sceneCompositionId: experienceDraftProperties.sceneCompositionId,
+}
+
+export const FIXED_BACKBONE_VERSION = "4"
 
 export const FIXED_BACKBONE_SOURCES = [
   source(
@@ -175,6 +234,18 @@ export const FIXED_BACKBONE_SOURCES = [
           },
           ["runId", "nodeId", "userText", "expectedRevision", "status", "createdAtMs"],
         ),
+      },
+    ),
+  ),
+  source(
+    "fixed/experience-draft.yaml",
+    envelope(
+      "Schema",
+      "experience-drafts",
+      {
+        title: "Experience drafts",
+        lifecycle: "operational",
+        schema: objectSchema(experienceDraftProperties, experienceDraftRequired),
       },
     ),
   ),
@@ -323,8 +394,53 @@ export const FIXED_BACKBONE_SOURCES = [
     envelope("View", "current-stage", {
       from: "stages",
       surface: "public",
-      fields: ["title", "narrative", "scene", "actions", "progress", "terminal"],
+      fields: ["title", "narrative", "scene", "actions", "progress", "terminal", "agentFallback"],
       limit: 1,
+    }),
+  ),
+  source(
+    "fixed/select-experience-draft.yaml",
+    envelope("Procedure", "select-experience-draft", {
+      input: objectSchema(experienceDraftCreateProperties, experienceDraftRequired),
+      output: { type: "object" },
+      handler: { kind: "builtin", op: "create", schema: "experience-drafts" },
+    }),
+  ),
+  source(
+    "fixed/select-experience-draft-mcp.yaml",
+    envelope("Trigger", "select-experience-draft", {
+      source: { kind: "mcp", surface: "staff" },
+      target: { procedure: "select-experience-draft" },
+    }),
+  ),
+  source(
+    "fixed/submit-experience-candidate.yaml",
+    envelope("Procedure", "submit-experience-candidate", {
+      input: objectSchema(
+        {
+          draftId: { type: "string", minLength: 1 },
+          expectedRevision: { type: "integer", minimum: 0 },
+          idempotencyKey: { type: "string", minLength: 1, maxLength: 100 },
+          candidateJson: { type: "string", minLength: 2, maxLength: 1_000_000 },
+        },
+        ["draftId", "expectedRevision", "idempotencyKey", "candidateJson"],
+      ),
+      output: objectSchema(
+        {
+          bundleId: { type: "string", minLength: 1 },
+          revision: { type: "integer", minimum: 1 },
+          replayed: { type: "boolean" },
+        },
+        ["bundleId", "revision", "replayed"],
+      ),
+      handler: { kind: "ref", ref: "companion.submit-experience-candidate" },
+    }),
+  ),
+  source(
+    "fixed/submit-experience-candidate-mcp.yaml",
+    envelope("Trigger", "submit-experience-candidate", {
+      source: { kind: "mcp", surface: "public" },
+      target: { procedure: "submit-experience-candidate" },
     }),
   ),
   source(

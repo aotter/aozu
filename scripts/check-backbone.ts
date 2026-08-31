@@ -4,10 +4,12 @@ import { compileFixedBackbone, FIXED_BACKBONE_VERSION } from "../src/core/mantle
 
 const plan = compileFixedBackbone()
 
-assert.equal(FIXED_BACKBONE_VERSION, "3")
-assert.deepEqual(Object.keys(plan.schemas).sort(), ["character-loadouts", "character-packs", "character-states", "inventory-items", "item-definitions", "journal-entries", "pending-agent-turns", "progress-events", "rules", "runs", "scene-assets", "scene-compositions", "stages"])
+assert.equal(FIXED_BACKBONE_VERSION, "4")
+assert.deepEqual(Object.keys(plan.schemas).sort(), ["character-loadouts", "character-packs", "character-states", "experience-drafts", "inventory-items", "item-definitions", "journal-entries", "pending-agent-turns", "progress-events", "rules", "runs", "scene-assets", "scene-compositions", "stages"])
 assert.equal(plan.views["current-stage"]?.query.kind, "declarative")
 assert.equal(plan.procedures["submit-action"]?.manifest.spec.handler.kind, "ref")
+assert.equal(plan.triggers["select-experience-draft"]?.target, "select-experience-draft")
+assert.equal(plan.triggers["submit-experience-candidate"]?.target, "submit-experience-candidate")
 assert.ok(plan.mcpTools.some(({ name }) => name === "submit_action"))
 assert.ok(new EntryDataValidator().validate(plan.schemas.stages!.manifest, { title: "Bad scene", narrative: "", actions: [], progress: [], scene: {} }).length)
 assert.equal(plan.httpRoutes.length, 0)

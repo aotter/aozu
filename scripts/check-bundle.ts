@@ -11,7 +11,7 @@ const record = {
   identity: {
     contractVersion: 1 as const,
     backboneVersion: FIXED_BACKBONE_VERSION,
-    templateId: "adventure",
+    templateId: "test-starter",
     templateVersion: "1",
   },
   createdAt: 1,

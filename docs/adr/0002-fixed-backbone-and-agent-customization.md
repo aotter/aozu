@@ -15,15 +15,17 @@ Most story content is instance data, not new infrastructure. Asking an agent to
 rewrite all four Mantle atoms for every character would increase failures and
 make compatibility difficult to preserve.
 
-Purpose templates must provide useful defaults while still producing portable,
-self-contained bundles.
+Starter packages must provide useful visual resources and authoring guidance
+while still producing portable, self-contained bundles. ADR-0007 supersedes
+this record's earlier executable Purpose Template layer; the fixed-backbone and
+semantic-validation decisions below remain in force.
 
 ## Decision
 
 Every resolved bundle is assembled from three layers:
 
 ```text
-Fixed Backbone + Purpose Template + Agent Customization = Resolved Bundle
+Fixed Backbone + Agent-completed Starter Draft = Resolved Bundle
 ```
 
 ### Fixed Backbone
@@ -35,17 +37,18 @@ parts are immutable to the agent.
 At minimum, the backbone exposes a `current-stage` View and a `submit-action`
 Procedure whose output conforms to `StageProjection` from ADR-0001.
 
-### Purpose Template
+### Starter authoring input
 
-A template selects Progress Loops, supplies default schema slots and seed
-entries, and provides authoring guidance. Fitness, romance, and narrative
-adventure are templates, not engine-level types.
+A versioned static Starter selects Progress Loops, supplies visual resources and
+an incomplete skeleton, and provides authoring guidance. It supplies no hidden
+executable stages, actions, metrics, or rules. Direction recipes are package
+data, not engine-level types or TypeScript constants.
 
-Each template declares a completion mode. A `finite` experience is expected to
+Each Direction declares a completion mode. A `finite` experience is expected to
 reach a terminal stage; a `continuous` experience may intentionally keep a
 habit, relationship, or care loop running indefinitely.
 
-### Agent Customization
+### Agent-completed Playbook
 
 The agent primarily writes validated entries for characters, stages, dialogue,
 rules, memories, and initial state. It may replace only explicitly allowlisted
@@ -62,9 +65,9 @@ infrastructure routing mechanism for MCP and lifecycle events.
 
 ### Assembly and validation
 
-YAML is parsed before merging. Companion never merges YAML text. An object-level
-overlay copies only allowlisted paths from an agent proposal into the selected
-backbone and template.
+Companion never merges agent-authored manifest text. A complete declarative
+candidate is validated and assembled with the locked backbone and validated
+Starter resources through the Mantle Trigger boundary in ADR-0007.
 
 Candidate bundles pass these gates in order:
 
@@ -115,7 +118,7 @@ template installed on the current site.
 
 - Agent creativity is limited at execution boundaries but remains flexible in
   content and declared data shapes.
-- A template update cannot silently change an already exported experience.
+- A Starter update cannot silently change an already exported experience.
 - Backbone upgrades require an explicit migration keyed by backbone and
   contract version.
 - Product-level hidden content is not treated as a security boundary; a user

@@ -14,6 +14,7 @@ export interface StageProjection {
   stageId: string
   revision: number
   status: 'active' | 'completed' | 'blocked'
+  agentFallback: boolean
   title: string
   narrative: string
   scene?: {

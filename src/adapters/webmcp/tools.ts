@@ -21,6 +21,8 @@ export function createAgentCapability(document: Document): AgentCapability {
 }
 
 export function registerCompanionTools(document: Document, useCases: {
+  inspectExperience(): Promise<unknown>
+  submitExperience(input: { draftId: string; expectedRevision: number; idempotencyKey: string; candidate: unknown }): Promise<unknown>
   inspect(): Promise<unknown>
   inspectCharacter(): Promise<unknown>
   submitCharacterAsset(input: { target: CharacterAssetTarget; filename: string; dataUrl: string }): Promise<unknown>
@@ -31,6 +33,104 @@ export function registerCompanionTools(document: Document, useCases: {
   if (!modelContext) return null
   const controller = new AbortController()
   void Promise.all([
+    modelContext.registerTool({
+      name: 'inspect_experience_contract',
+      title: 'Inspect Experience Contract',
+      description: 'Required first step for authoring an experience. Returns the selected immutable Starter identity, exact Experience Draft revision, Direction and Experience Seed, available visual references, incomplete Playbook skeleton, supported vocabulary, and validation limits. No runnable Companion exists until a complete candidate is validated and the user approves it.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true },
+      execute: () => useCases.inspectExperience(),
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'submit_experience_candidate',
+      title: 'Submit Experience Candidate',
+      description: 'Submit one complete declarative Playbook for the exact inspected draft revision. Starter assets, fixed manifests, handlers, and application code cannot be replaced. Invalid or stale submissions return diagnostics without staging. A valid candidate remains inactive until explicit user review and approval.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          draftId: { type: 'string', minLength: 1 },
+          expectedRevision: { type: 'integer', minimum: 0 },
+          idempotencyKey: { type: 'string', minLength: 1, maxLength: 100 },
+          candidate: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', minLength: 1, maxLength: 200 },
+              initialStageId: { type: 'string', minLength: 1, maxLength: 100 },
+              metrics: { type: 'object', additionalProperties: { type: 'number' } },
+              flags: { type: 'object', additionalProperties: { type: 'boolean' } },
+              itemDefinitions: { type: 'array', maxItems: 100, items: { type: 'object' } },
+              stages: {
+                type: 'array',
+                minItems: 1,
+                maxItems: 100,
+                items: {
+                  type: 'object',
+                  properties: {
+                    id: { type: 'string', minLength: 1, maxLength: 100 },
+                    title: { type: 'string', minLength: 1, maxLength: 500 },
+                    narrative: { type: 'string', minLength: 1, maxLength: 8000 },
+                    terminal: { type: 'boolean' },
+                    agentFallback: { type: 'boolean' },
+                    scene: {
+                      type: 'object',
+                      properties: {
+                        compositionId: { type: 'string', minLength: 1 },
+                        characterStateId: { type: 'string', minLength: 1 },
+                      },
+                      required: ['compositionId'],
+                      additionalProperties: false,
+                    },
+                    actions: {
+                      type: 'array',
+                      maxItems: 50,
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', minLength: 1, maxLength: 100 },
+                          label: { type: 'string', minLength: 1, maxLength: 200 },
+                          phrases: { type: 'array', items: { type: 'string', minLength: 1, maxLength: 500 } },
+                          effects: { type: 'array', maxItems: 50, items: { type: 'object' } },
+                        },
+                        required: ['id', 'label'],
+                        additionalProperties: false,
+                      },
+                    },
+                  },
+                  required: ['id', 'title', 'narrative', 'actions'],
+                  additionalProperties: false,
+                },
+              },
+              rules: {
+                type: 'array',
+                maxItems: 100,
+                items: {
+                  type: 'object',
+                  properties: {
+                    ruleId: { type: 'string', minLength: 1, maxLength: 100 },
+                    priority: { type: 'integer' },
+                    when: { type: 'object' },
+                    effects: { type: 'array', maxItems: 50, items: { type: 'object' } },
+                  },
+                  required: ['ruleId', 'priority', 'when', 'effects'],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ['name', 'initialStageId', 'metrics', 'stages'],
+            additionalProperties: false,
+          },
+        },
+        required: ['draftId', 'expectedRevision', 'idempotencyKey', 'candidate'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: (input) => useCases.submitExperience({
+        draftId: String(input.draftId),
+        expectedRevision: Number(input.expectedRevision),
+        idempotencyKey: String(input.idempotencyKey),
+        candidate: input.candidate,
+      }),
+    }, { signal: controller.signal }),
     modelContext.registerTool({
       name: 'inspect_character_contract',
       title: 'Inspect Character Contract',

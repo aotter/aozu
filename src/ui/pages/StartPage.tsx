@@ -5,13 +5,13 @@ import { Button } from '@/ui/components/ui/button'
 import { DataControls } from '@/ui/DataControls'
 import type { SavedCompanion } from '@/core/application/companion'
 
-const startOptions = ['custom', 'preset', 'bundle'] as const
+const startOptions = ['custom', 'starter', 'bundle'] as const
 
-export function StartPage({ savedCompanions, onOpenCompanion, onDeleteCompanion, onCreatePreset, onCreateCharacter, prepareImport }: {
+export function StartPage({ savedCompanions, onOpenCompanion, onDeleteCompanion, onChooseStarter, onCreateCharacter, prepareImport }: {
   savedCompanions: SavedCompanion[]
   onOpenCompanion(bundleId: string): Promise<void>
   onDeleteCompanion(bundleId: string): Promise<void>
-  onCreatePreset(): void
+  onChooseStarter(): void
   onCreateCharacter(): void
   prepareImport(blob: Blob): Promise<void>
 }) {
@@ -49,8 +49,8 @@ export function StartPage({ savedCompanions, onOpenCompanion, onDeleteCompanion,
           <p className="mt-2 text-sm leading-5 text-muted-foreground">{t(`start.options.${option}.description`)}</p>
           {option === 'bundle' ? <div className="mt-auto"><DataControls prepareImport={prepareImport} /></div> : <Button
             className="mt-auto"
-            onClick={option === 'preset' ? onCreatePreset : onCreateCharacter}
-          >{option === 'preset' ? t('start.createPreset') : t('start.createCharacter')}</Button>}
+            onClick={option === 'starter' ? onChooseStarter : onCreateCharacter}
+          >{option === 'starter' ? t('start.chooseStarter') : t('start.createCharacter')}</Button>}
         </section>)}
       </div>
     </main>

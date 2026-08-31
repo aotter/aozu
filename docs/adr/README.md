@@ -24,3 +24,5 @@ old one as superseded.
 | [0004](0004-progress-loops-and-precompiled-playbooks.md) | Accepted | Compose experiences from Progress Loops and precompiled Playbooks |
 | [0005](0005-character-rig-and-pack-ecosystem.md) | Accepted | Separate visual rigs and character packs from experience mechanics |
 | [0006](0006-functional-items-and-appearance-separation.md) | Accepted | Give items validated gameplay affordances without coupling function to artwork |
+| [0007](0007-data-driven-starter-packages.md) | Accepted | Author experiences from static Starter packages through Mantle Triggers |
+| [0008](0008-scene-packs-and-layered-compositions.md) | Accepted | Validate and render versioned Scene Packs as layered compositions |
