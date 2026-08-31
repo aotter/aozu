@@ -2,13 +2,11 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { StagedCandidatePreview } from '@/core/application/candidate.ts'
-import { AppHeader } from '@/ui/AppHeader'
 import { CharacterRenderer } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
 
-export function CandidateReviewPage({ preview, webmcpAvailable, onApprove, onCancel }: {
+export function CandidateReviewPage({ preview, onApprove, onCancel }: {
   preview: StagedCandidatePreview
-  webmcpAvailable: boolean
   onApprove(): Promise<void>
   onCancel(): Promise<void>
 }) {
@@ -21,8 +19,7 @@ export function CandidateReviewPage({ preview, webmcpAvailable, onApprove, onCan
     try { await task() } catch { setError(true); setBusy(false) }
   }
 
-  return <div className="min-h-svh">
-    <AppHeader title={preview.name} webmcpAvailable={webmcpAvailable} />
+  return <>
     <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-xl flex-col justify-center px-4 py-10">
       <p className="text-sm font-medium text-muted-foreground">{t(`candidate.source.${preview.source}`)}</p>
       <h1 className="mt-2 font-heading text-3xl font-semibold tracking-tight">{t('candidate.title')}</h1>
@@ -46,5 +43,5 @@ export function CandidateReviewPage({ preview, webmcpAvailable, onApprove, onCan
       </div>
       {error && <p role="alert" className="mt-4 text-sm text-destructive">{t('startup.error')}</p>}
     </main>
-  </div>
+  </>
 }

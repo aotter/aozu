@@ -5,6 +5,8 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 import type { Application } from '@/bootstrap.ts'
 import type { CompanionStartup } from '@/core/application/companion.ts'
 import type { StagedCandidatePreview } from '@/core/application/candidate.ts'
+import { AppHeader } from '@/ui/AppHeader'
+import { AppMenu } from '@/ui/AppMenu'
 import { CandidateReviewPage } from '@/ui/pages/CandidateReviewPage'
 import { CharacterDraftPage } from '@/ui/pages/CharacterDraftPage'
 import { CompanionPage } from '@/ui/pages/CompanionPage'
@@ -48,29 +50,45 @@ export function AppRoutes({ application }: { application: Application }) {
     return () => window.removeEventListener('character-draft-updated', onDraftUpdate)
   }, [location.pathname, navigate])
 
-  if (loadError) return <StatusPage>{t('startup.error')}</StatusPage>
-  if (!startup) return <StatusPage>{t('startup.loading')}</StatusPage>
+  if (loadError) return <><AppHeader webmcpAvailable={false} /><StatusPage>{t('startup.error')}</StatusPage></>
+  if (!startup) return <><AppHeader webmcpAvailable={false} /><StatusPage>{t('startup.loading')}</StatusPage></>
 
-  const homePath = startup.status === 'main' ? '/companion' : '/start'
   const flowReturnTo = (location.state as { returnTo?: FlowReturnTo } | null)?.returnTo
-  const closeFlow = () => flowReturnTo ? navigate(-1) : navigate('/start', { replace: true })
+  const closeFlow = () => navigate(flowReturnTo ?? '/start', { replace: true })
   const prepareReview = async (task: Promise<StagedCandidatePreview>) => {
     setPreview(await task)
     navigate('/review')
   }
   const characterDraftPage = <CharacterDraftPage
-    webmcpAvailable={startup.webmcpAvailable}
     openDraft={application.openCharacterDraft}
     updateDraft={application.updateCharacterDraft}
     saveAsset={application.saveCharacterAsset}
     onReview={(draft) => prepareReview(application.prepareCharacter(draft))}
-    onCancel={closeFlow}
   />
+  const showBack = location.pathname !== '/' && location.pathname !== '/start'
+  const goBack = () => {
+    if (location.pathname === '/review' && preview) {
+      setPreview(undefined)
+      navigate(-1)
+      return
+    }
+    closeFlow()
+  }
+  const headerTitle = location.pathname === '/companion' && startup.status === 'main'
+    ? startup.companion.name
+    : location.pathname === '/review' ? preview?.name : undefined
+  const headerActions = location.pathname === '/companion' && startup.status === 'main' ? <AppMenu
+    exportData={application.exportData}
+    prepareImport={(blob) => prepareReview(application.prepareImport(blob))}
+    onCreateCharacter={() => navigate('/character', { state: { returnTo: '/companion' } })}
+    onOpenStart={() => navigate('/start')}
+  /> : undefined
 
-  return <Routes>
-    <Route index element={<Navigate to={homePath} replace />} />
+  return <>
+    <AppHeader webmcpAvailable={startup.webmcpAvailable} title={headerTitle} onBack={showBack ? goBack : undefined} actions={headerActions} />
+    <Routes>
+    <Route index element={<Navigate to="/start" replace />} />
     <Route path="/start" element={<StartPage
-      webmcpAvailable={startup.webmcpAvailable}
       savedCompanions={startup.savedCompanions}
       onOpenCompanion={async (bundleId) => {
         await application.activateCompanion(bundleId)
@@ -90,7 +108,6 @@ export function AppRoutes({ application }: { application: Application }) {
     />} />
     <Route path="/preset" element={<PresetDraftPage
       seed={presetSeed}
-      webmcpAvailable={startup.webmcpAvailable}
       onReview={(customization) => prepareReview(application.preparePreset(customization))}
       onCancel={closeFlow}
     />} />
@@ -98,7 +115,6 @@ export function AppRoutes({ application }: { application: Application }) {
     <Route path="/character/:step" element={characterDraftPage} />
     <Route path="/review" element={preview ? <CandidateReviewPage
       preview={preview}
-      webmcpAvailable={startup.webmcpAvailable}
       onApprove={async () => {
         await application.approveCandidate(preview.bundleId, true)
         if (preview.source === 'character') await application.clearCharacterDraft()
@@ -110,18 +126,13 @@ export function AppRoutes({ application }: { application: Application }) {
         setPreview(undefined)
         navigate(-1)
       }}
-    /> : <Navigate to={homePath} replace />} />
+    /> : <Navigate to="/start" replace />} />
     <Route path="/companion" element={startup.status === 'main' ? <CompanionPage
       companionName={startup.companion.name}
       stage={startup.stage}
       dialogue={startup.dialogue}
       pendingTurns={startup.pendingTurns}
       character={startup.character}
-      webmcpAvailable={startup.webmcpAvailable}
-      exportData={application.exportData}
-      prepareImport={(blob) => prepareReview(application.prepareImport(blob))}
-      onCreateCharacter={() => navigate('/character', { state: { returnTo: '/companion' } })}
-      onOpenStart={() => navigate('/start')}
       onAction={async (actionId) => {
         await application.submitAction(actionId, startup.stage.revision)
         await refresh()
@@ -131,6 +142,7 @@ export function AppRoutes({ application }: { application: Application }) {
         await refresh()
       }}
     /> : <Navigate to="/start" replace />} />
-    <Route path="*" element={<Navigate to="/" replace />} />
-  </Routes>
+    <Route path="*" element={<Navigate to="/start" replace />} />
+    </Routes>
+  </>
 }

@@ -3,23 +3,16 @@ import { useTranslation } from 'react-i18next'
 
 import type { StageProjection } from '@/core/domain/companion.ts'
 import type { ResolvedCharacterLayer } from '@/core/domain/character.ts'
-import { AppHeader } from '@/ui/AppHeader'
-import { AppMenu } from '@/ui/AppMenu'
 import { CharacterRenderer } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
 import { Separator } from '@/ui/components/ui/separator'
 
-export function CompanionPage({ companionName, stage, dialogue, pendingTurns, character, webmcpAvailable, exportData, prepareImport, onCreateCharacter, onOpenStart, onAction, onText }: {
+export function CompanionPage({ companionName, stage, dialogue, pendingTurns, character, onAction, onText }: {
   companionName: string
   stage: StageProjection
   dialogue?: string
   pendingTurns: number
   character?: Array<ResolvedCharacterLayer & { blob: Blob }>
-  webmcpAvailable: boolean
-  exportData(): Promise<Blob>
-  prepareImport(blob: Blob): Promise<void>
-  onCreateCharacter(): void
-  onOpenStart(): void
   onAction(actionId: string): Promise<void>
   onText(text: string): Promise<void>
 }) {
@@ -27,13 +20,7 @@ export function CompanionPage({ companionName, stage, dialogue, pendingTurns, ch
   const [busy, setBusy] = useState(false)
   const [text, setText] = useState('')
 
-  return <div className="min-h-svh bg-muted/30">
-    <AppHeader
-      title={companionName}
-      webmcpAvailable={webmcpAvailable}
-      actions={<AppMenu exportData={exportData} prepareImport={prepareImport} onCreateCharacter={onCreateCharacter} onOpenStart={onOpenStart} />}
-    />
-
+  return <div className="bg-muted/30">
     <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-5xl flex-col px-4">
       <section aria-label={t('main.stageTitle')} className="flex min-h-0 flex-1 items-center justify-center py-6">
         <div className="flex aspect-2/3 max-h-[65svh] w-full max-w-sm items-center justify-center rounded-3xl bg-background shadow-sm">

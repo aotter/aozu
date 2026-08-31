@@ -2,14 +2,12 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/ui/components/ui/button'
-import { AppHeader } from '@/ui/AppHeader'
 import { DataControls } from '@/ui/DataControls'
 import type { SavedCompanion } from '@/core/application/companion'
 
 const startOptions = ['custom', 'preset', 'bundle'] as const
 
-export function StartPage({ webmcpAvailable, savedCompanions, onOpenCompanion, onDeleteCompanion, onCreatePreset, onCreateCharacter, prepareImport }: {
-  webmcpAvailable: boolean
+export function StartPage({ savedCompanions, onOpenCompanion, onDeleteCompanion, onCreatePreset, onCreateCharacter, prepareImport }: {
   savedCompanions: SavedCompanion[]
   onOpenCompanion(bundleId: string): Promise<void>
   onDeleteCompanion(bundleId: string): Promise<void>
@@ -21,8 +19,7 @@ export function StartPage({ webmcpAvailable, savedCompanions, onOpenCompanion, o
   const [deleting, setDeleting] = useState<string>()
   const [deleteError, setDeleteError] = useState(false)
 
-  return <div className="min-h-svh">
-    <AppHeader webmcpAvailable={webmcpAvailable} />
+  return <>
     <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-3xl flex-col justify-center px-4 py-10">
       <h1 className="font-heading text-3xl font-semibold tracking-tight">{t('start.title')}</h1>
       <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">{t('start.description')}</p>
@@ -57,5 +54,5 @@ export function StartPage({ webmcpAvailable, savedCompanions, onOpenCompanion, o
         </section>)}
       </div>
     </main>
-  </div>
+  </>
 }

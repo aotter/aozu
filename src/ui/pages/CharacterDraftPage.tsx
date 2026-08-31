@@ -5,7 +5,6 @@ import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
 
 import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, resolveCharacterDraftLayers } from '@/core/application/character-creation.ts'
 import type { CharacterAssetTarget, CharacterDraft, CharacterDraftVariant, CharacterVariantGroup, CharacterVariantLayer } from '@/core/domain/character.ts'
-import { AppHeader } from '@/ui/AppHeader'
 import { CharacterAssetImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
 import { StatusPage } from '@/ui/pages/StatusPage'
@@ -26,13 +25,11 @@ const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
 }
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
 
-export function CharacterDraftPage({ webmcpAvailable, openDraft, updateDraft, saveAsset, onReview, onCancel }: {
-  webmcpAvailable: boolean
+export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, onReview }: {
   openDraft(): Promise<CharacterDraft>
   updateDraft(draft: CharacterDraft): Promise<CharacterDraft>
   saveAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string): Promise<CharacterDraft>
   onReview(draft: CharacterDraft): Promise<void>
-  onCancel(): void
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -127,13 +124,7 @@ export function CharacterDraftPage({ webmcpAvailable, openDraft, updateDraft, sa
       }} />
   }
 
-  return <div className="h-svh overflow-hidden bg-muted/30">
-    <AppHeader
-      title={draft.name}
-      webmcpAvailable={webmcpAvailable}
-      back={<Button type="button" size="sm" variant="ghost" disabled={Boolean(busy)} onClick={onCancel}>{t('common.back')}</Button>}
-      actions={!reviewing && <Button type="button" size="sm" disabled={Boolean(busy)} onClick={() => navigate('/character/review', { state: location.state })}>{t('characterDraft.review')}</Button>}
-    />
+  return <div className="h-[calc(100svh-3.5rem)] overflow-hidden bg-muted/30">
     <main className="mx-auto grid h-[calc(100svh-3.5rem)] w-full max-w-5xl grid-cols-[minmax(0,2fr)_minmax(7rem,1fr)] gap-2 p-2 sm:w-[calc(100%-4rem)] sm:gap-4 sm:p-4 lg:w-[calc(100%-8rem)]">
       <section className="flex min-h-0 min-w-0 flex-col rounded-2xl border bg-background p-2 sm:p-4">
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">

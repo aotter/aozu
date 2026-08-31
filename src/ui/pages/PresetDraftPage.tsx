@@ -3,11 +3,9 @@ import { useTranslation } from 'react-i18next'
 
 import type { AgentCustomization } from '@/core/application/authoring.ts'
 import { Button } from '@/ui/components/ui/button'
-import { AppHeader } from '@/ui/AppHeader'
 
-export function PresetDraftPage({ seed, webmcpAvailable, onReview, onCancel }: {
+export function PresetDraftPage({ seed, onReview, onCancel }: {
   seed: AgentCustomization
-  webmcpAvailable: boolean
   onReview(customization: AgentCustomization): Promise<void>
   onCancel(): void
 }) {
@@ -22,8 +20,7 @@ export function PresetDraftPage({ seed, webmcpAvailable, onReview, onCancel }: {
     stages: current.stages.map((item, index) => index === stageIndex ? { ...item, ...values } : item),
   }))
 
-  return <div className="min-h-svh">
-    <AppHeader title={draft.name} webmcpAvailable={webmcpAvailable} />
+  return <>
     <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-xl flex-col justify-center px-4 py-10">
       <h1 className="font-heading text-3xl font-semibold tracking-tight">{t('draft.title')}</h1>
       <p className="mt-3 text-sm leading-6 text-muted-foreground">{t('draft.description')}</p>
@@ -52,5 +49,5 @@ export function PresetDraftPage({ seed, webmcpAvailable, onReview, onCancel }: {
       </form>
       {error && <p role="alert" className="mt-4 text-sm text-destructive">{t('startup.error')}</p>}
     </main>
-  </div>
+  </>
 }
