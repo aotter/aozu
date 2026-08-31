@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "id": "focus-studio",
-  "version": 1,
+  "version": 2,
   "name": "Focus Studio",
   "description": "A calm visual foundation for an agent-authored study companion.",
   "compatibility": {
-    "contractVersion": 1,
-    "backboneVersion": "4"
+    "contractVersion": 2,
+    "backboneVersion": "5"
   },
   "assetFiles": [
     {

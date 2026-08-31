@@ -1,5 +1,13 @@
-import { linkManifestSet, parseManifestSources, type Diagnostic, type ManifestSource } from "@aotter/mantle-spec"
+import { linkManifestSet, parseManifestSources, type Diagnostic, type JsonSchema, type ManifestSource } from "@aotter/mantle-spec"
 import { compileRuntimePlan, type RuntimePlan } from "@aotter/mantle-runtime"
+import {
+  CONDITION_REF,
+  EFFECT_SCHEMA,
+  PLAYBOOK_LIMITS,
+  PLAYBOOK_SCHEMA_DEFS,
+  PROGRESS_LOOP_IDS,
+  PROGRESS_BINDING_SCHEMA,
+} from '../domain/playbook.ts'
 
 const source = (sourceId: string, manifest: object): ManifestSource => ({
   sourceId,
@@ -13,7 +21,7 @@ const envelope = (kind: string, name: string, spec: object) => ({
   spec,
 })
 
-const objectSchema = (properties: object, required: string[] = []) => ({
+const objectSchema = (properties: Readonly<Record<string, JsonSchema>>, required: string[] = []): JsonSchema => ({
   type: "object",
   properties,
   required,
@@ -25,20 +33,12 @@ const actionSchema = objectSchema(
     id: { type: "string", minLength: 1 },
     label: { type: "string", minLength: 1 },
     phrases: { type: "array", items: { type: "string", minLength: 1 } },
-    effects: { type: "array", items: { type: "object" } },
+    effects: { type: "array", maxItems: PLAYBOOK_LIMITS.effectsPerActionOrRule, items: EFFECT_SCHEMA },
   },
   ["id", "label"],
 )
 
-const progressSchema = objectSchema(
-  {
-    id: { type: "string", minLength: 1 },
-    label: { type: "string", minLength: 1 },
-    value: { type: ["string", "number"] },
-    max: { type: "number" },
-  },
-  ["id", "label", "value"],
-)
+const progressSchema = PROGRESS_BINDING_SCHEMA
 
 const sceneReferenceSchema = objectSchema({
   compositionId: { type: "string", minLength: 1 },
@@ -49,7 +49,7 @@ const experienceSeedSchema = objectSchema(
   {
     kind: { enum: ["story", "task"] },
     directionId: { type: "string", minLength: 1 },
-    loopIds: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+    loopIds: { type: "array", minItems: 1, items: { enum: PROGRESS_LOOP_IDS } },
     completionMode: { enum: ["finite", "continuous"] },
     brief: { type: "string", minLength: 1, maxLength: 8000 },
   },
@@ -104,7 +104,7 @@ const experienceDraftCreateProperties = {
   sceneCompositionId: experienceDraftProperties.sceneCompositionId,
 }
 
-export const FIXED_BACKBONE_VERSION = "4"
+export const FIXED_BACKBONE_VERSION = "5"
 
 export const FIXED_BACKBONE_SOURCES = [
   source(
@@ -262,7 +262,7 @@ export const FIXED_BACKBONE_SOURCES = [
             currentStageId: { type: "string", minLength: 1 },
             revision: { type: "integer", minimum: 0 },
             status: { enum: ["active", "completed", "blocked"] },
-            currentDialogueId: { type: "string" },
+            currentDialogue: { type: "string", maxLength: PLAYBOOK_LIMITS.dialogueLength },
             metrics: { type: "object", additionalProperties: { type: "number" } },
             flags: { type: "object", additionalProperties: { type: "boolean" } },
           },
@@ -280,15 +280,18 @@ export const FIXED_BACKBONE_SOURCES = [
         title: "Rules",
         lifecycle: "operational",
         indexes: [["priority", "ruleId"]],
-        schema: objectSchema(
+        schema: {
+          ...objectSchema(
           {
             ruleId: { type: "string", minLength: 1 },
             priority: { type: "integer" },
-            when: { type: "object" },
-            effects: { type: "array", items: { type: "object" } },
+            when: CONDITION_REF,
+            effects: { type: "array", maxItems: PLAYBOOK_LIMITS.effectsPerActionOrRule, items: EFFECT_SCHEMA },
           },
           ["ruleId", "priority", "when", "effects"],
-        ),
+          ),
+          $defs: PLAYBOOK_SCHEMA_DEFS,
+        },
       },
     ),
   ),

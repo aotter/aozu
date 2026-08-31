@@ -9,11 +9,11 @@ importers:
   .:
     dependencies:
       '@aotter/mantle-runtime':
-        specifier: 0.1.0-alpha.11
-        version: 0.1.0-alpha.11(zod@4.5.2)
+        specifier: 0.1.0-alpha.13
+        version: 0.1.0-alpha.13(zod@4.5.2)
       '@aotter/mantle-spec':
-        specifier: 0.1.0-alpha.11
-        version: 0.1.0-alpha.11(zod@4.5.2)
+        specifier: 0.1.0-alpha.13
+        version: 0.1.0-alpha.13(zod@4.5.2)
       '@fontsource-variable/geist':
         specifier: ^5.3.0
         version: 5.3.0
@@ -29,12 +29,12 @@ importers:
       fflate:
         specifier: 0.8.3
         version: 0.8.3
-      idb:
-        specifier: ^8.0.3
-        version: 8.0.3
       i18next:
         specifier: ^26.4.0
         version: 26.4.0(typescript@6.0.3)
+      idb:
+        specifier: ^8.0.3
+        version: 8.0.3
       lucide-react:
         specifier: ^1.37.0
         version: 1.37.0(react@19.2.8)
@@ -96,19 +96,16 @@ importers:
 
 packages:
 
-  cookie-es@3.1.1:
-    resolution: {integrity: sha512-UaXxwISYJPTr9hwQxMFYZ7kNhSXboMXP+Z3TRX6f1/NyaGPfuNUZOWP1pUEb75B2HjfklIYLVRfWiFZJyC6Npg==}
-
-  '@aotter/mantle-runtime@0.1.0-alpha.11':
-    resolution: {integrity: sha512-O4YNixFwUJ44mc61EJassWYaw83DBs1smR4tG7+P+1mPGYHhm1WckdTMapkrBis//JEn8YDOD0VZM9A+st6tcQ==}
+  '@aotter/mantle-runtime@0.1.0-alpha.13':
+    resolution: {integrity: sha512-cxRdOLnM3FpK72JRqkX8N9J/B2OSMTLn2PscBSkyg+cD4G6GQ7N3n+W9QGDjru8LHKleAkAtoX4pS/SyEWqgCw==}
     peerDependencies:
-      zod: ^4.0.0
+      zod: ^4.5.0
 
-  '@aotter/mantle-spec@0.1.0-alpha.11':
-    resolution: {integrity: sha512-VENNVUj70SpyrxW2vIfWFyGOfgbXBghGlXC9UvGxU1jzvUNshsw1sSGaLhjWpme65W9m6BtZILzvmAerW7DArg==}
+  '@aotter/mantle-spec@0.1.0-alpha.13':
+    resolution: {integrity: sha512-sv+ZxQsawoLbJS34rgm/fhJTUAfMjSSY4TKk4pPgc3kT3g4Rn864gpaygRb/eKPw0ctHhnN8wCV1T3AbYodSKQ==}
     hasBin: true
     peerDependencies:
-      zod: ^4.0.0
+      zod: ^4.5.0
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -1905,6 +1902,9 @@ packages:
   convert-source-map@2.0.0:
     resolution: {integrity: sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg==}
 
+  cookie-es@3.1.1:
+    resolution: {integrity: sha512-UaXxwISYJPTr9hwQxMFYZ7kNhSXboMXP+Z3TRX6f1/NyaGPfuNUZOWP1pUEb75B2HjfklIYLVRfWiFZJyC6Npg==}
+
   cookie-signature@1.2.2:
     resolution: {integrity: sha512-D76uU73ulSXrD1UXF4KE2TMxVVwhsnCgfAyTg9k8P6KGZjlXKrOLe4dJQKI3Bxi5wjesZoFXJWElNWBjPZMbhg==}
     engines: {node: '>=6.6.0'}
@@ -2125,9 +2125,6 @@ packages:
   fflate@0.8.3:
     resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
-  idb@8.0.3:
-    resolution: {integrity: sha512-LtwtVyVYO5BqRvcsKuB2iUMnHwPVByPCXFXOpuU96IZPPoPN6xjOGxZQ74pgSVVLQWtUOYgyeL4GE98BY5D3wg==}
-
   figures@6.1.0:
     resolution: {integrity: sha512-d+l3qxjSesT4V7v2fh+QnmFnUWv9lSpjarhShNTgBOfA0ttejbQUAlHLitbjkoRiDulW0OPoQPYIGhIC8ohejg==}
     engines: {node: '>=18'}
@@ -2248,6 +2245,9 @@ packages:
   iconv-lite@0.7.3:
     resolution: {integrity: sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==}
     engines: {node: '>=0.10.0'}
+
+  idb@8.0.3:
+    resolution: {integrity: sha512-LtwtVyVYO5BqRvcsKuB2iUMnHwPVByPCXFXOpuU96IZPPoPN6xjOGxZQ74pgSVVLQWtUOYgyeL4GE98BY5D3wg==}
 
   ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
@@ -3295,14 +3295,12 @@ packages:
 
 snapshots:
 
-  cookie-es@3.1.1: {}
-
-  '@aotter/mantle-runtime@0.1.0-alpha.11(zod@4.5.2)':
+  '@aotter/mantle-runtime@0.1.0-alpha.13(zod@4.5.2)':
     dependencies:
-      '@aotter/mantle-spec': 0.1.0-alpha.11(zod@4.5.2)
+      '@aotter/mantle-spec': 0.1.0-alpha.13(zod@4.5.2)
       zod: 4.5.2
 
-  '@aotter/mantle-spec@0.1.0-alpha.11(zod@4.5.2)':
+  '@aotter/mantle-spec@0.1.0-alpha.13(zod@4.5.2)':
     dependencies:
       yaml: 2.9.0
       zod: 4.5.2
@@ -4927,6 +4925,8 @@ snapshots:
 
   convert-source-map@2.0.0: {}
 
+  cookie-es@3.1.1: {}
+
   cookie-signature@1.2.2: {}
 
   cookie@0.7.2: {}
@@ -5169,8 +5169,6 @@ snapshots:
 
   fflate@0.8.3: {}
 
-  idb@8.0.3: {}
-
   figures@6.1.0:
     dependencies:
       is-unicode-supported: 2.1.0
@@ -5281,6 +5279,8 @@ snapshots:
   iconv-lite@0.7.3:
     dependencies:
       safer-buffer: 2.1.2
+
+  idb@8.0.3: {}
 
   ignore@5.3.2: {}
 

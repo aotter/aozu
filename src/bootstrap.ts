@@ -31,7 +31,8 @@ import { requestPersistentStorage } from './adapters/browser/storage-persistence
 import { planItemEffects } from './core/application/items.ts'
 import { loadSceneProjection } from './core/application/scene.ts'
 import { exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
-import { createExperienceDraftData, EXPERIENCE_LIMITS, validateLoadedStarterPackage, type ExperienceDraft } from './core/domain/starter.ts'
+import { createExperienceDraftData, validateLoadedStarterPackage, type ExperienceDraft } from './core/domain/starter.ts'
+import { PLAYBOOK_LIMITS as EXPERIENCE_LIMITS } from './core/domain/playbook.ts'
 import { compileFixedBackbone, FIXED_BACKBONE_VERSION } from './core/mantle/backbone.ts'
 
 const readDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
@@ -179,7 +180,7 @@ export function createApplication(document: Document) {
   const active = async () => {
     const bundle = await bundles.getActive()
     if (!bundle?.record.metadata) throw new Error('No active Companion')
-    return { bundleId: bundle.record.id, ...bundle.record.metadata }
+    return { bundleId: bundle.record.id, contractVersion: bundle.record.identity.contractVersion, ...bundle.record.metadata }
   }
   const application = {
     async loadStartup() {
@@ -249,16 +250,16 @@ export function createApplication(document: Document) {
       await bundles.deleteSaved(bundleId)
     },
     async submitAction(actionId: string, expectedRevision: number, idempotencyKey: string = crypto.randomUUID()) {
-      const { bundleId, runId } = await active()
+      const { bundleId, runId, contractVersion } = await active()
       return submitInteraction(createIndexedDbEntryRepository(bundleId), createIndexedDbActionRepository(), {
-        bundleId, runId, actionId, expectedRevision, idempotencyKey,
+        bundleId, runId, contractVersion, actionId, expectedRevision, idempotencyKey,
       })
     },
     async submitText(text: string, expectedRevision: number, idempotencyKey: string = crypto.randomUUID()) {
-      const { bundleId, runId } = await active()
+      const { bundleId, runId, contractVersion } = await active()
       const entries = createIndexedDbEntryRepository(bundleId)
       const local = await submitInteraction(entries, createIndexedDbActionRepository(), {
-        bundleId, runId, text, expectedRevision, idempotencyKey,
+        bundleId, runId, contractVersion, text, expectedRevision, idempotencyKey,
       })
       if (local.path !== 'cold') return local
       const stage = await loadStage(entries, runId)
@@ -279,7 +280,7 @@ export function createApplication(document: Document) {
       return {
         status: 'ok',
         data: {
-          contractVersion: 1,
+          contractVersion: 2,
           draft: { id: draft.id, revision: draft.revision },
           starter: draft.starter,
           direction: draft.direction,
@@ -416,9 +417,9 @@ export function createApplication(document: Document) {
       return result
     },
     async resolve(input) {
-      const { bundleId } = await active()
+      const { bundleId, contractVersion } = await active()
       const stage = await resolveAgentTurn(createIndexedDbEntryRepository(bundleId), createIndexedDbActionRepository(), {
-        bundleId, ...input,
+        bundleId, contractVersion, ...input,
       })
       document.defaultView?.dispatchEvent(new Event('companion-updated'))
       return { status: 'ok', data: { stage }, nextActions: [{ tool: 'inspect_companion', required: true }] }

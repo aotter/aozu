@@ -1,12 +1,25 @@
 import { linkManifestSet, parseManifestSources, type Diagnostic } from "@aotter/mantle-spec"
 import { compileRuntimePlan, type RuntimePlan } from "@aotter/mantle-runtime"
 
-export interface BundleIdentity {
+import { PROGRESS_LOOP_IDS, type ProgressLoopId } from './domain/playbook.ts'
+
+export interface BundleIdentityV1 {
   contractVersion: 1
   backboneVersion: string
   templateId: string
   templateVersion: string
 }
+
+export interface BundleIdentityV2 {
+  contractVersion: 2
+  backboneVersion: string
+  templateId: string
+  templateVersion: string
+  loopIds: ProgressLoopId[]
+  completionMode: 'finite' | 'continuous'
+}
+
+export type BundleIdentity = BundleIdentityV1 | BundleIdentityV2
 
 export interface BundleRecord {
   id: string
@@ -50,8 +63,20 @@ export function compileBundle(manifestFiles: Readonly<Record<string, string>>): 
 }
 
 export function validateBundle(record: BundleRecord): ValidatedBundle {
-  if (!record.id || record.identity.contractVersion !== 1) throw new Error("Unsupported bundle identity")
+  if (!record.id || (record.identity.contractVersion !== 1 && record.identity.contractVersion !== 2)) throw new Error("Unsupported bundle identity")
+  if (
+    !record.identity.backboneVersion ||
+    !record.identity.templateId ||
+    !record.identity.templateVersion
+  ) throw new Error('Invalid bundle identity')
+  if (record.identity.contractVersion === 2 && (
+    !record.identity.loopIds.length ||
+    new Set(record.identity.loopIds).size !== record.identity.loopIds.length ||
+    record.identity.loopIds.some((id) => !PROGRESS_LOOP_IDS.includes(id)) ||
+    (record.identity.completionMode !== 'finite' && record.identity.completionMode !== 'continuous')
+  )) throw new Error('Invalid version 2 bundle identity')
   const plan = compileBundle(record.manifestFiles)
-  if (plan.semanticFingerprint !== record.semanticFingerprint) throw new Error("Bundle fingerprint mismatch")
+  // Mantle alpha.13 can re-fingerprint legacy manifests; v1 keeps its original value for byte-stable export.
+  if (record.identity.contractVersion === 2 && plan.semanticFingerprint !== record.semanticFingerprint) throw new Error("Bundle fingerprint mismatch")
   return { record, plan }
 }

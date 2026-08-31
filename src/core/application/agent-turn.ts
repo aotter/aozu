@@ -2,7 +2,7 @@ import type { EntryReader } from '@aotter/mantle-runtime'
 
 import type { StageProjection } from '../domain/companion.ts'
 import type { ActionRepository, PendingTurnRepository } from './ports.ts'
-import { executePlaybookPlan, parseEffects, parsePlaybookRule } from './playbook.ts'
+import { executePlaybookPlan, isItemEffect, parseEffects, parsePlaybookRule } from './playbook.ts'
 import { loadStage, projectStage } from './stage.ts'
 import { planItemEffects } from './items.ts'
 
@@ -40,6 +40,7 @@ export async function resolveAgentTurn(
     idempotencyKey: string
     dialogue: string
     effects: unknown
+    contractVersion?: 1 | 2
     now?: number
   },
 ): Promise<StageProjection> {
@@ -52,7 +53,10 @@ export async function resolveAgentTurn(
   if (!run || run.collection !== 'runs') throw new Error(`Run not found: ${runId}`)
   const rules = (await entries.readPublished({ collection: 'rules' })).map((entry) => parsePlaybookRule(entry.data))
   const currentItems = await planItemEffects(entries, runId, [])
-  const execution = executePlaybookPlan(run.data, parseEffects(input.effects), rules, currentItems.projection)
+  const effects = parseEffects(input.effects)
+  const actionItemEffects = effects.filter(isItemEffect)
+  const postActionItems = actionItemEffects.length ? await planItemEffects(entries, runId, actionItemEffects) : currentItems
+  const execution = executePlaybookPlan(run.data, effects, rules, postActionItems.projection, input.contractVersion === 2)
   const itemPlan = execution.itemEffects.length ? await planItemEffects(entries, runId, execution.itemEffects) : null
   const nextStage = await entries.readById(String(execution.runData.currentStageId ?? ''))
   if (!nextStage || nextStage.collection !== 'stages') throw new Error('Next stage is missing')
