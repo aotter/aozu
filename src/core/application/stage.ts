@@ -42,17 +42,19 @@ export function projectStage(run: Entry, stage: Entry): StageProjection {
       })
     : []
   const scene = stageData.scene === undefined ? undefined : record(stageData.scene, 'scene')
+  const compositionId = typeof scene?.compositionId === 'string' ? scene.compositionId : undefined
+  if (scene && !compositionId && typeof scene.backgroundAssetId !== 'string') throw new Error('Invalid scene composition')
   return {
     stageId: stage.id,
     revision: runData.revision as number,
     status,
     title: string(stageData.title, 'stage title'),
     narrative: string(stageData.narrative, 'stage narrative'),
-    ...(scene
+    ...(compositionId
       ? {
           scene: {
-            ...(typeof scene.backgroundAssetId === 'string' ? { backgroundAssetId: scene.backgroundAssetId } : {}),
-            ...(typeof scene.characterStateId === 'string' ? { characterStateId: scene.characterStateId } : {}),
+            compositionId,
+            ...(typeof scene?.characterStateId === 'string' ? { characterStateId: scene.characterStateId } : {}),
           },
         }
       : {}),

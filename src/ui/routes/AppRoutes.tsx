@@ -133,6 +133,7 @@ export function AppRoutes({ application }: { application: Application }) {
       dialogue={startup.dialogue}
       pendingTurns={startup.pendingTurns}
       character={startup.character}
+      scene={startup.scene}
       onAction={async (actionId) => {
         await application.submitAction(actionId, startup.stage.revision)
         await refresh()

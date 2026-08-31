@@ -3,10 +3,11 @@ import type { StageProjection } from '../domain/companion.ts'
 import type { AgentCapability, BundleActivationRepository, EntryRepositoryFactory } from './ports.ts'
 import { loadStage } from './stage.ts'
 import type { ResolvedCharacterLayer } from '../domain/character.ts'
+import type { ResolvedSceneLayer } from '../domain/scene.ts'
 
 export type CompanionStartup =
   | { status: 'start'; webmcpAvailable: boolean; savedCompanions: SavedCompanion[] }
-  | { status: 'main'; companion: ActiveCompanion; bundleId: string; runId: string; stage: StageProjection; dialogue?: string; pendingTurns: number; webmcpAvailable: boolean; character?: Array<ResolvedCharacterLayer & { blob: Blob }>; savedCompanions: SavedCompanion[] }
+  | { status: 'main'; companion: ActiveCompanion; bundleId: string; runId: string; stage: StageProjection; dialogue?: string; pendingTurns: number; webmcpAvailable: boolean; character?: Array<ResolvedCharacterLayer & { blob: Blob }>; scene?: Array<ResolvedSceneLayer & { blob: Blob }>; savedCompanions: SavedCompanion[] }
 
 export interface SavedCompanion {
   bundleId: string

@@ -3,9 +3,11 @@ import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate'
 
 import { validateBundle, type BundleRecord } from '../../core/bundle.ts'
 import { validateCharacterPack, type CharacterPack } from '../../core/domain/character.ts'
+import { resolveSceneComposition, validateSceneAsset, type SceneAsset, type SceneAssetInspection, type SceneComposition } from '../../core/domain/scene.ts'
 import { loadStage } from '../../core/application/stage.ts'
 import type { StagedCandidatePreview } from '../../core/application/candidate.ts'
 import { inspectCharacterImage } from '../browser/character-image.ts'
+import { inspectSceneImage } from '../browser/scene-image.ts'
 import { createIndexedDbAssetRepository } from '../indexeddb/asset-repository.ts'
 import { createIndexedDbBundleRepository } from '../indexeddb/bundle-repository.ts'
 import { createIndexedDbEntryRepository, importEntries } from '../indexeddb/mantle-storage.ts'
@@ -227,6 +229,28 @@ export async function stagePortableBundle(blob: Blob): Promise<StagedCandidatePr
       inspections.set(asset.blobId, await inspectCharacterImage(file))
     }
     validateCharacterPack(pack, inspections)
+  }
+  const sceneAssets = new Map(entries
+    .filter(({ collection }) => collection === 'scene-assets')
+    .map((entry) => [entry.id, { id: entry.id, ...entry.data } as unknown as SceneAsset]))
+  const sceneInspections = new Map<string, SceneAssetInspection>()
+  for (const asset of sceneAssets.values()) {
+    const file = assets.get(asset.blobId)
+    if (!file) throw new Error(`Scene asset is missing: ${asset.blobId}`)
+    const inspection = await inspectSceneImage(file)
+    validateSceneAsset(asset, inspection)
+    sceneInspections.set(asset.blobId, inspection)
+  }
+  const sceneCompositions = new Map(entries
+    .filter(({ collection }) => collection === 'scene-compositions')
+    .map((entry) => [entry.id, { id: entry.id, ...entry.data } as unknown as SceneComposition]))
+  for (const composition of sceneCompositions.values()) resolveSceneComposition(composition, sceneAssets, sceneInspections)
+  for (const stage of entries.filter(({ collection }) => collection === 'stages')) {
+    const scene = stage.data.scene as { compositionId?: unknown; backgroundAssetId?: unknown } | undefined
+    if (scene && typeof scene.compositionId !== 'string' && typeof scene.backgroundAssetId === 'string') continue
+    if (scene && (typeof scene.compositionId !== 'string' || !sceneCompositions.has(scene.compositionId))) {
+      throw new Error(`Stage scene is missing: ${stage.id}`)
+    }
   }
   const bundles = createIndexedDbBundleRepository()
   await bundles.stageCandidate(record)
