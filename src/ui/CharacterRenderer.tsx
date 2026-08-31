@@ -1,18 +1,14 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 
 type Layer = { id: string; blob: Blob; slotOrder: number; layerOrder: number }
 
 export function CharacterRenderer({ label, layers }: { label: string; layers: Layer[] }) {
-  const sources = useMemo(() => layers.map((layer) => ({ ...layer, src: URL.createObjectURL(layer.blob) })), [layers])
-  useEffect(() => () => sources.forEach(({ src }) => URL.revokeObjectURL(src)), [sources])
-
   return (
     <div className="relative aspect-2/3 w-full overflow-hidden rounded-3xl border bg-muted/40" role="img" aria-label={label}>
-      {!sources.length && <div className="absolute inset-0 p-8"><CharacterSlotPlaceholder src="/assets/character-slots/body-base.png" /></div>}
-      {sources.map(({ id, src, slotOrder, layerOrder }) => <img
+      {!layers.length && <div className="absolute inset-0 p-8"><CharacterSlotPlaceholder src="/assets/character-slots/body-base.png" /></div>}
+      {layers.map(({ id, blob, slotOrder, layerOrder }) => <ObjectUrlImage
         key={id}
-        src={src}
-        alt=""
+        blob={blob}
         className="absolute inset-0 size-full object-contain"
         style={{ zIndex: slotOrder * 100 + layerOrder }}
       />)}
@@ -40,7 +36,18 @@ export function CharacterSlotPlaceholder({ src, label }: { src: string; label?: 
 }
 
 export function CharacterAssetImage({ blob, label = '' }: { blob: Blob; label?: string }) {
-  const src = useMemo(() => URL.createObjectURL(blob), [blob])
-  useEffect(() => () => URL.revokeObjectURL(src), [src])
-  return <img src={src} alt={label} className="size-full object-contain" />
+  return <ObjectUrlImage blob={blob} alt={label} className="size-full object-contain" />
+}
+
+function ObjectUrlImage({ blob, alt = '', className, style }: { blob: Blob; alt?: string; className: string; style?: CSSProperties }) {
+  const [src, setSrc] = useState<string>()
+
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(blob)
+    // oxlint-disable-next-line react/set-state-in-effect -- Object URLs are external browser resources.
+    setSrc(objectUrl)
+    return () => URL.revokeObjectURL(objectUrl)
+  }, [blob])
+
+  return src ? <img src={src} alt={alt} className={className} style={style} /> : null
 }
