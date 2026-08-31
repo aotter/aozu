@@ -3,15 +3,25 @@ import { EntryDataValidator } from '@aotter/mantle-spec'
 import { compileBundle, type BundleRecord } from '../bundle.ts'
 import { resolveCharacterComposition, type AppearanceRef } from '../domain/character.ts'
 import type { ItemDefinition } from '../domain/items.ts'
+import {
+  normalizePhrase,
+  PLAYBOOK_LIMITS as EXPERIENCE_LIMITS,
+  parseCondition,
+  parseEffect,
+  parsePlaybookRule,
+  parsePreparedAction,
+  parseProgressBinding,
+  type Condition,
+  type Effect,
+  type MetricProgressBinding,
+} from '../domain/playbook.ts'
 import { resolveSceneComposition } from '../domain/scene.ts'
 import {
-  EXPERIENCE_LIMITS,
   type ExperienceCandidatePreviewSnapshot,
   type ExperienceDraft,
   type ValidatedStarterPackage,
 } from '../domain/starter.ts'
 import { FIXED_BACKBONE_SOURCES, FIXED_BACKBONE_VERSION } from '../mantle/backbone.ts'
-import { normalizePhrase, parsePlaybookRule, parsePreparedAction, type Condition, type Effect } from './playbook.ts'
 
 export const AUTHORING_NAMESPACE = 'companion-authoring'
 
@@ -19,8 +29,8 @@ export interface ExperienceCandidateInput {
   name: string
   initialStageId: string
   metrics: Record<string, number>
-  flags?: Record<string, boolean>
-  itemDefinitions?: ItemDefinition[]
+  flags: Record<string, boolean>
+  itemDefinitions: ItemDefinition[]
   stages: Array<{
     id: string
     title: string
@@ -28,9 +38,10 @@ export interface ExperienceCandidateInput {
     terminal?: boolean
     agentFallback?: boolean
     scene?: { compositionId: string; characterStateId?: string }
-    actions: Array<{ id: string; label: string; phrases?: string[]; effects?: Effect[] }>
+    actions: Array<{ id: string; label: string; phrases: string[]; effects: Effect[] }>
+    progress: MetricProgressBinding[]
   }>
-  rules?: Array<{ ruleId: string; priority: number; when: unknown; effects: Effect[] }>
+  rules: Array<{ ruleId: string; priority: number; when: Condition; effects: Effect[] }>
 }
 
 export interface AuthoringDiagnostic {
@@ -90,45 +101,17 @@ const list = (value: unknown, path: string): unknown[] => {
   return value
 }
 
-const effectFields: Readonly<Record<string, readonly string[]>> = {
-  addMetric: ['type', 'metricId', 'amount'],
-  setFlag: ['type', 'flagId', 'value'],
-  changeStage: ['type', 'stageId'],
-  grantItem: ['type', 'inventoryId', 'definitionId', 'quantity', 'state'],
-  consumeItem: ['type', 'inventoryId', 'quantity'],
-  equipItem: ['type', 'inventoryId', 'slot'],
-  unequipItem: ['type', 'slot'],
-  setItemState: ['type', 'inventoryId', 'state'],
-  setAppearanceOverride: ['type', 'slot', 'appearance'],
-}
-
 const parseEffectShape = (value: unknown, path: string): Effect => {
-  const effect = object(value, path)
-  if (typeof effect.type !== 'string' || !effectFields[effect.type]) return fail('unsupported_effect', `${path}.type`, 'Effect type is not supported by this contract')
-  only(effect, effectFields[effect.type]!, path)
-  return structuredClone(effect) as unknown as Effect
+  try { return parseEffect(value) } catch (error) {
+    return fail('invalid_effect', path, error instanceof Error ? error.message : 'Invalid Effect')
+  }
 }
 
-const parseConditionShape = (value: unknown, path: string, depth = 0): unknown => {
-  if (depth > EXPERIENCE_LIMITS.conditionDepth) return fail('condition_depth', path, 'Condition depth exceeds the contract limit')
-  const condition = object(value, path)
-  if ('all' in condition || 'any' in condition || 'not' in condition) {
-    const operator = 'all' in condition ? 'all' : 'any' in condition ? 'any' : 'not'
-    only(condition, [operator], path)
-    if (operator === 'not') return { not: parseConditionShape(condition.not, `${path}.not`, depth + 1) }
-    const children = list(condition[operator], `${path}.${operator}`)
-    if (!children.length) return fail('invalid_condition', `${path}.${operator}`, 'Compound conditions cannot be empty')
-    return { [operator]: children.map((child, index) => parseConditionShape(child, `${path}.${operator}[${index}]`, depth + 1)) }
+const parseConditionShape = (value: unknown, path: string): Condition => {
+  try { return parseCondition(value) } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid Condition'
+    return fail(message.includes('depth') ? 'condition_depth' : 'invalid_condition', path, message)
   }
-  const fact = typeof condition.fact === 'string' ? condition.fact : ''
-  const fields = fact === 'flag' ? ['fact', 'id', 'value']
-    : fact === 'stage' || fact === 'capability' || fact === 'inventory' || fact === 'equipped' || fact === 'appearance' ? ['fact', 'id']
-      : fact === 'metric' || fact === 'quantity' ? ['fact', 'id', 'op', 'value']
-        : fact === 'itemState' ? ['fact', 'inventoryId', 'field', 'op', 'value']
-          : undefined
-  if (!fields) return fail('unsupported_condition', `${path}.fact`, 'Condition fact is not supported by this contract')
-  only(condition, fields, path)
-  return structuredClone(condition)
 }
 
 const validateAppearanceRefShape = (value: unknown, path: string) => {
@@ -160,7 +143,7 @@ const parseInput = (value: unknown): ExperienceCandidateInput => {
   const stages = list(candidate.stages, 'candidate.stages').map((raw, stageIndex) => {
     const path = `candidate.stages[${stageIndex}]`
     const stage = object(raw, path)
-    only(stage, ['id', 'title', 'narrative', 'terminal', 'agentFallback', 'scene', 'actions'], path)
+    only(stage, ['id', 'title', 'narrative', 'terminal', 'agentFallback', 'scene', 'actions', 'progress'], path)
     if (stage.terminal !== undefined && typeof stage.terminal !== 'boolean') fail('invalid_type', `${path}.terminal`, 'Expected a boolean')
     if (stage.agentFallback !== undefined && typeof stage.agentFallback !== 'boolean') fail('invalid_type', `${path}.agentFallback`, 'Expected a boolean')
     const terminal = stage.terminal as boolean | undefined
@@ -174,8 +157,13 @@ const parseInput = (value: unknown): ExperienceCandidateInput => {
       return {
         id: id(action.id, `${actionPath}.id`),
         label: text(action.label, `${actionPath}.label`, 200),
-        phrases: action.phrases === undefined ? [] : list(action.phrases, `${actionPath}.phrases`).map((phrase, phraseIndex) => text(phrase, `${actionPath}.phrases[${phraseIndex}]`, 500)),
+        phrases: action.phrases === undefined ? [] : list(action.phrases, `${actionPath}.phrases`).map((phrase, phraseIndex) => text(phrase, `${actionPath}.phrases[${phraseIndex}]`, EXPERIENCE_LIMITS.phraseLength)),
         effects: action.effects === undefined ? [] : list(action.effects, `${actionPath}.effects`).map((effect, effectIndex) => parseEffectShape(effect, `${actionPath}.effects[${effectIndex}]`)),
+      }
+    })
+    const progress = stage.progress === undefined ? [] : list(stage.progress, `${path}.progress`).map((binding, bindingIndex) => {
+      try { return parseProgressBinding(binding) } catch (error) {
+        return fail('invalid_progress_binding', `${path}.progress[${bindingIndex}]`, error instanceof Error ? error.message : 'Invalid progress binding')
       }
     })
     return {
@@ -189,6 +177,7 @@ const parseInput = (value: unknown): ExperienceCandidateInput => {
         ...(scene.characterStateId === undefined ? {} : { characterStateId: id(scene.characterStateId, `${path}.scene.characterStateId`) }),
       } } : {}),
       actions,
+      progress,
     }
   })
 
@@ -251,21 +240,20 @@ const visitCondition = (condition: Condition, visitor: (condition: Exclude<Condi
   else visitor(condition)
 }
 
-const possibleRuleSources = (condition: Condition, allStages: ReadonlySet<string>): Set<string> => {
-  if ('not' in condition) return new Set(allStages)
-  if ('all' in condition) {
-    return condition.all.reduce<Set<string>>((possible, child) => {
-      const childSources = possibleRuleSources(child, allStages)
-      return new Set([...possible].filter((stageId) => childSources.has(stageId)))
-    }, new Set(allStages))
-  }
-  if ('any' in condition) {
-    const possible = new Set<string>()
-    condition.any.forEach((child) => possibleRuleSources(child, allStages).forEach((stageId) => possible.add(stageId)))
-    return possible
-  }
-  return condition.fact === 'stage' ? new Set([condition.id]) : new Set(allStages)
+const conditionCanBe = (condition: Condition, stageId: string, truth: boolean): boolean => {
+  if ('not' in condition) return conditionCanBe(condition.not, stageId, !truth)
+  if ('all' in condition) return truth
+    ? condition.all.every((child) => conditionCanBe(child, stageId, true))
+    : condition.all.some((child) => conditionCanBe(child, stageId, false))
+  if ('any' in condition) return truth
+    ? condition.any.some((child) => conditionCanBe(child, stageId, true))
+    : condition.any.every((child) => conditionCanBe(child, stageId, false))
+  if (condition.fact !== 'stage') return true
+  return truth ? condition.id === stageId : condition.id !== stageId
 }
+
+const possibleRuleSources = (condition: Condition, allStages: ReadonlySet<string>): Set<string> =>
+  new Set([...allStages].filter((stageId) => conditionCanBe(condition, stageId, true)))
 
 const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterPackage, input: ExperienceCandidateInput) => {
   if (!input.stages.length || input.stages.length > EXPERIENCE_LIMITS.stages) fail('stage_limit', 'candidate.stages', 'Stage count is outside the contract limit')
@@ -312,19 +300,19 @@ const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterP
   const allEffects: Effect[] = []
   const grantedInventoryIds = new Set<string>()
   const preparedActionIds = new Set<string>()
+  const phrases = new Map<string, string>()
   const edges = new Map<string, Set<string>>([...stages].map(([stageId]) => [stageId, new Set()]))
   for (const [stageId, stage] of stages) {
     if (stage.actions.length > EXPERIENCE_LIMITS.actionsPerStage) fail('action_limit', `candidate.stages.${stageId}.actions`, 'Action count exceeds the contract limit')
+    if (stage.terminal && (stage.actions.length || stage.agentFallback)) fail('invalid_terminal_stage', `candidate.stages.${stageId}`, 'Terminal stages cannot expose actions or agent fallback')
     if (!stage.terminal && !stage.agentFallback && !stage.actions.length) fail('stage_without_route', `candidate.stages.${stageId}`, 'Reachable non-terminal stages need a local action or agent fallback')
     if (stage.scene && (!sceneCompositions.has(stage.scene.compositionId) || (stage.scene.characterStateId && !characterStates.has(stage.scene.characterStateId)))) {
       fail('unknown_visual_reference', `candidate.stages.${stageId}.scene`, 'Stage scene references must come from the selected Starter package')
     }
-    const actionIds = new Set<string>()
-    const phrases = new Map<string, string>()
     stage.actions.forEach((action, index) => {
-      if (actionIds.has(action.id)) fail('duplicate_action', `candidate.stages.${stageId}.actions[${index}].id`, 'Action IDs must be unique within a stage')
-      actionIds.add(action.id)
+      if (preparedActionIds.has(action.id)) fail('duplicate_action', `candidate.stages.${stageId}.actions[${index}].id`, 'Action IDs must be globally unique')
       preparedActionIds.add(action.id)
+      if (action.phrases.length > EXPERIENCE_LIMITS.phrasesPerAction) fail('phrase_limit', `candidate.stages.${stageId}.actions[${index}].phrases`, 'Action phrase count exceeds the contract limit')
       if ((action.effects?.length ?? 0) > EXPERIENCE_LIMITS.effectsPerActionOrRule) fail('effect_limit', `candidate.stages.${stageId}.actions[${index}].effects`, 'Action effect count exceeds the contract limit')
       const parsed = (() => {
         try { return parsePreparedAction(action) } catch (error) {
@@ -334,22 +322,31 @@ const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterP
       for (const phrase of parsed.phrases) {
         const normalized = normalizePhrase(phrase)
         const prior = phrases.get(normalized)
-        if (prior && prior !== action.id) fail('ambiguous_phrase', `candidate.stages.${stageId}.actions[${index}].phrases`, `Prepared phrase is also used by action ${prior}`)
+        if (prior) fail('ambiguous_phrase', `candidate.stages.${stageId}.actions[${index}].phrases`, `Prepared phrase is already used by action ${prior}`)
         phrases.set(normalized, action.id)
       }
       for (const effect of parsed.effects) {
         allEffects.push(effect)
         if (effect.type === 'changeStage') edges.get(stageId)!.add(effect.stageId)
-        if (effect.type === 'grantItem') grantedInventoryIds.add(effect.inventoryId)
       }
+    })
+    if (new Set(stage.progress.map(({ id }) => id)).size !== stage.progress.length) fail('duplicate_progress_binding', `candidate.stages.${stageId}.progress`, 'Progress binding IDs must be unique within a stage')
+    stage.progress.forEach((binding, index) => {
+      if (!(binding.source.id in input.metrics)) fail('unknown_metric', `candidate.stages.${stageId}.progress[${index}]`, `Unknown metric: ${binding.source.id}`)
     })
   }
 
   for (const rule of parsedRules) {
     const targets = rule.effects.filter((effect): effect is Extract<Effect, { type: 'changeStage' }> => effect.type === 'changeStage')
-    possibleRuleSources(rule.when, new Set(stages.keys())).forEach((source) => targets.forEach(({ stageId }) => edges.get(source)?.add(stageId)))
+    possibleRuleSources(rule.when, new Set(stages.keys()))
+      .forEach((source) => {
+        if (!stages.get(source)?.terminal) targets.forEach(({ stageId }) => edges.get(source)?.add(stageId))
+      })
     allEffects.push(...rule.effects)
   }
+  allEffects.forEach((effect) => {
+    if (effect.type === 'grantItem') grantedInventoryIds.add(effect.inventoryId)
+  })
 
   for (const definition of definitions.values()) {
     for (const actionId of definition.actionIds ?? []) if (!preparedActionIds.has(actionId)) fail('unknown_action', 'candidate.itemDefinitions', `Item definition references an unknown action: ${actionId}`)
@@ -357,9 +354,9 @@ const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterP
 
   for (const [source, targets] of edges) for (const target of targets) if (!stages.has(target)) fail('unknown_stage_target', `candidate.stages.${source}`, `Unknown stage target: ${target}`)
   const definedFlags = new Set(Object.keys(input.flags ?? {}))
-  allEffects.filter((effect): effect is Extract<Effect, { type: 'setFlag' }> => effect.type === 'setFlag').forEach(({ flagId }) => definedFlags.add(flagId))
   for (const [index, effect] of allEffects.entries()) {
     if (effect.type === 'addMetric' && !(effect.metricId in input.metrics)) fail('unknown_metric', `candidate.effects[${index}]`, `Unknown metric: ${effect.metricId}`)
+    if (effect.type === 'setFlag' && !definedFlags.has(effect.flagId)) fail('unknown_flag', `candidate.effects[${index}]`, `Unknown flag: ${effect.flagId}`)
     if (effect.type === 'grantItem') {
       if (!itemIdPattern.test(effect.inventoryId)) fail('invalid_inventory_id', `candidate.effects[${index}]`, `Invalid inventory ID: ${effect.inventoryId}`)
       if (!definitions.has(effect.definitionId) || !Number.isSafeInteger(effect.quantity) || effect.quantity < 1) fail('unknown_item_definition', `candidate.effects[${index}]`, `Unknown or invalid item definition: ${effect.definitionId}`)
@@ -403,6 +400,11 @@ const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterP
     }
     if (![...reachable].some((stageId) => stages.get(stageId)?.terminal)) fail('missing_terminal_stage', 'candidate.stages', 'Finite experiences require a reachable terminal stage')
     if ([...reachable].some((stageId) => !escapable.has(stageId))) fail('closed_finite_component', 'candidate.stages', 'Finite experience contains a reachable component without an exit or agent fallback')
+  } else if (![...reachable].some((stageId) => {
+    const stage = stages.get(stageId)!
+    return !stage.terminal && (stage.actions.length > 0 || stage.agentFallback)
+  })) {
+    fail('missing_continuing_route', 'candidate.stages', 'Continuous experiences require a reachable local action or agent fallback')
   }
 }
 
@@ -427,10 +429,12 @@ export function assembleExperienceCandidate(
     manifestFiles,
     semanticFingerprint: plan.semanticFingerprint,
     identity: {
-      contractVersion: 1,
+      contractVersion: 2,
       backboneVersion: FIXED_BACKBONE_VERSION,
       templateId: draft.starter.id,
       templateVersion: String(draft.starter.version),
+      loopIds: structuredClone(draft.seed.loopIds),
+      completionMode: draft.seed.completionMode,
     },
     createdAt,
     metadata: {
@@ -457,7 +461,7 @@ export function assembleExperienceCandidate(
         flags: structuredClone(input.flags ?? {}),
       },
     },
-    ...input.stages.map(({ id: stageId, ...data }) => ({ id: stageId, collection: 'stages', data: { ...data, progress: [] } })),
+    ...input.stages.map(({ id: stageId, ...data }) => ({ id: stageId, collection: 'stages', data })),
     ...(input.rules ?? []).map((data) => ({ id: `rule:${data.ruleId}`, collection: 'rules', data })),
     ...(input.itemDefinitions ?? []).map((definition) => ({ id: `definition:${definition.id}`, collection: 'item-definitions', data: { definition } })),
     { id: `pack:${resources.starter.characterPack.id}`, collection: 'character-packs', data: { pack: resources.starter.characterPack } },

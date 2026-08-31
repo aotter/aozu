@@ -16,7 +16,7 @@ const fetcher = async (input: RequestInfo | URL) => {
   }
 }
 
-const packages = await loadStarterCatalog(fetcher, inspectCharacterFixture, inspectSceneFixture, '4')
+const packages = await loadStarterCatalog(fetcher, inspectCharacterFixture, inspectSceneFixture, '5')
 assert.equal(packages.length, 1)
 assert.equal(packages[0]!.starter.id, 'focus-studio')
 assert.equal(packages[0]!.starter.scenePack.assets[0]!.mediaType, 'image/webp')

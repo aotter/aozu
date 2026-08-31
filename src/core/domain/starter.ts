@@ -1,20 +1,13 @@
 import { resolveCharacterComposition, validateCharacterPack, type CharacterAssetInspection, type CharacterPack, type ResolvedCharacterLayer } from './character.ts'
 import { resolveSceneComposition, validateSceneAsset, type ResolvedSceneLayer, type SceneAsset, type SceneAssetInspection, type SceneComposition } from './scene.ts'
+import { PROGRESS_LOOP_IDS, type ProgressLoopId } from './playbook.ts'
 
-export const EXPERIENCE_CONTRACT_VERSION = 1
-
-export const EXPERIENCE_LIMITS = {
-  stages: 100,
-  actionsPerStage: 50,
-  rules: 100,
-  effectsPerActionOrRule: 50,
-  conditionDepth: 10,
-} as const
+export const EXPERIENCE_CONTRACT_VERSION = 2
 
 export interface ExperienceSeed {
   kind: 'story' | 'task'
   directionId: string
-  loopIds: string[]
+  loopIds: ProgressLoopId[]
   completionMode: 'finite' | 'continuous'
   brief: string
 }
@@ -55,7 +48,7 @@ export interface StarterPackage {
   name: string
   description: string
   compatibility: {
-    contractVersion: 1
+    contractVersion: 2
     backboneVersion: string
   }
   assetFiles: Array<{
@@ -115,7 +108,6 @@ export interface ExperienceDraft {
 export type NewExperienceDraft = Omit<ExperienceDraft, 'id' | 'createdAt' | 'updatedAt' | 'lastSubmission'>
 
 const idPattern = /^[a-z0-9][a-z0-9:_-]{0,99}$/
-const loopIdPattern = /^[a-z0-9][a-z0-9_-]{0,63}$/
 
 const object = (value: unknown, label: string): Record<string, unknown> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Invalid ${label}`)
@@ -276,7 +268,7 @@ export async function validateLoadedStarterPackage(
       !idPattern.test(direction.id) || seed.directionId !== direction.id ||
       (seed.kind !== 'story' && seed.kind !== 'task') ||
       (seed.completionMode !== 'finite' && seed.completionMode !== 'continuous') ||
-      !seed.loopIds.length || seed.loopIds.some((id) => !loopIdPattern.test(id)) ||
+      !seed.loopIds.length || seed.loopIds.some((id) => !PROGRESS_LOOP_IDS.includes(id)) ||
       new Set(seed.loopIds).size !== seed.loopIds.length ||
       !characterStates.has(direction.characterStateId) || !sceneCompositions.has(direction.sceneCompositionId)
     ) throw new Error(`Invalid Direction: ${direction.id}`)

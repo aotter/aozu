@@ -4,3 +4,7 @@ packages:
 allowBuilds:
   esbuild: true
   workerd: true
+
+minimumReleaseAgeExclude:
+  - '@aotter/mantle-runtime@0.1.0-alpha.13'
+  - '@aotter/mantle-spec@0.1.0-alpha.13'

@@ -18,5 +18,16 @@ const record = {
 }
 
 assert.equal(validateBundle(record).plan.semanticFingerprint, plan.semanticFingerprint)
-assert.throws(() => validateBundle({ ...record, semanticFingerprint: "tampered" }), /fingerprint/)
+assert.equal(validateBundle({ ...record, semanticFingerprint: "legacy-fingerprint" }).record.semanticFingerprint, 'legacy-fingerprint')
+const v2Record = {
+  ...record,
+  identity: {
+    ...record.identity,
+    contractVersion: 2 as const,
+    loopIds: ['mastery', 'journey'] as import('../src/core/domain/playbook.ts').ProgressLoopId[],
+    completionMode: 'finite' as const,
+  },
+}
+assert.equal(validateBundle(v2Record).plan.semanticFingerprint, plan.semanticFingerprint)
+assert.throws(() => validateBundle({ ...v2Record, semanticFingerprint: "tampered" }), /fingerprint/)
 console.log("bundle: ok")

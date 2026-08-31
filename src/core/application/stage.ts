@@ -2,8 +2,9 @@ import type { Entry } from '@aotter/mantle-spec'
 import type { EntryReader } from '@aotter/mantle-runtime'
 
 import type { StageProjection } from '../domain/companion.ts'
+import { parseProgressBinding } from '../domain/playbook.ts'
 import type { ActionRepository } from './ports.ts'
-import { executePlaybookPlan, parsePlaybookRule, resolvePreparedAction } from './playbook.ts'
+import { executePlaybookPlan, isItemEffect, parsePlaybookRule, resolvePreparedAction } from './playbook.ts'
 import { planItemEffects } from './items.ts'
 
 const record = (value: unknown, label: string): Record<string, unknown> => {
@@ -31,14 +32,25 @@ export function projectStage(run: Entry, stage: Entry): StageProjection {
     : []
   const progress = Array.isArray(stageData.progress)
     ? stageData.progress.map((value) => {
-        const item = record(value, 'progress')
-        const progressValue = item.value
-        if (typeof progressValue !== 'string' && typeof progressValue !== 'number') throw new Error('Invalid progress value')
+        const raw = record(value, 'progress')
+        if (!('source' in raw)) {
+          const legacyValue = raw.value
+          if (typeof legacyValue !== 'string' && typeof legacyValue !== 'number') throw new Error('Invalid legacy progress value')
+          return {
+            id: string(raw.id, 'progress id'),
+            label: string(raw.label, 'progress label'),
+            value: legacyValue,
+            ...(typeof raw.max === 'number' ? { max: raw.max } : {}),
+          }
+        }
+        const item = parseProgressBinding(raw)
+        const progressValue = record(runData.metrics ?? {}, 'metrics')[item.source.id]
+        if (typeof progressValue !== 'number' || !Number.isFinite(progressValue)) throw new Error(`Invalid progress metric: ${item.source.id}`)
         return {
-          id: string(item.id, 'progress id'),
-          label: string(item.label, 'progress label'),
+          id: item.id,
+          label: item.label,
           value: progressValue,
-          ...(typeof item.max === 'number' ? { max: item.max } : {}),
+          ...(item.max === undefined ? {} : { max: item.max }),
         }
       })
     : []
@@ -83,6 +95,7 @@ export async function submitAction(
     actionId: string
     expectedRevision: number
     idempotencyKey: string
+    contractVersion?: 1 | 2
     now?: number
   },
 ): Promise<StageProjection> {
@@ -96,7 +109,9 @@ export async function submitAction(
   if (resolved.path === 'cold') throw new Error(`Action not available: ${input.actionId}`)
   const rules = (await entries.readPublished({ collection: 'rules' })).map((entry) => parsePlaybookRule(entry.data))
   const currentItems = await planItemEffects(entries, input.runId, [])
-  const execution = executePlaybookPlan(run.data, resolved.action.effects, rules, currentItems.projection)
+  const actionItemEffects = resolved.action.effects.filter(isItemEffect)
+  const postActionItems = actionItemEffects.length ? await planItemEffects(entries, input.runId, actionItemEffects) : currentItems
+  const execution = executePlaybookPlan(run.data, resolved.action.effects, rules, postActionItems.projection, input.contractVersion === 2)
   const itemPlan = execution.itemEffects.length ? await planItemEffects(entries, input.runId, execution.itemEffects) : null
   const nextStage = await entries.readById(string(execution.runData.currentStageId, 'current stage id'))
   if (!nextStage || nextStage.collection !== 'stages') throw new Error('Next stage is missing')
@@ -129,6 +144,7 @@ export async function submitInteraction(
     runId: string
     expectedRevision: number
     idempotencyKey: string
+    contractVersion?: 1 | 2
     actionId?: string
     text?: string
     now?: number

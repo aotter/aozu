@@ -1,139 +1,224 @@
-# ADR-0004: Compose Experiences from Progress Loops and Precompiled Playbooks
+# ADR-0004: Compose Experiences from Progress Loops and One Shared Playbook Runtime
 
 - Status: Accepted
 - Date: 2026-08-30
+- Updated: 2026-09-01
 
 ## Context
 
 Fitness, romance, narrative adventure, study, pet care, and saving goals appear
-to be separate genres, but their mechanics overlap. Encoding each as a separate
-engine would duplicate progress, rule, stage, and reward behavior.
-
-Player interaction must usually respond immediately without waiting for an AI
-agent on every turn. At the same time, free-form dialogue and unexpected player
-actions benefit from agent improvisation. The proof of concept demonstrated a
-useful await-input and recovery flow that can persist work across interrupted
-agent turns.
-
-Fully expanding every dialogue choice into a tree is not viable because branch
-count grows exponentially.
+to be separate genres, but their mechanics overlap. Separate engines would
+duplicate facts, rules, stages, inventory behavior, persistence, and conflict
+handling. Normal interactions must also remain immediate and local while
+free-form dialogue may use an agent through the persisted cold path.
 
 ## Decision
 
-### Progress Loops
+### Contract layers
 
-Purpose templates compose reusable Progress Loops:
+The system has six layers, in this order:
 
-| ID | Name | State model |
+1. Mantle infrastructure atoms: `Schema`, `View`, `Procedure`, and `Trigger`.
+2. Playbook primitives: declared facts, `Stage`, prepared `Action`, closed
+   `Condition`, ordered closed `Effect`, `Rule`, append-only progress events,
+   and stable projections.
+3. Progress Loop recipes: reusable authoring patterns over those primitives.
+4. Purpose Templates and Starter Directions: domain-specific compositions of
+   recipes.
+5. Agent-authored content: concrete facts, stages, rules, dialogue text, and
+   asset references.
+6. Resolved Game: ordinary validated entries executed by the shared runtime.
+
+No Loop creates a Mantle Schema, collection, Procedure, Trigger, handler,
+runtime module, or dispatch branch. Runtime code never receives Loop IDs.
+
+### Progress Loop recipes
+
+The authoring recipes remain:
+
+| ID | Authoring pattern | Runtime support |
 | --- | --- | --- |
-| `rhythm` | Rhythm | recurrence, streaks, cadence, and missed intervals |
-| `mastery` | Mastery | proficiency, milestones, prerequisites, and unlocks |
-| `bond` | Bond | trust, affinity, relationship stages, and shared memories |
-| `journey` | Journey | stages, quests, branches, and world flags |
-| `discovery` | Discovery | collections, map nodes, knowledge, and completion |
-| `stewardship` | Stewardship | resources, maintenance, growth, and decay |
-| `challenge` | Challenge | attempts, scores, time limits, and outcomes |
+| `mastery` | proficiency, milestones, prerequisites, unlocks | Supported |
+| `journey` | stages, quests, branches, world flags | Supported |
+| `bond` | trust, affinity, relationship stages, shared memories | Partial: facts and Stages work; shared memory is deferred |
+| `discovery` | collections, map nodes, knowledge, completion | Partial: inventory, flags, and metrics work; map conventions remain authoring guidance |
+| `stewardship` | resources, maintenance, growth, decay | Partial: resource changes work; clock-driven decay is deferred |
+| `challenge` | attempts, scores, time limits, outcomes | Partial: attempts, scores, and outcomes work; time limits are deferred |
+| `rhythm` | recurrence, streaks, cadence, missed intervals | Blocked on a separate time-semantics decision and implementation |
 
-Loops are presets and authoring guidance, not separate runtime modules. They
-compose a small shared vocabulary:
-
-```text
-Metric, Flag, Stage, Rule, Effect, Inventory, Memory
-```
-
-Examples:
+A recipe is a capability pattern, not a complete game, executable DSL, or
+prefilled state. For example:
 
 ```text
-fitness  = rhythm + mastery + challenge
-romance  = bond + journey
-MUD      = journey + discovery + challenge
-study    = rhythm + mastery + journey
-pet care = bond + stewardship
-saving   = rhythm + stewardship + challenge
+mastery = action → accumulate progress → cross milestone → unlock
 ```
 
-An empty custom template selects loops; it is not itself another loop.
+A Purpose Template binds those roles to facts such as `focus` or `trust`.
+Recipes are not independently executed or blindly merged. Several recipes may
+advance from one Action and one coherent fact snapshot:
 
-### Precompiled Playbook
+```text
+                    ┌─ mastery rules
+shared Action ──────┼─ journey rules
+                    └─ challenge rules
+                           ↓
+                    ordered Effects
+                           ↓
+                       new Facts
+```
 
-During character and experience creation, the agent authors a hidden Playbook
-containing character dialogue, decision nodes, metrics, rewards, conditions,
-effects, stage transitions, scene changes, and agent fallback points. The
-Playbook is stored as validated entries under the fixed Mantle backbone.
+The authoring boundary resolves recipes, templates, and customization into
+validated `stages + actions + rules + effects + entries`. There is no recipe
+engine chain, callback system, synchronization layer, or event bus.
 
-Dialogue uses a graph with reusable and converging nodes, conditional variants,
-and content pools. It is not stored as a fully expanded tree.
+### Versioned bundle provenance
 
-Conditions use a closed AST composed from comparisons plus `all`, `any`, and
-`not`. Effects use a closed vocabulary such as adding a metric, setting a flag,
-granting an item, changing stage or dialogue, changing scene, writing a memory,
-or requesting an agent turn. Agent-authored code is never an effect.
-
-Points are modeled as validated metric changes recorded through progress events.
-Balances and summaries are deterministic projections rather than agent-written
-totals.
-
-### Three execution paths
-
-The runtime chooses the least expensive path that can handle the interaction:
-
-1. **Hot path:** a predefined choice is validated and executed locally.
-2. **Warm path:** normalized free text exactly matches an agent-authored phrase
-   or alias and executes locally.
-3. **Cold path:** unmatched or deliberately open-ended input creates a persisted
-   request for agent improvisation.
-
-Phrase matching begins with normalized exact phrases and aliases. Ambiguous or
-unmatched input takes the cold path. Contained-phrase matching and a general
-browser NLP framework are deferred until exact matching is shown to be
-insufficient.
-
-Cold-path requests survive interruption:
+New authored bundles use contract version 2:
 
 ```ts
-interface PendingAgentTurn {
-  id: string
-  runId: string
-  nodeId: string
-  userText: string
-  expectedRevision: number
-  status: "pending" | "resolved" | "failed"
-  createdAt: number
+interface BundleIdentityV2 {
+  contractVersion: 2
+  backboneVersion: string
+  templateId: string
+  templateVersion: string
+  loopIds: Array<
+    | "rhythm"
+    | "mastery"
+    | "bond"
+    | "journey"
+    | "discovery"
+    | "stewardship"
+    | "challenge"
+  >
+  completionMode: "finite" | "continuous"
 }
 ```
 
-An agent resolution may return dialogue and validated effects in one operation.
-The Companion `submit-action` repository from ADR-0003 applies them only when
-`expectedRevision` still matches. It atomically records the resolved turn ID
-with the resulting dialogue and effects; a repeated resolution is a no-op and a
-stale resolution fails without partial writes.
+`loopIds` and `completionMode` are preserved provenance and authoring-validation
+inputs only. Contract-version-1 bundles remain importable and executable
+through their existing manifests; missing provenance is never invented.
 
-There is no claim protocol while Companion has one agent consumer. If multiple
-consumers become a requirement, a later decision may add expiring leases rather
-than a permanent claimed state.
+### Closed Playbook contract
 
-The cold path is reserved for unmatched free text, unexpected branches,
-high-value special events, chapter replenishment, or explicit
-`requestAgentTurn` rules. Normal choices and prepared dialogue do not wait for
-an agent. When WebMCP is unavailable, cold-path requests remain pending and the
-rest of the local experience remains usable.
+One Companion Playbook contract module is the source of truth for the JSON
+Schema documents, TypeScript types, normalization, limits, and typed narrowing.
+The fixed Mantle backbone imports those same Schema documents. Mantle
+`EntryDataValidator` enforces the exact recursive grammar; Companion narrowing
+enforces the same vocabulary plus versioned limits; candidate semantic
+validation resolves cross-entry and graph invariants.
 
-### Deterministic execution limits
+Conditions are exactly:
 
-Rules execute in stable priority-then-ID order. Effects execute in declared
-order inside the action transaction. The fixed backbone defines versioned
-maximums for rule evaluations, trigger steps, and effects per action. Exceeding
-a limit aborts the whole action and returns diagnostics; no partial effects are
-committed.
+- metric comparison: `eq | gt | gte | lt | lte`;
+- flag equality and current-Stage equality;
+- capability, owned-definition, equipped-definition, and trusted-appearance
+  presence;
+- item-definition quantity comparison and item-instance state equality;
+- recursive `all`, `any`, and `not`.
+
+Effects are exactly:
+
+- `addMetric`, `setFlag`, `changeStage`;
+- `grantItem`, `consumeItem`, `equipItem`, `unequipItem`;
+- `setItemState`, `setAppearanceOverride`.
+
+`changeDialogue`, `changeScene`, `writeMemory`, and `requestAgentTurn` are not
+Effects. A scene changes by entering a Stage that references another scene
+composition. Cold-path agent turns remain an application use case. A future
+dialogue-node graph requires its own decision; v2 stores optional inline
+`currentDialogue` with a fixed length limit.
+
+### Declared facts and candidate validation
+
+V2 declares all initial metrics and flags. Conditions and Effects may reference
+only those declared keys; a misspelling is rejected rather than created from
+zero. Before staging, validation rejects:
+
+- duplicate Stage, Action, Rule, progress-binding, or declared-fact IDs;
+- normalized phrase collisions across Actions;
+- unknown metrics, flags, Stages, item definitions, inventory instances,
+  appearances, character states, or scene compositions;
+- item instances that are neither initially present nor producible by a
+  declared `grantItem` Effect;
+- unsupported Conditions or Effects;
+- unreachable non-draft Stages after Action and Rule transitions are included;
+- finite graphs without a reachable terminal route or persisted agent fallback;
+- continuous graphs without a continuing local route or persisted fallback.
+
+Limits live in the same versioned contract. V2 permits at most 100 Rules,
+Condition depth 10, and 50 Effects in one submitted Action transaction. Stage,
+Action, and phrase bounds are fixed constants, not a configurable subsystem.
+
+### Deterministic same-turn execution
+
+Every local Action and agent resolution uses this cycle:
+
+```text
+validate Action and expected revision
+→ plan Action Effects over run and item state
+→ freeze one coherent post-Action fact snapshot
+→ evaluate every Rule against that immutable snapshot
+→ sort matched Rules by priority then Rule ID
+→ flatten matched Rule Effects in declared order
+→ validate the complete Effect plan
+→ atomically commit run, items, event, pending turn, and revision
+→ project new state
+```
+
+Rules never observe Effects emitted by another Rule in the same transaction;
+there is no recursive or fixpoint evaluation. Action item mutations are visible
+to every Rule in that transaction, while Rule item mutations do not trigger a
+second evaluation.
+
+At most one `changeStage` may appear across the Action and all matched Rules.
+More than one aborts the entire transaction. `addMetric` accumulates; later
+`setFlag`, `setItemState`, and `setAppearanceOverride` writes replace earlier
+writes to the same target. Any planning, validation, revision, or limit failure
+leaves run state, item state, pending turns, events, and revision unchanged.
+
+### Progress and terminal semantics
+
+V2 Stage progress is metric-backed authoring data:
+
+```ts
+interface MetricProgressBinding {
+  id: string
+  label: string
+  source: { fact: "metric"; id: string }
+  max?: number
+}
+```
+
+The current-stage projection reads the metric and emits the stable
+`{ id, label, value, max? }` shape. A positive finite `max` is optional. V1
+stored `{ value }` progress remains readable only for backward compatibility.
+
+`terminal: true` ends the run regardless of `completionMode`. Terminal Stages
+have no prepared Actions or agent fallback. Entering one through the sole
+`changeStage` atomically sets `run.status = "completed"`; completed runs reject
+further Actions without changing revision or history. `completionMode` controls
+authoring graph validation, not terminal execution. There is no `completeRun`
+Effect.
+
+### Interaction paths
+
+1. **Hot:** a prepared choice executes locally.
+2. **Warm:** normalized free text matches exactly one prepared phrase and
+   executes locally.
+3. **Cold:** unmatched input at an explicit fallback Stage creates a persisted
+   agent-turn request.
+
+Cold-path requests use expected revisions and idempotency. Resolution dialogue,
+Effects, item mutations, progress event, and pending-turn status commit
+atomically. Without WebMCP, the request remains pending and local play continues
+where possible.
 
 ## Consequences
 
-- New purpose templates are mostly data recipes instead of new engines.
-- Prepared interactions feel immediate and continue when the agent is absent.
-- Agent improvisation remains available where it adds value rather than becoming
-  a per-turn dependency.
-- Decision graphs and reusable rules avoid exponential authoring growth.
-- The runtime must define deterministic ordering, loop limits, and idempotency
-  for rule effects.
+- New experiences and Loop compositions are primarily validated data.
+- Hot and warm interactions remain deterministic, local, and inspectable.
+- Agent improvisation stays available without becoming a per-turn dependency.
+- Time semantics, shared memory, dialogue graphs, and new Effect kinds remain
+  explicit future work rather than implied runtime support.
 - Hidden Playbook content improves presentation but is not confidential on a
   user-owned local device.
