@@ -4,10 +4,11 @@ import { useTranslation } from 'react-i18next'
 type AppHeaderProps = {
   webmcpAvailable: boolean
   title?: string
+  back?: ReactNode
   actions?: ReactNode
 }
 
-export function AppHeader({ webmcpAvailable, title, actions }: AppHeaderProps) {
+export function AppHeader({ webmcpAvailable, title, back, actions }: AppHeaderProps) {
   const { t } = useTranslation()
 
   return (
@@ -16,9 +17,12 @@ export function AppHeader({ webmcpAvailable, title, actions }: AppHeaderProps) {
         aria-label={t('navigation.primary')}
         className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-4"
       >
-        <span className="font-heading text-lg font-semibold">
-          {title ?? t('common.productName')}
-        </span>
+        <div className="flex min-w-0 items-center gap-1">
+          {back}
+          <span className="truncate font-heading text-lg font-semibold">
+            {title ?? t('common.productName')}
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           <span
             aria-label={t(webmcpAvailable ? 'main.webmcpConnected' : 'main.webmcpUnavailable')}

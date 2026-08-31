@@ -5,8 +5,15 @@ import { loadStage } from './stage.ts'
 import type { ResolvedCharacterLayer } from '../domain/character.ts'
 
 export type CompanionStartup =
-  | { status: 'start'; webmcpAvailable: boolean }
-  | { status: 'main'; companion: ActiveCompanion; bundleId: string; runId: string; stage: StageProjection; dialogue?: string; pendingTurns: number; webmcpAvailable: boolean; character?: Array<ResolvedCharacterLayer & { blob: Blob }> }
+  | { status: 'start'; webmcpAvailable: boolean; savedCompanions: SavedCompanion[] }
+  | { status: 'main'; companion: ActiveCompanion; bundleId: string; runId: string; stage: StageProjection; dialogue?: string; pendingTurns: number; webmcpAvailable: boolean; character?: Array<ResolvedCharacterLayer & { blob: Blob }>; savedCompanions: SavedCompanion[] }
+
+export interface SavedCompanion {
+  bundleId: string
+  name: string
+  createdAt: number
+  active: boolean
+}
 
 export async function loadCompanionStartup(
   agent: AgentCapability,
@@ -15,7 +22,13 @@ export async function loadCompanionStartup(
 ): Promise<CompanionStartup> {
   const webmcpAvailable = agent.isAvailable()
   const active = await bundles.getActive()
-  if (!active?.record.metadata) return { status: 'start', webmcpAvailable }
+  const savedCompanions = (await bundles.listSaved()).map((record) => ({
+    bundleId: record.id,
+    name: record.metadata!.name,
+    createdAt: record.createdAt,
+    active: record.id === active?.record.id,
+  }))
+  if (!active?.record.metadata) return { status: 'start', webmcpAvailable, savedCompanions }
   const { name, runId } = active.record.metadata
   const entries = entriesFor(active.record.id)
   const run = await entries.readById(runId)
@@ -31,5 +44,6 @@ export async function loadCompanionStartup(
     ...(typeof run.data.currentDialogue === 'string' ? { dialogue: run.data.currentDialogue } : {}),
     pendingTurns,
     webmcpAvailable,
+    savedCompanions,
   }
 }

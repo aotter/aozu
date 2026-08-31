@@ -1,28 +1,17 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router'
 import { createApplication } from './bootstrap.ts'
 import './index.css'
 import './ui/i18n.ts'
-import App from './ui/App.tsx'
+import { AppRoutes } from './ui/routes/AppRoutes.tsx'
 
 const application = createApplication(document)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App
-      loadStartup={application.loadStartup}
-      createPresetSeed={application.createPresetSeed}
-      openCharacterDraft={application.openCharacterDraft}
-      updateCharacterDraft={application.updateCharacterDraft}
-      saveCharacterAsset={application.saveCharacterAsset}
-      prepareCharacter={application.prepareCharacter}
-      clearCharacterDraft={application.clearCharacterDraft}
-      preparePreset={application.preparePreset}
-      approveCandidate={application.approveCandidate}
-      submitAction={application.submitAction}
-      submitText={application.submitText}
-      exportData={application.exportData}
-      prepareImport={application.prepareImport}
-    />
+    <BrowserRouter>
+      <AppRoutes application={application} />
+    </BrowserRouter>
   </StrictMode>,
 )

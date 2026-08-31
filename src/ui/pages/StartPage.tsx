@@ -1,0 +1,49 @@
+import { useTranslation } from 'react-i18next'
+
+import { Button } from '@/ui/components/ui/button'
+import { AppHeader } from '@/ui/AppHeader'
+import { DataControls } from '@/ui/DataControls'
+import type { SavedCompanion } from '@/core/application/companion'
+
+const startOptions = ['custom', 'preset', 'bundle'] as const
+
+export function StartPage({ webmcpAvailable, savedCompanions, onOpenCompanion, onCreatePreset, onCreateCharacter, prepareImport }: {
+  webmcpAvailable: boolean
+  savedCompanions: SavedCompanion[]
+  onOpenCompanion(bundleId: string): Promise<void>
+  onCreatePreset(): void
+  onCreateCharacter(): void
+  prepareImport(blob: Blob): Promise<void>
+}) {
+  const { t } = useTranslation()
+
+  return <div className="min-h-svh">
+    <AppHeader webmcpAvailable={webmcpAvailable} />
+    <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-3xl flex-col justify-center px-4 py-10">
+      <h1 className="font-heading text-3xl font-semibold tracking-tight">{t('start.title')}</h1>
+      <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">{t('start.description')}</p>
+      {savedCompanions.length > 0 && <section className="mt-8">
+        <h2 className="font-heading text-lg font-medium">{t('start.saved.title')}</h2>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {savedCompanions.map((companion) => <article key={companion.bundleId} className="flex items-center justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm">
+            <div className="min-w-0">
+              <h3 className="truncate font-heading font-medium">{companion.name}</h3>
+              {companion.active && <p className="mt-1 text-xs text-muted-foreground">{t('start.saved.current')}</p>}
+            </div>
+            <Button onClick={() => void onOpenCompanion(companion.bundleId)}>{t(companion.active ? 'start.saved.continue' : 'start.saved.open')}</Button>
+          </article>)}
+        </div>
+      </section>}
+      <div className="mt-8 grid gap-3 sm:grid-cols-3">
+        {startOptions.map((option) => <section key={option} className="flex min-h-40 flex-col rounded-2xl border bg-background p-4 shadow-sm">
+          <h2 className="font-heading font-medium">{t(`start.options.${option}.title`)}</h2>
+          <p className="mt-2 text-sm leading-5 text-muted-foreground">{t(`start.options.${option}.description`)}</p>
+          {option === 'bundle' ? <DataControls prepareImport={prepareImport} /> : <Button
+            className="mt-auto"
+            onClick={option === 'preset' ? onCreatePreset : onCreateCharacter}
+          >{option === 'preset' ? t('start.createPreset') : t('start.createCharacter')}</Button>}
+        </section>)}
+      </div>
+    </main>
+  </div>
+}

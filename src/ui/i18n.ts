@@ -4,6 +4,7 @@ import { initReactI18next } from 'react-i18next'
 const en = {
   common: {
     productName: 'Companion',
+    back: 'Back',
     close: 'Close',
   },
   startup: {
@@ -16,6 +17,12 @@ const en = {
     unavailable: 'Not available yet',
     createPreset: 'Customize Trail Guide',
     createCharacter: 'Start creating',
+    saved: {
+      title: 'Saved companions',
+      current: 'Current companion',
+      continue: 'Continue',
+      open: 'Open',
+    },
     options: {
       custom: {
         title: 'Create a character',
@@ -74,6 +81,17 @@ const en = {
     selected: 'Selected',
     previewVariant: 'Use in preview',
     removeFromPreview: 'Remove from preview',
+    previous: 'Previous',
+    next: 'Next',
+    ready: 'Your required character layers are ready to validate.',
+    steps: {
+      label: 'Character creation steps',
+      identity: 'Identity',
+      expressions: 'Expressions',
+      outfits: 'Outfits',
+      accessories: 'Accessories',
+      review: 'Review',
+    },
     layers: {
       body: 'Full body layer',
       head: 'Whole head layer',
@@ -94,6 +112,7 @@ const en = {
     menu: 'Feature menu',
     description: 'Choose an area to open.',
     items: {
+      start: 'Start',
       character: 'Character',
       wardrobe: 'Wardrobe',
       story: 'Story',

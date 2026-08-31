@@ -14,9 +14,9 @@ import {
   SheetTrigger,
 } from '@/ui/components/ui/sheet'
 
-const menuItems = ['character', 'wardrobe', 'story', 'tasks', 'journal', 'data', 'settings'] as const
+const menuItems = ['start', 'character', 'wardrobe', 'story', 'tasks', 'journal', 'data', 'settings'] as const
 
-export function AppMenu({ exportData, prepareImport, onCreateCharacter }: { exportData(): Promise<Blob>; prepareImport(blob: Blob): Promise<void>; onCreateCharacter(): void }) {
+export function AppMenu({ exportData, prepareImport, onCreateCharacter, onOpenStart }: { exportData(): Promise<Blob>; prepareImport(blob: Blob): Promise<void>; onCreateCharacter(): void; onOpenStart(): void }) {
   const { t } = useTranslation()
 
   return (
@@ -37,7 +37,7 @@ export function AppMenu({ exportData, prepareImport, onCreateCharacter }: { expo
             {menuItems.map((item) => item === 'data' ? (
               <DataControls key={item} exportData={exportData} prepareImport={prepareImport} />
             ) : (
-              <Button key={item} variant="ghost" className="justify-start" disabled={item !== 'character'} onClick={item === 'character' ? onCreateCharacter : undefined}>
+              <Button key={item} variant="ghost" className="justify-start" disabled={item !== 'character' && item !== 'start'} onClick={item === 'character' ? onCreateCharacter : item === 'start' ? onOpenStart : undefined}>
                 {t(`navigation.items.${item}`)}
               </Button>
             ))}

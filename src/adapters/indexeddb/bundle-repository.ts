@@ -8,6 +8,7 @@ import {
 } from "./database.ts"
 
 const ACTIVE_BUNDLE_KEY = "active-bundle-id"
+const SAVED_BUNDLE_PREFIX = "saved-bundle:"
 
 const readBundle = async (database: CompanionDatabase, id: string): Promise<BundleRecord | null> =>
   (await database.get(BUNDLE_STORE, id)) ?? null
@@ -34,7 +35,14 @@ export function createIndexedDbBundleRepository() {
       const record = await readBundle(database, id)
       if (!record) throw new Error(`Bundle not found: ${id}`)
       const validated = validateBundle(record)
-      await database.put(META_STORE, id, ACTIVE_BUNDLE_KEY)
+      const previousActiveId = await database.get(META_STORE, ACTIVE_BUNDLE_KEY)
+      const transaction = database.transaction(META_STORE, "readwrite")
+      await Promise.all([
+        transaction.store.put(id, ACTIVE_BUNDLE_KEY),
+        transaction.store.put(id, `${SAVED_BUNDLE_PREFIX}${id}`),
+        ...(previousActiveId ? [transaction.store.put(previousActiveId, `${SAVED_BUNDLE_PREFIX}${previousActiveId}`)] : []),
+        transaction.done,
+      ])
       return validated
     },
 
@@ -45,6 +53,19 @@ export function createIndexedDbBundleRepository() {
       const record = await readBundle(database, id)
       if (!record) throw new Error(`Active bundle missing: ${id}`)
       return validateBundle(record)
+    },
+
+    async listSaved(): Promise<BundleRecord[]> {
+      const database = await openCompanionDatabase()
+      const activeId = await database.get(META_STORE, ACTIVE_BUNDLE_KEY)
+      const savedIds = (await database.getAllKeys(META_STORE))
+        .filter((key) => key.startsWith(SAVED_BUNDLE_PREFIX))
+        .map((key) => key.slice(SAVED_BUNDLE_PREFIX.length))
+      if (activeId && !savedIds.includes(activeId)) savedIds.push(activeId)
+      const records = await Promise.all(savedIds.map((id) => readBundle(database, id)))
+      return records
+        .filter((record): record is BundleRecord => Boolean(record?.metadata))
+        .sort((left, right) => right.createdAt - left.createdAt)
     },
   }
 }

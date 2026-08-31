@@ -97,6 +97,9 @@ export function createApplication(document: Document) {
     async approveCandidate(bundleId: string, approved: true) {
       return approveStagedCandidate(bundles, bundleId, approved)
     },
+    async activateCompanion(bundleId: string) {
+      return bundles.activate(bundleId, true)
+    },
     async submitAction(actionId: string, expectedRevision: number, idempotencyKey: string = crypto.randomUUID()) {
       const { bundleId, runId } = await active()
       return submitInteraction(createIndexedDbEntryRepository(bundleId), createIndexedDbActionRepository(), {
@@ -204,3 +207,5 @@ export function createApplication(document: Document) {
   })
   return application
 }
+
+export type Application = ReturnType<typeof createApplication>

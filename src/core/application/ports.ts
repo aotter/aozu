@@ -52,6 +52,7 @@ export interface BundleActivationRepository {
   stageCandidate(record: BundleRecord): Promise<ValidatedBundle>
   activate(id: string, approved: true): Promise<ValidatedBundle>
   getActive(): Promise<ValidatedBundle | null>
+  listSaved(): Promise<BundleRecord[]>
 }
 
 export type EntryRepositoryFactory = (bundleId: string) => EntryRepository & EntryReader
