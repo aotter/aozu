@@ -53,6 +53,7 @@ export interface BundleActivationRepository {
   activate(id: string, approved: true): Promise<ValidatedBundle>
   getActive(): Promise<ValidatedBundle | null>
   listSaved(): Promise<BundleRecord[]>
+  deleteSaved(id: string): Promise<void>
 }
 
 export type EntryRepositoryFactory = (bundleId: string) => EntryRepository & EntryReader

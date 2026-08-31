@@ -132,10 +132,11 @@ rejected rather than relying on manifest insertion order.
 ### Character authoring draft
 
 The local authoring draft groups appearances by semantic intent rather than by
-PNG filename: `body`, `expression`, `outfit`, `headwear`, and `prop`. Each group
-contains named variants. A body or outfit variant owns one full-body layer, an
-expression owns one whole-head layer, and headwear or prop variants may own both
-back and front layers. The base body and neutral expression are required.
+PNG filename: `body`, `expression`, `outfit`, and `prop`. Each group contains
+named variants. A body or outfit variant owns one full-body layer, an expression
+owns one whole-head layer, and a prop may own both back and front layers. Props
+are multi-select, full-canvas overlays that may be positioned anywhere relative
+to the canonical character. The base body and neutral expression are required.
 
 Neutral, happy, sad, angry, surprised, and sleepy are initial expression
 variants, not a closed expression vocabulary. Users and agents may add, name,

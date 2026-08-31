@@ -29,7 +29,7 @@ export function DataControls({
         link.remove()
         setTimeout(() => URL.revokeObjectURL(url), 1_000)
       })}>{t('data.export')}</Button>}
-      <Button asChild variant="ghost" className="justify-start">
+      <Button asChild variant={exportData ? 'ghost' : 'default'} className={exportData ? 'justify-start' : 'w-full'}>
         <label>
           {t('data.import')}
           <input className="sr-only" type="file" accept=".zip,application/zip" disabled={status === 'busy'} onChange={(event) => {

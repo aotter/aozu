@@ -42,7 +42,7 @@ export function registerCompanionTools(document: Document, useCases: {
     modelContext.registerTool({
       name: 'submit_character_asset_candidate',
       title: 'Submit Character Asset Candidate',
-      description: 'Fill one layer of a character variant with a final PNG candidate. Inspect the contract first. A variant belongs to body, expression, outfit, headwear, or prop; headwear and props may each contain back and front layers. Send a data:image/png;base64 URL only after producing an exact 512×768 RGBA image with real transparency. Whole-head expressions include the complete aligned head, hairstyle, and facial hair. This stages a draft candidate only and never approves or activates it.',
+      description: 'Fill one layer of a character variant with a final PNG candidate. Inspect the contract first. A variant belongs to body, expression, outfit, or prop. Props are independent, multi-select, full-canvas overlays placed anywhere relative to the canonical character and may contain front and back layers. Send a data:image/png;base64 URL only after producing an exact 512×768 RGBA image with real transparency. Whole-head expressions include the complete aligned head, hairstyle, and facial hair. This stages a draft candidate only and never approves or activates it.',
       inputSchema: {
         type: 'object',
         properties: {

@@ -100,6 +100,9 @@ export function createApplication(document: Document) {
     async activateCompanion(bundleId: string) {
       return bundles.activate(bundleId, true)
     },
+    async deleteCompanion(bundleId: string) {
+      await bundles.deleteSaved(bundleId)
+    },
     async submitAction(actionId: string, expectedRevision: number, idempotencyKey: string = crypto.randomUUID()) {
       const { bundleId, runId } = await active()
       return submitInteraction(createIndexedDbEntryRepository(bundleId), createIndexedDbActionRepository(), {
@@ -148,7 +151,7 @@ export function createApplication(document: Document) {
             'Submit only final RGBA PNG layers. The website validates but never repairs candidate images.',
             'Expression layers replace the whole aligned head, including the same fixed hairstyle and facial hair. Hair and facial hair are not customizable slots.',
             'Expressions are variants of one whole-head slot. The canonical set is neutral, happy, sad, angry, surprised, and sleepy; additional expression variants are allowed.',
-            'Outfits are full-body variants. Headwear and props are logical appearances that may each contain back and front layers.',
+            'Outfits are full-body variants. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. A prop may be positioned anywhere, including on the head or in a hand.',
           ],
         },
         nextActions: REQUIRED_CHARACTER_TARGETS

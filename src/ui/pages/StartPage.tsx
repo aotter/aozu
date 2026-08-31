@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/ui/components/ui/button'
@@ -7,15 +8,18 @@ import type { SavedCompanion } from '@/core/application/companion'
 
 const startOptions = ['custom', 'preset', 'bundle'] as const
 
-export function StartPage({ webmcpAvailable, savedCompanions, onOpenCompanion, onCreatePreset, onCreateCharacter, prepareImport }: {
+export function StartPage({ webmcpAvailable, savedCompanions, onOpenCompanion, onDeleteCompanion, onCreatePreset, onCreateCharacter, prepareImport }: {
   webmcpAvailable: boolean
   savedCompanions: SavedCompanion[]
   onOpenCompanion(bundleId: string): Promise<void>
+  onDeleteCompanion(bundleId: string): Promise<void>
   onCreatePreset(): void
   onCreateCharacter(): void
   prepareImport(blob: Blob): Promise<void>
 }) {
   const { t } = useTranslation()
+  const [deleting, setDeleting] = useState<string>()
+  const [deleteError, setDeleteError] = useState(false)
 
   return <div className="min-h-svh">
     <AppHeader webmcpAvailable={webmcpAvailable} />
@@ -30,15 +34,23 @@ export function StartPage({ webmcpAvailable, savedCompanions, onOpenCompanion, o
               <h3 className="truncate font-heading font-medium">{companion.name}</h3>
               {companion.active && <p className="mt-1 text-xs text-muted-foreground">{t('start.saved.current')}</p>}
             </div>
-            <Button onClick={() => void onOpenCompanion(companion.bundleId)}>{t(companion.active ? 'start.saved.continue' : 'start.saved.open')}</Button>
+            <div className="flex shrink-0 gap-1">
+              <Button disabled={Boolean(deleting)} onClick={() => void onOpenCompanion(companion.bundleId)}>{t(companion.active ? 'start.saved.continue' : 'start.saved.open')}</Button>
+              <Button variant="destructive" disabled={Boolean(deleting)} onClick={async () => {
+                if (!window.confirm(t('start.saved.confirmDelete', { name: companion.name }))) return
+                setDeleting(companion.bundleId); setDeleteError(false)
+                try { await onDeleteCompanion(companion.bundleId) } catch { setDeleteError(true) } finally { setDeleting(undefined) }
+              }}>{t('start.saved.delete')}</Button>
+            </div>
           </article>)}
         </div>
+        {deleteError && <p role="alert" className="mt-2 text-sm text-destructive">{t('start.saved.deleteError')}</p>}
       </section>}
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
         {startOptions.map((option) => <section key={option} className="flex min-h-40 flex-col rounded-2xl border bg-background p-4 shadow-sm">
           <h2 className="font-heading font-medium">{t(`start.options.${option}.title`)}</h2>
           <p className="mt-2 text-sm leading-5 text-muted-foreground">{t(`start.options.${option}.description`)}</p>
-          {option === 'bundle' ? <DataControls prepareImport={prepareImport} /> : <Button
+          {option === 'bundle' ? <div className="mt-auto"><DataControls prepareImport={prepareImport} /></div> : <Button
             className="mt-auto"
             onClick={option === 'preset' ? onCreatePreset : onCreateCharacter}
           >{option === 'preset' ? t('start.createPreset') : t('start.createCharacter')}</Button>}

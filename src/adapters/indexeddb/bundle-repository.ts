@@ -1,8 +1,10 @@
 import type { BundleRecord, ValidatedBundle } from "../../core/bundle.ts"
 import { validateBundle } from "../../core/bundle.ts"
 import {
+  ASSET_STORE,
   BUNDLE_STORE,
   type CompanionDatabase,
+  ENTRY_STORE,
   META_STORE,
   openCompanionDatabase,
 } from "./database.ts"
@@ -66,6 +68,27 @@ export function createIndexedDbBundleRepository() {
       return records
         .filter((record): record is BundleRecord => Boolean(record?.metadata))
         .sort((left, right) => right.createdAt - left.createdAt)
+    },
+
+    async deleteSaved(id: string): Promise<void> {
+      const database = await openCompanionDatabase()
+      const transaction = database.transaction([META_STORE, BUNDLE_STORE, ENTRY_STORE, ASSET_STORE], 'readwrite')
+      const meta = transaction.objectStore(META_STORE)
+      const entries = transaction.objectStore(ENTRY_STORE)
+      const assets = transaction.objectStore(ASSET_STORE)
+      const [activeId, entryKeys, assetKeys] = await Promise.all([
+        meta.get(ACTIVE_BUNDLE_KEY),
+        entries.index('bundleId').getAllKeys(id),
+        assets.index('bundleId').getAllKeys(id),
+      ])
+      await Promise.all([
+        transaction.objectStore(BUNDLE_STORE).delete(id),
+        meta.delete(`${SAVED_BUNDLE_PREFIX}${id}`),
+        ...(activeId === id ? [meta.delete(ACTIVE_BUNDLE_KEY)] : []),
+        ...entryKeys.map((key) => entries.delete(key)),
+        ...assetKeys.map((key) => assets.delete(key)),
+      ])
+      await transaction.done
     },
   }
 }

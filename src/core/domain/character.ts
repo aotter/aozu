@@ -23,12 +23,11 @@ const LEGACY_CHARACTER_RIG = {
   ],
 } as const
 
-export const CHARACTER_VARIANT_GROUPS = ['body', 'expression', 'outfit', 'headwear', 'prop'] as const
+export const CHARACTER_VARIANT_GROUPS = ['body', 'expression', 'outfit', 'prop'] as const
 export const CHARACTER_VARIANT_LAYERS = {
   body: ['body'],
   expression: ['head'],
   outfit: ['body'],
-  headwear: ['back', 'front'],
   prop: ['back', 'front'],
 } as const
 
@@ -58,15 +57,14 @@ export interface CharacterAssetTarget {
 
 export interface CharacterDraft {
   id: 'current'
-  schemaVersion: 2
+  schemaVersion: 3
   packId: string
   name: string
   variants: CharacterDraftVariant[]
   selected: {
     expression: string
     outfit?: string
-    headwear?: string
-    prop?: string
+    props: string[]
   }
   updatedAt: number
 }

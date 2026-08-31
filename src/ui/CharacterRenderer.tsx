@@ -39,8 +39,8 @@ export function CharacterSlotPlaceholder({ src, label }: { src: string; label?: 
   />
 }
 
-export function CharacterAssetImage({ blob }: { blob: Blob }) {
+export function CharacterAssetImage({ blob, label = '' }: { blob: Blob; label?: string }) {
   const src = useMemo(() => URL.createObjectURL(blob), [blob])
   useEffect(() => () => URL.revokeObjectURL(src), [src])
-  return <img src={src} alt="" className="size-full object-contain" />
+  return <img src={src} alt={label} className="size-full object-contain" />
 }

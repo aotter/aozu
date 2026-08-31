@@ -1,30 +1,30 @@
-import { useEffect, useState } from 'react'
+import { ArrowLeftIcon, CircleSlash2Icon, Layers2Icon, PencilIcon, PlusIcon, ShapesIcon, ShirtIcon, SmileIcon } from 'lucide-react'
+import { useEffect, useState, type ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Navigate, useNavigate, useParams } from 'react-router'
+import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
 
 import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, resolveCharacterDraftLayers } from '@/core/application/character-creation.ts'
-import type { CharacterAssetTarget, CharacterDraft, CharacterVariantGroup, CharacterVariantLayer } from '@/core/domain/character.ts'
+import type { CharacterAssetTarget, CharacterDraft, CharacterDraftVariant, CharacterVariantGroup, CharacterVariantLayer } from '@/core/domain/character.ts'
 import { AppHeader } from '@/ui/AppHeader'
 import { CharacterAssetImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
 import { StatusPage } from '@/ui/pages/StatusPage'
 
-type CharacterStepId = 'identity' | 'expressions' | 'outfits' | 'accessories' | 'review'
+type CharacterCategoryId = 'expressions' | 'outfits' | 'props'
+type CharacterCategory = { id: CharacterCategoryId; group: CharacterVariantGroup; icon: ComponentType<{ className?: string }> }
 
-const characterDraftSteps: Array<{ id: CharacterStepId; groups: CharacterVariantGroup[] }> = [
-  { id: 'identity', groups: ['body'] },
-  { id: 'expressions', groups: ['expression'] },
-  { id: 'outfits', groups: ['outfit'] },
-  { id: 'accessories', groups: ['headwear', 'prop'] },
-  { id: 'review', groups: [] },
+const characterCategories: CharacterCategory[] = [
+  { id: 'expressions', group: 'expression', icon: SmileIcon },
+  { id: 'outfits', group: 'outfit', icon: ShirtIcon },
+  { id: 'props', group: 'prop', icon: ShapesIcon },
 ]
 const expressionIcons = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'sleepy']
-const characterSlotIcon = (group: CharacterVariantGroup, variantId: string, layer: CharacterVariantLayer) => {
+const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
   if (group === 'expression') return `/assets/character-slots/expression-${expressionIcons.includes(variantId) ? variantId : 'neutral'}.png`
   if (group === 'body') return '/assets/character-slots/body-base.png'
-  if (group === 'outfit') return '/assets/character-slots/body-outfit.png'
-  return `/assets/character-slots/${group}-${layer}.png`
+  return '/assets/character-slots/body-outfit.png'
 }
+const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
 
 export function CharacterDraftPage({ webmcpAvailable, openDraft, updateDraft, saveAsset, onReview, onCancel }: {
   webmcpAvailable: boolean
@@ -36,13 +36,15 @@ export function CharacterDraftPage({ webmcpAvailable, openDraft, updateDraft, sa
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
+  const location = useLocation()
   const { step } = useParams()
-  const stepIndex = characterDraftSteps.findIndex(({ id }) => id === step)
-  const currentStep = characterDraftSteps[stepIndex]
+  const category = characterCategories.find(({ id }) => id === step)
+  const reviewing = step === 'review'
   const [draft, setDraft] = useState<CharacterDraft>()
   const [loadError, setLoadError] = useState(false)
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
+  const [selectedVariantKey, setSelectedVariantKey] = useState<string>()
 
   useEffect(() => {
     let active = true
@@ -57,116 +59,174 @@ export function CharacterDraftPage({ webmcpAvailable, openDraft, updateDraft, sa
     }
   }, [openDraft])
 
-  if (stepIndex < 0) return <Navigate to="/character/identity" replace />
+  if (!step || step === 'identity' || step === 'accessories') return <Navigate to="/character/expressions" state={location.state} replace />
+  if (!category && !reviewing) return <Navigate to="/character/expressions" state={location.state} replace />
   if (loadError) return <StatusPage>{t('startup.error')}</StatusPage>
   if (!draft) return <StatusPage>{t('startup.loading')}</StatusPage>
 
   const previewLayers = resolveCharacterDraftLayers(draft)
+  const base = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')!
   const missing = REQUIRED_CHARACTER_TARGETS.filter((target) => !draft.variants
     .find(({ group, id }) => group === target.group && id === target.variantId)?.layers[target.layer])
+  const visibleVariants = category ? draft.variants.filter(({ group }) => category.group === group) : []
+  const selectedVariant = visibleVariants.find((variant) => variantKey(variant) === selectedVariantKey)
   const persist = (next: CharacterDraft) => { setDraft(next); void updateDraft(next) }
-  const selectVariant = (group: CharacterVariantGroup, id: string) => {
-    if (group === 'body') return persist({ ...draft, selected: { ...draft.selected, outfit: undefined } })
-    if (group === 'expression') return persist({ ...draft, selected: { ...draft.selected, expression: id } })
-    persist({ ...draft, selected: { ...draft.selected, [group]: draft.selected[group] === id ? undefined : id } })
+  const activateVariant = (source: CharacterDraft, variant: CharacterDraftVariant) => {
+    const { group, id } = variant
+    if (group === 'body') return source
+    if (group === 'expression') return { ...source, selected: { ...source.selected, expression: id } }
+    if (group === 'prop') return source.selected.props.includes(id) ? source : { ...source, selected: { ...source.selected, props: [...source.selected.props, id] } }
+    return { ...source, selected: { ...source.selected, [group]: id } }
   }
+  const selectedId = (group: CharacterVariantGroup) => {
+    if (group === 'body') return undefined
+    if (group === 'expression') return draft.selected.expression
+    if (group === 'outfit') return draft.selected.outfit
+    return undefined
+  }
+  const selectVariant = (variant: CharacterDraftVariant) => persist(activateVariant(draft, variant))
+  const clearVariant = (group: CharacterVariantGroup) => {
+    if (group === 'outfit') persist({ ...draft, selected: { ...draft.selected, outfit: undefined } })
+    if (group === 'prop') persist({ ...draft, selected: { ...draft.selected, props: [] } })
+  }
+  const isSelected = (variant: CharacterDraftVariant) => variant.group === 'prop' ? draft.selected.props.includes(variant.id) : selectedId(variant.group) === variant.id
+  const toggleVariant = (variant: CharacterDraftVariant) => {
+    if (variant.group !== 'prop' || !isSelected(variant)) return selectVariant(variant)
+    persist({ ...draft, selected: { ...draft.selected, props: draft.selected.props.filter((id) => id !== variant.id) } })
+  }
+  const hasSelection = (group: CharacterVariantGroup) => group === 'prop' ? Boolean(draft.selected.props.length) : Boolean(selectedId(group))
   const addVariant = (group: CharacterVariantGroup) => {
     const count = draft.variants.filter((variant) => variant.group === group).length + 1
-    persist({
-      ...draft,
-      variants: [...draft.variants, {
-        group,
-        id: `${group}-${crypto.randomUUID().slice(0, 8)}`,
-        label: `${t(`characterDraft.groups.${group}.variantName`)} ${count}`,
-        layers: {},
-      }],
-    })
+    const variant: CharacterDraftVariant = {
+      group,
+      id: `${group}-${crypto.randomUUID().slice(0, 8)}`,
+      label: `${t(`characterDraft.groups.${group}.variantName`)} ${count}`,
+      layers: {},
+    }
+    setSelectedVariantKey(variantKey(variant))
+    persist({ ...draft, variants: [...draft.variants, variant] })
   }
-  const goToStep = (index: number) => navigate(`/character/${characterDraftSteps[index].id}`)
+  const fileInput = (variant: CharacterDraftVariant, layer: CharacterVariantLayer) => {
+    const targetKey = `${variantKey(variant)}:${layer}`
+    return <input className="sr-only" type="file" accept="image/png" disabled={Boolean(busy)} onChange={async (event) => {
+        const file = event.target.files?.[0]
+        if (!file) return
+        setBusy(targetKey); setError(undefined)
+        try {
+          let next = await saveAsset(draft, { group: variant.group, variantId: variant.id, label: variant.label, layer }, file, file.name)
+          if (variant.group !== 'body' && layer !== 'back') {
+            next = activateVariant(next, variant)
+            await updateDraft(next)
+          }
+          setDraft(next)
+        } catch (caught) {
+          setError(caught instanceof Error ? caught.message : String(caught))
+        } finally {
+          setBusy(undefined); event.target.value = ''
+        }
+      }} />
+  }
 
-  return <div className="min-h-svh bg-muted/30">
+  return <div className="h-svh overflow-hidden bg-muted/30">
     <AppHeader
       title={draft.name}
       webmcpAvailable={webmcpAvailable}
       back={<Button type="button" size="sm" variant="ghost" disabled={Boolean(busy)} onClick={onCancel}>{t('common.back')}</Button>}
+      actions={!reviewing && <Button type="button" size="sm" disabled={Boolean(busy)} onClick={() => navigate('/character/review', { state: location.state })}>{t('characterDraft.review')}</Button>}
     />
-    <main className="mx-auto grid w-full max-w-5xl gap-8 px-4 py-8 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
-      <section className="lg:sticky lg:top-22 lg:self-start">
-        <h1 className="font-heading text-3xl font-semibold tracking-tight">{t('characterDraft.title')}</h1>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">{t('characterDraft.description')}</p>
-        <div className="mx-auto mt-6 w-full max-w-56 lg:max-w-none"><CharacterRenderer label={draft.name} layers={previewLayers} /></div>
-        <label className="mt-5 grid gap-1.5 text-sm">
-          <span>{t('draft.name')}</span>
-          <input className="rounded-md border bg-background px-3 py-2" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} onBlur={() => void updateDraft(draft)} />
+    <main className="mx-auto grid h-[calc(100svh-3.5rem)] w-full max-w-5xl grid-cols-[minmax(0,2fr)_minmax(7rem,1fr)] gap-2 p-2 sm:w-[calc(100%-4rem)] sm:gap-4 sm:p-4 lg:w-[calc(100%-8rem)]">
+      <section className="flex min-h-0 min-w-0 flex-col rounded-2xl border bg-background p-2 sm:p-4">
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+          <div className="aspect-2/3 h-full max-h-full max-w-full"><CharacterRenderer label={draft.name} layers={previewLayers} /></div>
+        </div>
+        <label className="mt-2 min-w-0">
+          <span className="sr-only">{t('draft.name')}</span>
+          <input className="h-9 w-full rounded-md border bg-background px-2 text-sm" aria-label={t('draft.name')} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} onBlur={() => void updateDraft(draft)} />
         </label>
       </section>
 
-      <section className="min-w-0" aria-labelledby="asset-grid-title">
-        <div role="tablist" aria-label={t('characterDraft.steps.label')} className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-2">
-          {characterDraftSteps.map(({ id }, index) => <Button
+      <section className="min-h-0 min-w-0 overflow-y-auto overscroll-contain rounded-2xl border bg-background p-1.5 sm:p-4" aria-label={t('characterDraft.customizeTitle')}>
+        <nav aria-label={t('characterDraft.categorySwitcher')} className="sticky top-0 z-10 flex gap-1 border-b bg-background pb-2 sm:gap-2">
+          {characterCategories.map(({ id, icon: Icon }) => <Button
             key={id}
-            id={`character-step-${id}`}
             type="button"
-            role="tab"
-            variant={stepIndex === index ? 'secondary' : 'ghost'}
-            aria-selected={stepIndex === index}
-            aria-controls="character-step-panel"
-            onClick={() => goToStep(index)}
-          >{index + 1}. {t(`characterDraft.steps.${id}`)}</Button>)}
-        </div>
-        <div id="character-step-panel" role="tabpanel" aria-labelledby={`character-step-${currentStep.id}`}>
-          <h2 id="asset-grid-title" className="font-heading text-xl font-medium">{t('characterDraft.assetsTitle')}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t(webmcpAvailable ? 'characterDraft.agentReady' : 'characterDraft.agentUnavailable')}</p>
-          {CHARACTER_CREATION_GROUPS.filter(({ group }) => currentStep.groups.includes(group)).map(({ group, layers, addable }) => {
-            const variants = draft.variants.filter((variant) => variant.group === group)
-            return <section key={group} className="mt-7" aria-labelledby={`character-group-${group}`}>
-              <div className="flex items-end justify-between gap-3">
-                <div><h3 id={`character-group-${group}`} className="font-heading font-medium">{t(`characterDraft.groups.${group}.title`)}</h3><p className="mt-1 text-xs text-muted-foreground">{t(`characterDraft.groups.${group}.description`)}</p></div>
-                {addable && <Button type="button" size="sm" variant="outline" onClick={() => addVariant(group)}>{t(`characterDraft.groups.${group}.add`)}</Button>}
+            variant={category?.id === id ? 'secondary' : 'ghost'}
+            size="icon"
+            className="size-8 shrink-0 rounded-lg sm:size-9"
+            aria-current={category?.id === id ? 'page' : undefined}
+            onClick={() => { setSelectedVariantKey(undefined); navigate(`/character/${id}`, { replace: true, state: location.state }) }}
+          >
+            <Icon className="size-4" />
+            <span className="sr-only">{t(`characterDraft.categories.${id}`)}</span>
+          </Button>)}
+        </nav>
+
+        {category && !selectedVariant && <>
+          <h2 className="mt-1 truncate text-sm font-medium sm:text-lg">{t(`characterDraft.categories.${category.id}`)}</h2>
+          <div className="mt-2 grid grid-cols-2 gap-1.5 sm:mt-4 sm:gap-3">
+            {category.group !== 'expression' && <button type="button" aria-label={t('characterDraft.none')} title={t('characterDraft.none')} aria-pressed={!hasSelection(category.group)} className={`relative aspect-square min-w-0 overflow-hidden rounded-xl border bg-background transition-colors hover:border-foreground/40 ${!hasSelection(category.group) ? 'border-foreground ring-1 ring-foreground' : ''}`} onClick={() => clearVariant(category.group)}>
+              <span className="flex aspect-square items-center justify-center bg-muted/40"><CircleSlash2Icon className="size-1/3 text-muted-foreground" /></span>
+            </button>}
+            {visibleVariants.map((variant) => {
+              const group = CHARACTER_CREATION_GROUPS.find(({ group }) => group === variant.group)!
+              const thumbnail = variant.layers.front ?? group.layers.map((layer) => variant.layers[layer]).find(Boolean)
+              const selected = isSelected(variant)
+              return <div key={variantKey(variant)} className={`relative min-w-0 overflow-hidden rounded-xl border bg-background transition-colors hover:border-foreground/40 ${selected ? 'border-foreground ring-1 ring-foreground' : ''}`}>
+                <button type="button" aria-label={variant.label} title={variant.label} aria-pressed={selected} className="block w-full" onClick={() => toggleVariant(variant)}>
+                  <span className="flex aspect-square items-center justify-center bg-muted/40 p-1 sm:p-2">{thumbnail
+                    ? <CharacterAssetImage blob={thumbnail.blob} label={variant.label} />
+                    : variant.group === 'prop' ? <ShapesIcon className="size-1/2 text-[#7b739e]/70" />
+                      : <CharacterSlotPlaceholder src={characterSlotIcon(variant.group, variant.id)} label={variant.label} />}</span>
+                </button>
+                <button type="button" title={t('characterDraft.editVariant', { name: variant.label })} className="absolute right-1 top-1 flex size-7 items-center justify-center rounded-md border bg-background/90 text-muted-foreground hover:text-foreground" aria-label={t('characterDraft.editVariant', { name: variant.label })} onClick={() => setSelectedVariantKey(variantKey(variant))}><PencilIcon className="size-3.5" /></button>
               </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {variants.map((variant) => {
-                  const required = REQUIRED_CHARACTER_TARGETS.some((target) => target.group === group && target.variantId === variant.id)
-                  const selected = group === 'body' ? !draft.selected.outfit : group === 'expression'
-                    ? draft.selected.expression === variant.id : draft.selected[group] === variant.id
-                  const filled = layers.some((layer) => Boolean(variant.layers[layer]))
-                  return <article key={`${group}:${variant.id}`} className="flex min-h-56 flex-col rounded-2xl border bg-background p-3 shadow-sm">
-                    <div className="flex items-center justify-between gap-2"><input aria-label={t('characterDraft.variantLabel')} className="min-w-0 flex-1 rounded-md border-0 bg-transparent px-1 py-0.5 text-sm font-medium" value={variant.label} onChange={(event) => setDraft({ ...draft, variants: draft.variants.map((item) => item === variant ? { ...item, label: event.target.value } : item) })} onBlur={() => void updateDraft(draft)} />{required && <span className="text-xs text-muted-foreground">{t('characterDraft.required')}</span>}</div>
-                    <div className={`mt-3 grid gap-2 ${layers.length > 1 ? 'grid-cols-2' : ''}`}>
-                      {layers.map((layer) => {
-                        const asset = variant.layers[layer]
-                        const targetKey = `${group}:${variant.id}:${layer}`
-                        return <div key={layer}>
-                          <span className="text-xs text-muted-foreground">{t(`characterDraft.layers.${layer}`)}</span>
-                          <div className="mt-1 aspect-2/3 overflow-hidden rounded-xl bg-muted/40">{asset ? <CharacterAssetImage blob={asset.blob} /> : <div className="size-full p-4"><CharacterSlotPlaceholder src={characterSlotIcon(group, variant.id, layer)} label={t('characterDraft.empty')} /></div>}</div>
-                          {asset && <p className="mt-1 truncate text-xs text-muted-foreground">{asset.source === 'agent' ? t('characterDraft.fromAgent') : asset.filename}</p>}
-                          <label className="mt-2 block"><span className="inline-flex h-8 cursor-pointer items-center justify-center rounded-md border px-2.5 text-xs font-medium hover:bg-accent">{busy === targetKey ? t('data.busy') : t(asset ? 'characterDraft.replace' : 'characterDraft.upload')}</span><input className="sr-only" type="file" accept="image/png" disabled={Boolean(busy)} onChange={async (event) => {
-                            const file = event.target.files?.[0]
-                            if (!file) return
-                            setBusy(targetKey); setError(undefined)
-                            try { setDraft(await saveAsset(draft, { group, variantId: variant.id, label: variant.label, layer }, file, file.name)) } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)) } finally { setBusy(undefined); event.target.value = '' }
-                          }} /></label>
-                        </div>
-                      })}
-                    </div>
-                    {filled && <Button type="button" size="sm" variant={selected ? 'default' : 'outline'} className="mt-3" disabled={selected && (group === 'body' || group === 'expression')} onClick={() => selectVariant(group, variant.id)}>{selected ? (group === 'body' || group === 'expression' ? t('characterDraft.selected') : t('characterDraft.removeFromPreview')) : t('characterDraft.previewVariant')}</Button>}
-                  </article>
-                })}
-              </div>
-            </section>
-          })}
-          {currentStep.id === 'review' && <div className="mt-7 rounded-2xl border bg-background p-5 shadow-sm">
-            <h3 className="font-heading font-medium">{t('candidate.title')}</h3>
-            <p className="mt-2 text-sm text-muted-foreground">{missing.length ? t('characterDraft.missingRequired') : t('characterDraft.ready')}</p>
-          </div>}
-          {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
-        </div>
-        <div className="sticky bottom-0 mt-6 flex items-center justify-between gap-2 border-t bg-background/95 py-3 backdrop-blur">
-          <Button type="button" variant="outline" disabled={Boolean(busy) || stepIndex === 0} onClick={() => goToStep(stepIndex - 1)}>{t('characterDraft.previous')}</Button>
-          {stepIndex < characterDraftSteps.length - 1
-            ? <Button type="button" disabled={Boolean(busy)} onClick={() => goToStep(stepIndex + 1)}>{t('characterDraft.next')}</Button>
-            : <Button disabled={Boolean(busy) || Boolean(missing.length) || !draft.name.trim()} onClick={async () => { setBusy('review'); setError(undefined); try { await onReview(await updateDraft(draft)) } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); setBusy(undefined) } }}>{busy === 'review' ? t('draft.validating') : t('draft.review')}</Button>}
-        </div>
+            })}
+            <button type="button" title={t(`characterDraft.groups.${category.group}.add`)} className="flex aspect-square items-center justify-center rounded-xl border border-dashed text-muted-foreground hover:border-foreground/40 hover:text-foreground" aria-label={t(`characterDraft.groups.${category.group}.add`)} onClick={() => addVariant(category.group)}>
+              <PlusIcon className="size-5" />
+            </button>
+          </div>
+        </>}
+
+        {category && selectedVariant && (() => {
+          const group = CHARACTER_CREATION_GROUPS.find(({ group }) => group === selectedVariant.group)!
+          const layeredAccessory = selectedVariant.group === 'prop'
+          const primaryLayer = layeredAccessory ? 'front' : group.layers[0]
+          const primaryAsset = selectedVariant.layers[primaryLayer]
+          const behindAsset = layeredAccessory ? selectedVariant.layers.back : undefined
+          const PlaceholderIcon = selectedVariant.group === 'prop' ? ShapesIcon : undefined
+          const required = REQUIRED_CHARACTER_TARGETS.some((target) => target.group === selectedVariant.group && target.variantId === selectedVariant.id)
+          return <>
+            <div className="mt-1 flex items-center gap-1 sm:gap-2">
+              <Button type="button" size="icon" variant="ghost" className="size-8 shrink-0" aria-label={t('characterDraft.backToVariants')} onClick={() => setSelectedVariantKey(undefined)}><ArrowLeftIcon /></Button>
+              <input aria-label={t('characterDraft.variantLabel')} className="min-w-0 flex-1 rounded-md border-0 bg-transparent px-1 py-1 text-xs font-medium sm:text-sm" value={selectedVariant.label} onChange={(event) => setDraft({ ...draft, variants: draft.variants.map((variant) => variant === selectedVariant ? { ...variant, label: event.target.value } : variant) })} onBlur={() => void updateDraft(draft)} />
+              {required && <span className="text-[9px] text-muted-foreground sm:text-xs">{t('characterDraft.required')}</span>}
+            </div>
+            <label className="mt-2 block cursor-pointer overflow-hidden rounded-xl border hover:border-foreground/40 sm:mt-4">
+              <span className="flex aspect-square items-center justify-center bg-muted/40 p-2">{primaryAsset
+                ? <CharacterAssetImage blob={primaryAsset.blob} />
+                : PlaceholderIcon ? <PlaceholderIcon className="size-1/2 text-[#7b739e]/70" />
+                  : <CharacterSlotPlaceholder src={characterSlotIcon(selectedVariant.group, selectedVariant.id)} />}</span>
+              <span className="block truncate p-1.5 text-[10px] sm:p-2 sm:text-xs">{t(layeredAccessory ? 'characterDraft.layers.primary' : `characterDraft.layers.${primaryLayer}`)}</span>
+              {fileInput(selectedVariant, primaryLayer)}
+            </label>
+            {layeredAccessory && <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-dashed p-2 hover:border-foreground/40">
+              <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted/40">{behindAsset ? <CharacterAssetImage blob={behindAsset.blob} /> : <Layers2Icon className="size-5 text-[#7b739e]/70" />}</span>
+              <span className="min-w-0 truncate text-[9px] sm:text-xs">{t('characterDraft.layers.behindOptional')}</span>
+              {fileInput(selectedVariant, 'back')}
+            </label>}
+          </>
+        })()}
+
+        {reviewing && <>
+          <h2 className="mt-1 text-sm font-medium sm:text-lg">{t('characterDraft.review')}</h2>
+          <p className="mt-3 text-xs text-muted-foreground sm:text-sm">{missing.length ? t('characterDraft.missingRequired') : t('characterDraft.ready')}</p>
+          <div className="mt-3 grid gap-1.5 text-xs sm:text-sm">
+            <div className="flex items-center justify-between rounded-xl border p-2"><span>{t('characterDraft.baseTitle')}</span><span className="text-muted-foreground">{base.layers.body ? t('characterDraft.layerReady') : t('characterDraft.layerMissing')}</span></div>
+            <div className="flex items-center justify-between rounded-xl border p-2"><span>{t('characterDraft.neutralExpression')}</span><span className="text-muted-foreground">{missing.some(({ group }) => group === 'expression') ? t('characterDraft.layerMissing') : t('characterDraft.layerReady')}</span></div>
+          </div>
+          <Button size="sm" className="mt-3 w-full" disabled={Boolean(busy) || Boolean(missing.length) || !draft.name.trim()} onClick={async () => { setBusy('review'); setError(undefined); try { await onReview(await updateDraft(draft)) } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); setBusy(undefined) } }}>{busy === 'review' ? t('draft.validating') : t('draft.review')}</Button>
+        </>}
+        {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
       </section>
     </main>
   </div>
