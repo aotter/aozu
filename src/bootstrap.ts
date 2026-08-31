@@ -26,6 +26,7 @@ import {
   stageCharacterDraft,
 } from './core/application/character-creation.ts'
 import { inspectCharacterImage } from './adapters/browser/character-image.ts'
+import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
 import { planItemEffects } from './core/application/items.ts'
 import { exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
 
@@ -61,6 +62,7 @@ export function createApplication(document: Document) {
   const application = {
     async loadStartup() {
       const startup = await loadCompanionStartup(agent, bundles, createIndexedDbEntryRepository)
+      if (startup.savedCompanions.length) void requestPersistentStorage(document.defaultView?.navigator.storage)
       if (startup.status !== 'main') return startup
       return {
         ...startup,

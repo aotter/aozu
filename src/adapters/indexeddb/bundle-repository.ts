@@ -1,5 +1,6 @@
 import type { BundleRecord, ValidatedBundle } from "../../core/bundle.ts"
 import { validateBundle } from "../../core/bundle.ts"
+import { requestPersistentStorage } from "../browser/storage-persistence.ts"
 import {
   ASSET_STORE,
   BUNDLE_STORE,
@@ -45,6 +46,7 @@ export function createIndexedDbBundleRepository() {
         ...(previousActiveId ? [transaction.store.put(previousActiveId, `${SAVED_BUNDLE_PREFIX}${previousActiveId}`)] : []),
         transaction.done,
       ])
+      await requestPersistentStorage()
       return validated
     },
 
