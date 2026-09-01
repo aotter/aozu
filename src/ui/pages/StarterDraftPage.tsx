@@ -11,6 +11,16 @@ import type {
 } from '@/core/domain/starter.ts'
 import { CharacterRenderer } from '@/ui/CharacterRenderer'
 import { SceneRenderer } from '@/ui/SceneRenderer'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/ui/components/ui/alert-dialog'
 import { Button } from '@/ui/components/ui/button'
 
 const selected = (
@@ -32,6 +42,7 @@ export function StarterDraftPage({ loadStarters, startCreation, onSelected }: {
   const [story, setStory] = useState<StarterStorySelection>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
+  const [replaceRequired, setReplaceRequired] = useState(false)
 
   useEffect(() => {
     let live = true
@@ -41,11 +52,11 @@ export function StarterDraftPage({ loadStarters, startCreation, onSelected }: {
 
   if (!packages && !error) return <main className="mx-auto w-full max-w-4xl px-4 py-10"><p>{t('startup.loading')}</p></main>
 
-  const begin = async () => {
+  const begin = async (replaceCharacterDraft = false) => {
     setBusy(true); setError(false)
     try {
-      let draft = await startCreation(character, story)
-      if (!draft && window.confirm(t('starter.replaceCharacter'))) draft = await startCreation(character, story, true)
+      const draft = await startCreation(character, story, replaceCharacterDraft)
+      if (!draft) return setReplaceRequired(true)
       if (draft) onSelected()
     } catch { setError(true) } finally { setBusy(false) }
   }
@@ -104,5 +115,19 @@ export function StarterDraftPage({ loadStarters, startCreation, onSelected }: {
       <Button disabled={busy || !packages} onClick={() => void begin()}>{busy ? t('starter.choosing') : t('starter.continue')}</Button>
       {error && <p role="alert" className="text-sm text-destructive">{t('starter.error')}</p>}
     </div>
+    <AlertDialog open={replaceRequired} onOpenChange={setReplaceRequired}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('starter.replaceCharacterTitle')}</AlertDialogTitle>
+          <AlertDialogDescription>{t('starter.replaceCharacter')}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>{t('starter.cancelReplace')}</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" disabled={busy} onClick={() => void begin(true)}>
+            {busy ? t('starter.choosing') : t('starter.replaceAndContinue')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </main>
 }

@@ -50,7 +50,10 @@ const en = {
     blankStoryDescription: 'Start without a scene, story, or tasks.',
     continue: 'Continue',
     choosing: 'Preparing…',
-    replaceCharacter: 'Replace your current character draft? Its artwork will be removed.',
+    replaceCharacterTitle: 'Replace character draft?',
+    replaceCharacter: 'A character draft already exists. Replacing it removes its current artwork.',
+    replaceAndContinue: 'Replace and continue',
+    cancelReplace: 'Keep current draft',
     error: 'This starting point could not be prepared. Try again.',
   },
   candidate: {
