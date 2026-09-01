@@ -2,7 +2,21 @@ import type { EntryReader } from '@aotter/mantle-runtime'
 
 import type { SceneAsset, SceneAssetInspection, SceneComposition, ResolvedSceneLayer } from '../domain/scene.ts'
 import { resolveSceneComposition } from '../domain/scene.ts'
+import type { ValidatedStarterPackage } from '../domain/starter.ts'
 import type { AssetRepositoryFactory } from './ports.ts'
+
+export function resolveStarterSceneLayers(loaded: ValidatedStarterPackage, directionId: string) {
+  const direction = loaded.starter.directions.find(({ id }) => id === directionId)
+  const composition = loaded.starter.scenePack.compositions.find(({ id }) => id === direction?.sceneCompositionId)
+  if (!direction || !composition) throw new Error(`Starter scene not found: ${directionId}`)
+  const assets = new Map(loaded.starter.scenePack.assets.map((asset) => [asset.id, asset]))
+  const blobs = new Map(loaded.assets.map(({ id, blob }) => [id, blob]))
+  return resolveSceneComposition(composition, assets, loaded.sceneInspections).map((layer) => {
+    const blob = blobs.get(layer.blobId)
+    if (!blob) throw new Error(`Starter scene asset is missing: ${layer.blobId}`)
+    return { ...layer, blob }
+  })
+}
 
 export async function loadSceneProjection(
   entries: EntryReader,

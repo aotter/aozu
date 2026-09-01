@@ -1,7 +1,7 @@
 import { EntryDataValidator, firstZodIssueAsJsonPointer, jsonSchemaToZod } from '@aotter/mantle-spec'
 
 import { compileBundle, type BundleRecord } from '../bundle.ts'
-import { resolveCharacterComposition, type AppearanceRef } from '../domain/character.ts'
+import type { AppearanceRef, CharacterDraft } from '../domain/character.ts'
 import type { ItemDefinition } from '../domain/items.ts'
 import {
   normalizePhrase,
@@ -15,14 +15,18 @@ import { resolveSceneComposition } from '../domain/scene.ts'
 import {
   type ExperienceCandidatePreviewSnapshot,
   type ExperienceDraft,
+  type ExperienceSeed,
   type ValidatedStarterPackage,
+  sameExperienceSeed,
 } from '../domain/starter.ts'
 import { FIXED_BACKBONE_SOURCES, FIXED_BACKBONE_VERSION } from '../mantle/backbone.ts'
+import { buildCharacterDraftResources } from './character-creation.ts'
 
 export const AUTHORING_NAMESPACE = 'companion-authoring'
 
 export interface ExperienceCandidateInput {
   name: string
+  seed: ExperienceSeed
   initialStageId: string
   metrics: Record<string, number>
   flags: Record<string, boolean>
@@ -33,7 +37,7 @@ export interface ExperienceCandidateInput {
     narrative: string
     terminal?: boolean
     agentFallback?: boolean
-    scene?: { compositionId: string; characterStateId?: string }
+    scene?: { compositionId?: string; characterStateId?: string }
     actions: Array<{ id: string; label: string; phrases: string[]; effects: Effect[] }>
     progress: MetricProgressBinding[]
   }>
@@ -121,25 +125,31 @@ const conditionCanBe = (condition: Condition, stageId: string, truth: boolean): 
 const possibleRuleSources = (condition: Condition, allStages: ReadonlySet<string>): Set<string> =>
   new Set([...allStages].filter((stageId) => conditionCanBe(condition, stageId, true)))
 
-const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterPackage, input: ExperienceCandidateInput) => {
+const validateExperience = (
+  draft: ExperienceDraft,
+  storyResources: ValidatedStarterPackage | null,
+  character: ReturnType<typeof buildCharacterDraftResources>,
+  input: ExperienceCandidateInput,
+) => {
   const stages = new Map(input.stages.map((stage) => [stage.id, stage]))
   if (stages.size !== input.stages.length) fail('duplicate_stage', 'candidate.stages', 'Stage IDs must be unique')
   if (!stages.has(input.initialStageId)) fail('missing_initial_stage', 'candidate.initialStageId', 'Initial stage does not exist')
-  for (const required of resources.starter.skeleton.requiredStageIds) if (!stages.has(required)) fail('missing_skeleton_stage', 'candidate.stages', `Required skeleton stage is missing: ${required}`)
-  for (const required of resources.starter.skeleton.requiredMetricIds) if (!(required in input.metrics)) fail('missing_skeleton_metric', 'candidate.metrics', `Required skeleton metric is missing: ${required}`)
+  for (const required of storyResources?.starter.skeleton.requiredStageIds ?? []) if (!stages.has(required)) fail('missing_skeleton_stage', 'candidate.stages', `Required skeleton stage is missing: ${required}`)
+  for (const required of storyResources?.starter.skeleton.requiredMetricIds ?? []) if (!(required in input.metrics)) fail('missing_skeleton_metric', 'candidate.metrics', `Required skeleton metric is missing: ${required}`)
 
-  const characterStates = new Set(resources.starter.characterStates.map(({ id: stateId }) => stateId))
-  const sceneCompositions = new Set(resources.starter.scenePack.compositions.map(({ id: compositionId }) => compositionId))
+  const sceneCompositions = new Set(storyResources?.starter.scenePack.compositions.map(({ id }) => id) ?? [])
   const initial = stages.get(input.initialStageId)!
-  if (initial.scene?.compositionId !== draft.sceneCompositionId || initial.scene.characterStateId !== draft.characterStateId) {
-    fail('initial_scene_mismatch', `candidate.stages.${initial.id}.scene`, 'Initial stage must use the visual references selected by the Experience Draft')
-  }
+  if (!initial.scene || initial.scene.characterStateId !== character.state.id || initial.scene.compositionId !== draft.story?.sceneCompositionId) fail(
+    'initial_scene_mismatch', `candidate.stages.${initial.id}.scene`,
+    'Initial stage must use the current Character Draft and the selected Story scene, if any',
+  )
+  if (draft.story && !sameExperienceSeed(input.seed, draft.story.seed)) fail('seed_mismatch', 'candidate.seed', 'Candidate seed must match the selected Story')
 
   const definitions = new Map((input.itemDefinitions ?? []).map((definition) => [definition.id, definition]))
   if (definitions.size !== (input.itemDefinitions?.length ?? 0)) fail('duplicate_item_definition', 'candidate.itemDefinitions', 'Item definition IDs must be unique')
-  const appearances = new Set(resources.starter.characterPack.appearances.map(({ id: appearanceId }) => appearanceKey({
-    packId: resources.starter.characterPack.id,
-    packVersion: resources.starter.characterPack.version,
+  const appearances = new Set(character.pack.appearances.map(({ id: appearanceId }) => appearanceKey({
+    packId: character.pack.id,
+    packVersion: character.pack.version,
     appearanceId,
   })))
   const capabilities = new Set<string>()
@@ -170,8 +180,12 @@ const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterP
   for (const [stageId, stage] of stages) {
     if (stage.terminal && (stage.actions.length || stage.agentFallback)) fail('invalid_terminal_stage', `candidate.stages.${stageId}`, 'Terminal stages cannot expose actions or agent fallback')
     if (!stage.terminal && !stage.agentFallback && !stage.actions.length) fail('stage_without_route', `candidate.stages.${stageId}`, 'Reachable non-terminal stages need a local action or agent fallback')
-    if (stage.scene && (!sceneCompositions.has(stage.scene.compositionId) || (stage.scene.characterStateId && !characterStates.has(stage.scene.characterStateId)))) {
-      fail('unknown_visual_reference', `candidate.stages.${stageId}.scene`, 'Stage scene references must come from the selected Starter package')
+    if (stage.scene && (
+      (!stage.scene.compositionId && !stage.scene.characterStateId) ||
+      (stage.scene.compositionId && !sceneCompositions.has(stage.scene.compositionId)) ||
+      (stage.scene.characterStateId && stage.scene.characterStateId !== character.state.id)
+    )) {
+      fail('unknown_visual_reference', `candidate.stages.${stageId}.scene`, 'Stage visuals must use the current Character Draft and selected Story resources')
     }
     stage.actions.forEach((action, index) => {
       if (preparedActionIds.has(action.id)) fail('duplicate_action', `candidate.stages.${stageId}.actions[${index}].id`, 'Action IDs must be globally unique')
@@ -243,7 +257,7 @@ const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterP
     pending.push(...(edges.get(stageId) ?? []))
   }
   if (reachable.size !== stages.size) fail('unreachable_stage', 'candidate.stages', 'Every authored stage must be reachable from the initial stage')
-  if (draft.seed.completionMode === 'finite') {
+  if (input.seed.completionMode === 'finite') {
     const escapable = new Set([...reachable].filter((stageId) => stages.get(stageId)?.terminal || stages.get(stageId)?.agentFallback))
     let changed = true
     while (changed) {
@@ -268,19 +282,23 @@ const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterP
 export function assembleExperienceCandidate(
   bundleId: string,
   draft: ExperienceDraft,
-  resources: ValidatedStarterPackage,
+  storyResources: ValidatedStarterPackage | null,
+  characterDraft: CharacterDraft,
   value: unknown,
   createdAt = Date.now(),
 ): AuthoredExperienceCandidate {
-  if (
-    draft.starter.id !== resources.starter.id ||
-    draft.starter.version !== resources.starter.version ||
-    draft.starter.manifestSha256 !== resources.manifestSha256
-  ) fail('starter_mismatch', 'draft.starter', 'Validated Starter resources do not match the draft')
+  if (draft.story ? (
+    !storyResources ||
+    draft.story.starter.id !== storyResources.starter.id ||
+    draft.story.starter.version !== storyResources.starter.version ||
+    draft.story.starter.manifestSha256 !== storyResources.manifestSha256
+  ) : storyResources) fail('starter_mismatch', 'draft.story', 'Validated Story resources do not match the draft')
   const input = parseInput(value)
-  validateExperience(draft, resources, input)
+  const character = buildCharacterDraftResources(characterDraft)
+  validateExperience(draft, storyResources, character, input)
   const plan = compileBundle(manifestFiles)
   const runId = `run:${bundleId}`
+  const story = draft.story
   const record: BundleRecord = {
     id: bundleId,
     manifestFiles,
@@ -288,22 +306,22 @@ export function assembleExperienceCandidate(
     identity: {
       contractVersion: 2,
       backboneVersion: FIXED_BACKBONE_VERSION,
-      templateId: draft.starter.id,
-      templateVersion: String(draft.starter.version),
-      loopIds: structuredClone(draft.seed.loopIds),
-      completionMode: draft.seed.completionMode,
+      templateId: story?.starter.id ?? 'custom-experience',
+      templateVersion: String(story?.starter.version ?? 1),
+      loopIds: structuredClone(input.seed.loopIds),
+      completionMode: input.seed.completionMode,
     },
     createdAt,
     metadata: {
       name: input.name,
       runId,
-      starter: {
-        id: draft.starter.id,
-        version: draft.starter.version,
-        manifestSha256: draft.starter.manifestSha256,
-        directionId: draft.direction.id,
-        seed: structuredClone(draft.seed),
-      },
+      ...(story ? { starter: {
+        id: story.starter.id,
+        version: story.starter.version,
+        manifestSha256: story.starter.manifestSha256,
+        directionId: story.direction.id,
+        seed: structuredClone(story.seed),
+      } } : {}),
     },
   }
   const entries: AuthoredExperienceCandidate['entries'] = [
@@ -321,10 +339,14 @@ export function assembleExperienceCandidate(
     ...input.stages.map(({ id: stageId, ...data }) => ({ id: stageId, collection: 'stages', data })),
     ...(input.rules ?? []).map((data) => ({ id: `rule:${data.ruleId}`, collection: 'rules', data })),
     ...(input.itemDefinitions ?? []).map((definition) => ({ id: `definition:${definition.id}`, collection: 'item-definitions', data: { definition } })),
-    { id: `pack:${resources.starter.characterPack.id}`, collection: 'character-packs', data: { pack: resources.starter.characterPack } },
-    ...resources.starter.characterStates.map(({ id: stateId, ...data }) => ({ id: stateId, collection: 'character-states', data })),
-    ...resources.starter.scenePack.assets.map(({ id: assetId, ...data }) => ({ id: assetId, collection: 'scene-assets', data })),
-    ...resources.starter.scenePack.compositions.map(({ id: compositionId, ...data }) => ({ id: compositionId, collection: 'scene-compositions', data })),
+    { id: `pack:${character.pack.id}`, collection: 'character-packs', data: { pack: character.pack } },
+    { id: character.state.id, collection: 'character-states', data: {
+      packId: character.state.packId,
+      packVersion: character.state.packVersion,
+      composition: character.state.composition,
+    } },
+    ...(storyResources?.starter.scenePack.assets.map(({ id: assetId, ...data }) => ({ id: assetId, collection: 'scene-assets', data })) ?? []),
+    ...(storyResources?.starter.scenePack.compositions.map(({ id: compositionId, ...data }) => ({ id: compositionId, collection: 'scene-compositions', data })) ?? []),
   ]
   if (new Set(entries.map(({ id: entryId }) => entryId)).size !== entries.length) fail('duplicate_entry', 'candidate', 'Resolved runtime entry IDs must be globally unique')
   const validator = new EntryDataValidator()
@@ -335,34 +357,38 @@ export function assembleExperienceCandidate(
     if (errors.length) fail('invalid_entry', `candidate.${entry.collection}.${entry.id}`, `Entry violates the fixed schema at ${errors.map(({ path }) => path).join(', ')}`)
   }
 
-  const blobs = new Map(resources.assets.map(({ id: assetId, blob }) => [assetId, blob]))
-  const characterState = resources.starter.characterStates.find(({ id: stateId }) => stateId === draft.characterStateId)!
-  const characterLayers = resolveCharacterComposition(resources.starter.characterPack, characterState.composition)
-    .map((layer) => ({ ...layer, blob: blobs.get(layer.blobId)! }))
-  const sceneComposition = resources.starter.scenePack.compositions.find(({ id: compositionId }) => compositionId === draft.sceneCompositionId)!
-  const sceneLayers = resolveSceneComposition(
+  const storyBlobs = new Map(storyResources?.assets.map(({ id, blob }) => [id, blob]) ?? [])
+  const sceneAssets = storyResources?.starter.scenePack.assets.map(({ blobId }) => ({ id: blobId, blob: storyBlobs.get(blobId)! })) ?? []
+  const assets = [...character.assets, ...sceneAssets]
+  if (new Set(assets.map(({ id }) => id)).size !== assets.length) fail('duplicate_asset', 'candidate', 'Resolved runtime asset IDs must be globally unique')
+  const sceneComposition = story && storyResources
+    ? storyResources.starter.scenePack.compositions.find(({ id }) => id === story.sceneCompositionId)
+    : undefined
+  const sceneLayers = sceneComposition && storyResources ? resolveSceneComposition(
     sceneComposition,
-    new Map(resources.starter.scenePack.assets.map((asset) => [asset.id, asset])),
-    resources.sceneInspections,
-  ).map((layer) => ({ ...layer, blob: blobs.get(layer.blobId)! }))
+    new Map(storyResources.starter.scenePack.assets.map((asset) => [asset.id, asset])),
+    storyResources.sceneInspections,
+  ).map((layer) => ({ ...layer, blob: storyBlobs.get(layer.blobId)! })) : []
   const initial = input.stages.find(({ id: stageId }) => stageId === input.initialStageId)!
 
   return {
     record,
     entries,
-    assets: structuredClone(resources.assets),
+    assets,
     preview: {
-      source: 'starter',
+      source: 'experience',
       bundleId,
       name: input.name,
-      starter: { id: draft.starter.id, version: draft.starter.version, name: draft.starter.name },
-      direction: { id: draft.direction.id, name: draft.direction.name },
-      seed: structuredClone(draft.seed),
+      story: story ? {
+        starter: { id: story.starter.id, version: story.starter.version, name: story.starter.name },
+        direction: { id: story.direction.id, name: story.direction.name },
+      } : null,
+      seed: structuredClone(input.seed),
       stageCount: input.stages.length,
       initialTitle: initial.title,
       initialNarrative: initial.narrative,
       agentFallbackCount: input.stages.filter(({ agentFallback }) => agentFallback).length,
-      characterLayers,
+      characterLayers: character.layers,
       sceneLayers,
     },
   }

@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 
 import { assembleExperienceCandidate, ExperienceCandidateValidationError, type ExperienceCandidateInput } from '../src/core/application/authoring.ts'
 import { approveCandidate } from '../src/core/application/candidate.ts'
+import { buildCharacterDraftResources, createCharacterDraftFromStarter } from '../src/core/application/character-creation.ts'
 import { submitAction } from '../src/core/application/stage.ts'
-import { createExperienceDraftData, type ExperienceDraft } from '../src/core/domain/starter.ts'
+import { createBlankExperienceDraftData, createExperienceDraftData, type ExperienceDraft } from '../src/core/domain/starter.ts'
 import { loadFocusStudioFixture } from './starter-fixture.ts'
 
 const resources = await loadFocusStudioFixture()
@@ -22,9 +23,12 @@ const draft: ExperienceDraft = {
   createdAt: 1,
   updatedAt: 1,
 }
-const scene = { compositionId: 'scene:focus-studio', characterStateId: 'character:focus-default' }
+const characterDraft = createCharacterDraftFromStarter(resources, 'character:focus-default')
+const characterStateId = buildCharacterDraftResources(characterDraft).state.id
+const scene = { compositionId: 'scene:focus-studio', characterStateId }
 const input: ExperienceCandidateInput = {
   name: 'Mastery Journey',
+  seed: structuredClone(draft.story!.seed),
   initialStageId: 'study-session',
   metrics: { focus: 0 },
   flags: { ready: false },
@@ -56,17 +60,31 @@ const input: ExperienceCandidateInput = {
   ],
 }
 
-const candidate = assembleExperienceCandidate('bundle-mastery-journey', draft, resources, input, 1)
+const candidate = assembleExperienceCandidate('bundle-mastery-journey', draft, resources, characterDraft, input, 1)
 assert.deepEqual(candidate.record.identity.contractVersion === 2 ? candidate.record.identity.loopIds : [], ['mastery', 'journey'])
 assert.equal(JSON.stringify(candidate.entries).includes('loopIds'), false)
-assert.equal(candidate.preview.source, 'starter')
+assert.equal(candidate.preview.source, 'experience')
 assert.equal(candidate.record.metadata?.starter?.manifestSha256, resources.manifestSha256)
 assert.equal(candidate.assets.length, 3)
+const blankDraft: ExperienceDraft = {
+  id: 'draft-blank', ...createBlankExperienceDraftData(), createdAt: 1, updatedAt: 1,
+}
+const blank = assembleExperienceCandidate('bundle-blank', blankDraft, null, characterDraft, {
+  name: 'Blank Story',
+  seed: { kind: 'story', directionId: 'custom-story', loopIds: ['rhythm'], completionMode: 'continuous', brief: 'Create a small story.' },
+  initialStageId: 'start', metrics: {}, flags: {}, itemDefinitions: [],
+  stages: [{ id: 'start', title: 'Start', narrative: 'Begin.', agentFallback: true, scene: { characterStateId }, actions: [], progress: [] }],
+  rules: [],
+}, 1)
+assert.equal(blank.preview.story, null)
+assert.equal(blank.preview.sceneLayers.length, 0)
+assert.equal(blank.assets.length, 2)
+assert.equal(blank.record.metadata?.starter, undefined)
 let activated = false
 await approveCandidate({ async activate() { activated = true; return {} as never } } as never, candidate.record.id, true)
 assert.equal(activated, true)
 assert.throws(
-  () => assembleExperienceCandidate('changed-starter', draft, { ...resources, manifestSha256: '0'.repeat(64) }, input, 1),
+  () => assembleExperienceCandidate('changed-starter', draft, { ...resources, manifestSha256: '0'.repeat(64) }, characterDraft, input, 1),
   (error) => error instanceof ExperienceCandidateValidationError && error.diagnostics[0]?.code === 'starter_mismatch',
 )
 
@@ -108,7 +126,7 @@ await assert.rejects(
 )
 
 const expectDiagnostic = (changed: ExperienceCandidateInput, code: string) => assert.throws(
-  () => assembleExperienceCandidate(`bad-${code}`, draft, resources, changed, 1),
+  () => assembleExperienceCandidate(`bad-${code}`, draft, resources, characterDraft, changed, 1),
   (error) => error instanceof ExperienceCandidateValidationError && error.diagnostics[0]?.code === code,
 )
 const invalidCandidates: Array<[string, (changed: ExperienceCandidateInput) => void]> = [
@@ -137,15 +155,16 @@ for (const [code, mutate] of invalidCandidates) {
 }
 
 const continuousDraft = structuredClone(draft)
-continuousDraft.seed.completionMode = 'continuous'
+continuousDraft.story!.seed.completionMode = 'continuous'
 const terminalOnly = structuredClone(input)
+terminalOnly.seed.completionMode = 'continuous'
 terminalOnly.stages = [{
   id: 'study-session', title: 'Already done', narrative: 'Done.', terminal: true, scene, actions: [], progress: [],
 }]
 terminalOnly.initialStageId = 'study-session'
 terminalOnly.rules = []
 assert.throws(
-  () => assembleExperienceCandidate('bad-continuous', continuousDraft, resources, terminalOnly, 1),
+  () => assembleExperienceCandidate('bad-continuous', continuousDraft, resources, characterDraft, terminalOnly, 1),
   (error) => error instanceof ExperienceCandidateValidationError && error.diagnostics[0]?.code === 'missing_continuing_route',
 )
 

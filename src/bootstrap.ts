@@ -25,7 +25,10 @@ import {
 import {
   CHARACTER_CREATION_GROUPS,
   REQUIRED_CHARACTER_TARGETS,
+  createCharacterDraftFromStarter,
   createCharacterDraft,
+  buildCharacterDraftResources,
+  isCharacterDraftPopulated,
   loadCharacterProjection,
   migrateCharacterDraft,
   saveCharacterDraftAsset,
@@ -37,7 +40,14 @@ import { requestPersistentStorage } from './adapters/browser/storage-persistence
 import { planItemEffects } from './core/application/items.ts'
 import { loadSceneProjection } from './core/application/scene.ts'
 import { exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
-import { createExperienceDraftData, validateLoadedStarterPackage, type ExperienceDraft } from './core/domain/starter.ts'
+import {
+  createBlankExperienceDraftData,
+  createExperienceDraftData,
+  sameExperienceSeed,
+  type ExperienceDraft,
+  type StarterCharacterSelection,
+  type StarterStorySelection,
+} from './core/domain/starter.ts'
 import { PLAYBOOK_LIMITS as EXPERIENCE_LIMITS } from './core/domain/playbook.ts'
 import { compileAuthoringBackbone, compileFixedBackbone, FIXED_BACKBONE_VERSION } from './core/mantle/backbone.ts'
 
@@ -67,32 +77,25 @@ export function createApplication(document: Document) {
     inspectSceneImage,
     FIXED_BACKBONE_VERSION,
   )
-  const sameSeed = (left: ExperienceDraft['seed'], right: ExperienceDraft['seed']) =>
-    left.kind === right.kind &&
-    left.directionId === right.directionId &&
-    left.completionMode === right.completionMode &&
-    left.brief === right.brief &&
-    left.loopIds.length === right.loopIds.length &&
-    left.loopIds.every((id, index) => id === right.loopIds[index])
-  const loadDraftStarter = async (draft: ExperienceDraft) => {
+  const loadDraftStory = async (draft: ExperienceDraft) => {
+    if (!draft.story) return null
+    const { story } = draft
     const packaged = (await loadStarters()).find(({ starter }) =>
-      starter.id === draft.starter.id && starter.version === draft.starter.version,
+      starter.id === story.starter.id && starter.version === story.starter.version,
     )
-    if (!packaged) throw new Error(`Starter package is unavailable: ${draft.starter.id}@${draft.starter.version}`)
-    const direction = packaged.starter.directions.find(({ id }) => id === draft.direction.id)
+    if (!packaged) throw new Error(`Story package is unavailable: ${story.starter.id}@${story.starter.version}`)
+    const direction = packaged.starter.directions.find(({ id }) => id === story.direction.id)
     if (
-      packaged.manifestSha256 !== draft.starter.manifestSha256 ||
-      packaged.starter.name !== draft.starter.name ||
+      packaged.manifestSha256 !== story.starter.manifestSha256 ||
+      packaged.starter.name !== story.starter.name ||
       !direction ||
-      direction.name !== draft.direction.name ||
-      direction.summary !== draft.direction.summary ||
-      direction.characterStateId !== draft.characterStateId ||
-      direction.characterStateId !== draft.direction.characterStateId ||
-      direction.sceneCompositionId !== draft.sceneCompositionId ||
-      direction.sceneCompositionId !== draft.direction.sceneCompositionId ||
-      !sameSeed(direction.seed, draft.seed) ||
-      !sameSeed(direction.seed, draft.direction.seed)
-    ) throw new Error('Starter package changed without a version change')
+      direction.name !== story.direction.name ||
+      direction.summary !== story.direction.summary ||
+      direction.sceneCompositionId !== story.sceneCompositionId ||
+      direction.sceneCompositionId !== story.direction.sceneCompositionId ||
+      !sameExperienceSeed(direction.seed, story.seed) ||
+      !sameExperienceSeed(direction.seed, story.direction.seed)
+    ) throw new Error('Story package changed without a version change')
     return packaged
   }
   const authoringPlan = compileAuthoringBackbone()
@@ -158,7 +161,7 @@ export function createApplication(document: Document) {
           inspectCharacterImage,
           startup.stage.scene?.characterStateId,
         ),
-        ...(startup.stage.scene ? {
+        ...(startup.stage.scene?.compositionId ? {
           scene: await loadSceneProjection(
             entries,
             createIndexedDbAssetRepository,
@@ -171,15 +174,28 @@ export function createApplication(document: Document) {
     },
     listStarters: loadStarters,
     openExperienceDraft,
-    async selectStarter(starterId: string, starterVersion: number, directionId: string) {
-      const loaded = (await loadStarters()).find(({ starter }) => starter.id === starterId && starter.version === starterVersion)
-      if (!loaded) throw new Error(`Starter not found: ${starterId}@${starterVersion}`)
+    async startCreation(characterChoice: StarterCharacterSelection, storyChoice: StarterStorySelection, replaceCharacterDraft = false) {
+      const packages = await loadStarters()
+      const findPackage = (choice: Exclude<StarterCharacterSelection | StarterStorySelection, null>) => {
+        const loaded = packages.find(({ starter }) => starter.id === choice.starterId && starter.version === choice.starterVersion)
+        if (!loaded) throw new Error(`Starter not found: ${choice.starterId}@${choice.starterVersion}`)
+        return loaded
+      }
+      const currentCharacter = await characterDrafts.get()
+      if (currentCharacter && isCharacterDraftPopulated(migrateCharacterDraft(currentCharacter)) && !replaceCharacterDraft) return null
+      const character = characterChoice
+        ? createCharacterDraftFromStarter(findPackage(characterChoice), characterChoice.stateId)
+        : createCharacterDraft()
+      const experience = storyChoice
+        ? createExperienceDraftData(findPackage(storyChoice), storyChoice.directionId)
+        : createBlankExperienceDraftData()
       const result = await (await getAuthoringRuntime()).invokeTrigger<Entry>({
         trigger: 'select-experience-draft',
-        input: createExperienceDraftData(loaded, directionId),
+        input: experience,
         ctx: { user: null, staff: null, env: {} },
       })
       if (!result.ok) throw new Error(result.diagnostic.message ?? 'Experience Draft could not be saved')
+      await characterDrafts.put(character)
       await requestPersistentStorage(browser?.navigator.storage)
       return toExperienceDraft(result.data)
     },
@@ -235,34 +251,35 @@ export function createApplication(document: Document) {
   }
   async function inspectExperienceContract() {
       const draft = await openExperienceDraft()
-      if (!draft) throw new Error('Select a Starter and Direction before asking the agent to author an experience')
-      const packaged = await loadDraftStarter(draft)
+      if (!draft) throw new Error('Choose a character and story starting point before asking the agent to author an experience')
+      const story = await loadDraftStory(draft)
+      const characterDraft = await openCharacterDraft()
+      const character = buildCharacterDraftResources(characterDraft)
       return {
         status: 'ok',
         data: {
           contractVersion: 2,
-          draft: { id: draft.id, revision: draft.revision },
-          starter: draft.starter,
-          direction: draft.direction,
-          seed: draft.seed,
+          draft: { id: draft.id, revision: draft.revision, characterUpdatedAt: characterDraft.updatedAt },
+          story: draft.story,
+          seed: draft.story?.seed ?? null,
           selectedVisuals: {
-            characterStateId: draft.characterStateId,
-            sceneCompositionId: draft.sceneCompositionId,
+            characterStateId: character.state.id,
+            ...(draft.story ? { sceneCompositionId: draft.story.sceneCompositionId } : {}),
           },
           resources: {
-            characterAppearances: packaged.starter.characterPack.appearances.map(({ id }) => ({
-              packId: packaged.starter.characterPack.id,
-              packVersion: packaged.starter.characterPack.version,
+            characterAppearances: character.pack.appearances.map(({ id }) => ({
+              packId: character.pack.id,
+              packVersion: character.pack.version,
               appearanceId: id,
             })),
-            characterStates: packaged.starter.characterStates,
-            sceneCompositions: packaged.starter.scenePack.compositions.map(({ id }) => ({
-              packId: packaged.starter.scenePack.id,
-              packVersion: packaged.starter.scenePack.version,
+            characterStates: [character.state],
+            sceneCompositions: story?.starter.scenePack.compositions.map(({ id }) => ({
+              packId: story.starter.scenePack.id,
+              packVersion: story.starter.scenePack.version,
               compositionId: id,
-            })),
+            })) ?? [],
           },
-          skeleton: packaged.starter.skeleton,
+          skeleton: story?.starter.skeleton ?? { requiredStageIds: [], requiredMetricIds: [], instructions: [] },
           vocabulary: {
             conditions: ['metric', 'flag', 'stage', 'capability', 'inventory', 'equipped', 'appearance', 'quantity', 'itemState', 'all', 'any', 'not'],
             effects: ['addMetric', 'setFlag', 'changeStage', 'grantItem', 'consumeItem', 'equipItem', 'unequipItem', 'setItemState', 'setAppearanceOverride'],
@@ -274,7 +291,7 @@ export function createApplication(document: Document) {
   }
 
   async function submitExperienceCandidate(rawInput: unknown) {
-    const input = rawInput as { draftId: string; expectedRevision: number; idempotencyKey: string; candidate: unknown }
+    const input = rawInput as { draftId: string; expectedRevision: number; expectedCharacterUpdatedAt: number; idempotencyKey: string; candidate: unknown }
     try {
       const entry = await createIndexedDbEntryRepository(AUTHORING_NAMESPACE).readById(input.draftId)
       if (!entry || entry.collection !== 'experience-drafts' || entry.status !== 'published') {
@@ -288,14 +305,15 @@ export function createApplication(document: Document) {
           nextActions: [],
         }
       }
-      const packaged = await loadDraftStarter(draft)
-      const resources = await validateLoadedStarterPackage(
-        { starter: structuredClone(packaged.starter), assets: structuredClone(packaged.assets) },
-        inspectCharacterImage,
-        inspectSceneImage,
-        FIXED_BACKBONE_VERSION,
+      const storedCharacter = await characterDrafts.get()
+      if (!storedCharacter || storedCharacter.updatedAt !== input.expectedCharacterUpdatedAt) throw new ExperienceSubmissionConflict('character_draft_changed')
+      const candidate = assembleExperienceCandidate(
+        `bundle:${crypto.randomUUID()}`,
+        draft,
+        await loadDraftStory(draft),
+        migrateCharacterDraft(storedCharacter),
+        input.candidate,
       )
-      const candidate = assembleExperienceCandidate(`bundle:${crypto.randomUUID()}`, draft, resources, input.candidate)
       const result = await persistTriggeredExperienceCandidate(
         input.draftId,
         input.expectedRevision,
@@ -312,7 +330,7 @@ export function createApplication(document: Document) {
       if (error instanceof ExperienceSubmissionConflict) {
         throw authoringFailure(error.code, 'experience-draft', error.message, error.currentRevision, true)
       }
-      throw authoringFailure('invalid_starter', 'experience-draft.starter', error instanceof Error ? error.message : 'Starter validation failed')
+      throw authoringFailure('invalid_authoring_state', 'experience-draft', error instanceof Error ? error.message : 'Authoring state is invalid')
     }
   }
 

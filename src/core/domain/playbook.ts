@@ -178,11 +178,19 @@ const candidateActionSchema = strictObject({
 const candidateSceneSchema = strictObject({
   compositionId: declarativeIdentifier,
   characterStateId: declarativeIdentifier,
-}, ['compositionId'])
+}, [])
+const candidateSeedSchema = strictObject({
+  kind: { enum: ['story', 'task'] },
+  directionId: declarativeIdentifier,
+  loopIds: { type: 'array', minItems: 1, items: { enum: PROGRESS_LOOP_IDS } },
+  completionMode: { enum: ['finite', 'continuous'] },
+  brief: nonBlank(8000),
+}, ['kind', 'directionId', 'loopIds', 'completionMode', 'brief'])
 
 export const EXPERIENCE_CANDIDATE_SCHEMA: JsonSchema = {
   ...strictObject({
     name: nonBlank(200),
+    seed: candidateSeedSchema,
     initialStageId: declarativeIdentifier,
     metrics: { type: 'object', additionalProperties: { type: 'number' } },
     flags: { type: 'object', additionalProperties: { type: 'boolean' } },
@@ -209,7 +217,7 @@ export const EXPERIENCE_CANDIDATE_SCHEMA: JsonSchema = {
         effects: { type: 'array', maxItems: PLAYBOOK_LIMITS.effectsPerActionOrRule, items: EFFECT_SCHEMA },
       }, ['ruleId', 'priority', 'when', 'effects']),
     },
-  }, ['name', 'initialStageId', 'metrics', 'stages']),
+  }, ['name', 'seed', 'initialStageId', 'metrics', 'stages']),
   $defs: PLAYBOOK_SCHEMA_DEFS,
 }
 

@@ -57,7 +57,8 @@ const selected = await runtime.invokeTrigger({
 assert.equal(selected.ok, true)
 assert.equal(createdEntry?.collection, 'experience-drafts')
 const candidate = {
-  name: 'Triggered', initialStageId: 'start', metrics: { xp: 0 }, flags: {}, itemDefinitions: [],
+  name: 'Triggered', seed: (await loadFocusStudioFixture()).starter.directions[0]!.seed,
+  initialStageId: 'start', metrics: { xp: 0 }, flags: {}, itemDefinitions: [],
   stages: [{ id: 'start', title: 'Start', narrative: 'Begin.', actions: [], progress: [] }],
   rules: [{
     ruleId: 'nested', priority: 1,
@@ -67,18 +68,18 @@ const candidate = {
 }
 const submission = await runtime.invokeTrigger({
   trigger: 'submit-experience-candidate',
-  input: { draftId: 'draft:triggered', expectedRevision: 0, idempotencyKey: 'once', candidate },
+  input: { draftId: 'draft:triggered', expectedRevision: 0, expectedCharacterUpdatedAt: 1, idempotencyKey: 'once', candidate },
   ctx: context,
 })
 assert.equal(submission.ok, true)
-assert.deepEqual(submittedInput, { draftId: 'draft:triggered', expectedRevision: 0, idempotencyKey: 'once', candidate })
+assert.deepEqual(submittedInput, { draftId: 'draft:triggered', expectedRevision: 0, expectedCharacterUpdatedAt: 1, idempotencyKey: 'once', candidate })
 submittedInput = undefined
 const invalid = await runtime.invokeTrigger({
   trigger: 'submit-experience-candidate',
   input: {
-    draftId: 'draft:triggered', expectedRevision: 0, idempotencyKey: 'invalid',
+    draftId: 'draft:triggered', expectedRevision: 0, expectedCharacterUpdatedAt: 1, idempotencyKey: 'invalid',
     candidate: {
-      name: 'Invalid', initialStageId: 'start', metrics: {},
+      name: 'Invalid', seed: candidate.seed, initialStageId: 'start', metrics: {},
       stages: [{ id: 'start', title: 'Start', narrative: 'Begin.', actions: [], progress: [] }],
       rules: [{ ruleId: 'open', priority: 1, when: { fact: 'invented' }, effects: [] }],
     },

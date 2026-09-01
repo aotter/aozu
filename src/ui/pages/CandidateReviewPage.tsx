@@ -28,13 +28,17 @@ export function CandidateReviewPage({ preview, onApprove, onCancel }: {
       <section className="mt-6 rounded-2xl border bg-background p-5 shadow-sm">
         <h2 className="font-heading text-lg font-medium">{preview.name}</h2>
         {preview.source === 'character' && <div className="mx-auto mt-4 max-w-xs"><CharacterRenderer label={preview.name} layers={preview.layers} /></div>}
-        {preview.source === 'starter' && <div className="mx-auto mt-4 max-w-xs"><SceneRenderer label={preview.initialTitle} layers={preview.sceneLayers}>
-          <CharacterRenderer label={preview.name} layers={preview.characterLayers} className="size-full rounded-none border-0 bg-transparent" />
-        </SceneRenderer></div>}
+        {preview.source === 'experience' && <div className="mx-auto mt-4 max-w-xs">{preview.sceneLayers.length
+          ? <SceneRenderer label={preview.initialTitle} layers={preview.sceneLayers}>
+              <CharacterRenderer label={preview.name} layers={preview.characterLayers} className="size-full rounded-none border-0 bg-transparent" />
+            </SceneRenderer>
+          : <CharacterRenderer label={preview.name} layers={preview.characterLayers} />}</div>}
         <dl className="mt-4 grid gap-2 text-sm">
-          {preview.source === 'starter' ? <>
-            <div className="flex justify-between gap-4"><dt>{t('candidate.starter')}</dt><dd>{preview.starter.name} · v{preview.starter.version}</dd></div>
-            <div className="flex justify-between gap-4"><dt>{t('candidate.direction')}</dt><dd>{preview.direction.name}</dd></div>
+          {preview.source === 'experience' ? <>
+            {preview.story && <>
+              <div className="flex justify-between gap-4"><dt>{t('candidate.starter')}</dt><dd>{preview.story.starter.name} · v{preview.story.starter.version}</dd></div>
+              <div className="flex justify-between gap-4"><dt>{t('candidate.direction')}</dt><dd>{preview.story.direction.name}</dd></div>
+            </>}
             <div className="flex justify-between gap-4"><dt>{t('candidate.loops')}</dt><dd>{preview.seed.loopIds.join(' + ')}</dd></div>
             <div className="flex justify-between gap-4"><dt>{t('candidate.completionMode')}</dt><dd>{preview.seed.completionMode}</dd></div>
             <div className="flex justify-between gap-4"><dt>{t('candidate.stages')}</dt><dd>{preview.stageCount}</dd></div>

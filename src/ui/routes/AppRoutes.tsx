@@ -108,15 +108,12 @@ export function AppRoutes({ application }: { application: Application }) {
         await refresh()
       }}
       onChooseStarter={() => navigate('/starter', { state: { returnTo: '/start' } })}
-      onCreateCharacter={() => navigate('/character', { state: { returnTo: '/start' } })}
       prepareImport={(blob) => prepareReview(application.prepareImport(blob))}
     />} />
     <Route path="/starter" element={<StarterDraftPage
       loadStarters={application.listStarters}
-      openDraft={application.openExperienceDraft}
-      selectStarter={application.selectStarter}
-      webmcpAvailable={startup.webmcpAvailable}
-      onCancel={closeFlow}
+      startCreation={application.startCreation}
+      onSelected={() => navigate('/character/expressions', { replace: true, state: { returnTo: '/start' } })}
     />} />
     <Route path="/character" element={characterDraftPage} />
     <Route path="/character/:step" element={characterDraftPage} />

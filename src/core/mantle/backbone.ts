@@ -39,7 +39,7 @@ const progressSchema = PROGRESS_BINDING_SCHEMA
 const sceneReferenceSchema = objectSchema({
   compositionId: { type: "string", minLength: 1 },
   characterStateId: { type: "string", minLength: 1 },
-}, ["compositionId"])
+})
 
 const emptyReadOnlyInput = { ...objectSchema({}), readOnly: true }
 
@@ -89,28 +89,40 @@ const directionSchema = objectSchema(
     name: { type: "string", minLength: 1 },
     summary: { type: "string", minLength: 1 },
     seed: experienceSeedSchema,
-    characterStateId: { type: "string", minLength: 1 },
     sceneCompositionId: { type: "string", minLength: 1 },
   },
-  ["id", "name", "summary", "seed", "characterStateId", "sceneCompositionId"],
+  ["id", "name", "summary", "seed", "sceneCompositionId"],
 )
+
+const starterIdentitySchema = objectSchema(
+  {
+    id: { type: "string", minLength: 1 },
+    version: { type: "integer", minimum: 1 },
+    name: { type: "string", minLength: 1 },
+    manifestSha256: { type: "string", pattern: "^[0-9a-f]{64}$" },
+  },
+  ["id", "version", "name", "manifestSha256"],
+)
+
+const storySelectionSchema: JsonSchema = {
+  oneOf: [
+    { type: "null" },
+    objectSchema(
+      {
+        starter: starterIdentitySchema,
+        direction: directionSchema,
+        seed: experienceSeedSchema,
+        sceneCompositionId: { type: "string", minLength: 1 },
+      },
+      ["starter", "direction", "seed", "sceneCompositionId"],
+    ),
+  ],
+}
 
 const experienceDraftProperties = {
   schemaVersion: { const: 1 },
   revision: { type: "integer", minimum: 0 },
-  starter: objectSchema(
-    {
-      id: { type: "string", minLength: 1 },
-      version: { type: "integer", minimum: 1 },
-      name: { type: "string", minLength: 1 },
-      manifestSha256: { type: "string", pattern: "^[0-9a-f]{64}$" },
-    },
-    ["id", "version", "name", "manifestSha256"],
-  ),
-  direction: directionSchema,
-  seed: experienceSeedSchema,
-  characterStateId: { type: "string", minLength: 1 },
-  sceneCompositionId: { type: "string", minLength: 1 },
+  story: storySelectionSchema,
   lastSubmission: objectSchema(
     {
       idempotencyKey: { type: "string", minLength: 1, maxLength: 100 },
@@ -120,15 +132,11 @@ const experienceDraftProperties = {
   ),
 }
 
-const experienceDraftRequired = ["schemaVersion", "revision", "starter", "direction", "seed", "characterStateId", "sceneCompositionId"]
+const experienceDraftRequired = ["schemaVersion", "revision", "story"]
 const experienceDraftCreateProperties = {
   schemaVersion: experienceDraftProperties.schemaVersion,
   revision: experienceDraftProperties.revision,
-  starter: experienceDraftProperties.starter,
-  direction: experienceDraftProperties.direction,
-  seed: experienceDraftProperties.seed,
-  characterStateId: experienceDraftProperties.characterStateId,
-  sceneCompositionId: experienceDraftProperties.sceneCompositionId,
+  story: experienceDraftProperties.story,
 }
 
 export const FIXED_BACKBONE_VERSION = "6"
@@ -421,7 +429,7 @@ const ALL_BACKBONE_SOURCES = [
     "authoring/select-experience-draft.yaml",
     envelope("Procedure", "select-experience-draft", {
       title: 'Select Experience Draft',
-      description: 'Persist the selected Starter and Direction as the current Experience Draft.',
+      description: 'Persist the selected Story starting point, or Blank, as the current Experience Draft. Character selection is stored independently in the Character Draft.',
       input: objectSchema(experienceDraftCreateProperties, experienceDraftRequired),
       output: { type: "object" },
       handler: { kind: "builtin", op: "create", schema: "experience-drafts" },
@@ -438,7 +446,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-experience-contract.yaml',
     envelope('Procedure', 'inspect-experience-contract', {
       title: 'Inspect Experience Contract',
-      description: 'Required first step for authoring an experience. Returns the selected immutable Starter identity, exact Experience Draft revision, Direction and Experience Seed, available visual references, incomplete Playbook skeleton, supported vocabulary, and validation limits. No runnable Companion exists until a complete candidate is validated and the user approves it.',
+      description: 'Required first step for authoring an experience. Returns the exact Experience Draft and Character Draft revisions, optional Story seed, current character references, optional Story scene resources, Playbook skeleton, vocabulary, and limits. For Blank Story, author a suitable seed and complete Playbook. No runnable Companion exists until a complete candidate is validated and the user approves it.',
       input: emptyReadOnlyInput,
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.inspect-experience-contract' },
@@ -455,14 +463,15 @@ const ALL_BACKBONE_SOURCES = [
     "authoring/submit-experience-candidate.yaml",
     envelope('Procedure', 'submit-experience-candidate', {
       title: 'Submit Experience Candidate',
-      description: 'Submit one complete declarative Playbook for the exact inspected draft revision. Starter assets, fixed manifests, handlers, and application code cannot be replaced. Invalid or stale submissions return diagnostics without staging. A valid candidate remains inactive until explicit user review and approval.',
+      description: 'Submit one complete declarative Playbook for the exact inspected Experience and Character Draft revisions. Selected Story assets, fixed manifests, handlers, and application code cannot be replaced. Invalid or stale submissions return diagnostics without staging. A valid candidate remains inactive until explicit user review and approval.',
       input: {
         ...objectSchema({
           draftId: { type: "string", minLength: 1 },
           expectedRevision: { type: "integer", minimum: 0 },
+          expectedCharacterUpdatedAt: { type: "integer", minimum: 0 },
           idempotencyKey: { type: "string", minLength: 1, maxLength: 100 },
           candidate: EXPERIENCE_CANDIDATE_SCHEMA,
-        }, ['draftId', 'expectedRevision', 'idempotencyKey', 'candidate']),
+        }, ['draftId', 'expectedRevision', 'expectedCharacterUpdatedAt', 'idempotencyKey', 'candidate']),
         $defs: PLAYBOOK_SCHEMA_DEFS,
       },
       output: toolResultSchema,

@@ -101,6 +101,8 @@
   "characterStates": [
     {
       "id": "character:focus-default",
+      "name": "Focus Friend",
+      "summary": "A calm, neutral companion ready for further customization.",
       "packId": "focus-friend",
       "packVersion": 1,
       "composition": [
@@ -160,7 +162,6 @@
         "completionMode": "continuous",
         "brief": "Author a supportive daily study experience with clear local actions, measurable focus progress, and an explicit agent fallback only where open-ended coaching is useful."
       },
-      "characterStateId": "character:focus-default",
       "sceneCompositionId": "scene:focus-studio"
     }
   ],
