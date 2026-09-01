@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 
 import { assembleExperienceCandidate, ExperienceCandidateValidationError, type ExperienceCandidateInput } from '../src/core/application/authoring.ts'
-import { approveCandidate } from '../src/core/application/candidate.ts'
+import { approveCandidate, loadPendingCandidatePreview } from '../src/core/application/candidate.ts'
+import { validateBundle } from '../src/core/bundle.ts'
 import { buildCharacterDraftResources, createCharacterDraftFromStarter } from '../src/core/application/character-creation.ts'
 import { submitAction } from '../src/core/application/stage.ts'
 import { createBlankExperienceDraftData, createExperienceDraftData, type ExperienceDraft } from '../src/core/domain/starter.ts'
@@ -66,6 +67,37 @@ assert.equal(JSON.stringify(candidate.entries).includes('loopIds'), false)
 assert.equal(candidate.preview.source, 'experience')
 assert.equal(candidate.record.metadata?.starter?.manifestSha256, resources.manifestSha256)
 assert.equal(candidate.assets.length, 3)
+const storedCandidateEntries = new Map(candidate.entries.map(({ id, collection, data }) => [id, {
+  id, collection, data, status: 'published' as const, version: 1, createdAt: 1, updatedAt: 1,
+}]))
+const storedCandidateAssets = new Map(candidate.assets.map(({ id, blob }) => [id, blob]))
+const characterInspections = new Map(characterDraft.variants.flatMap(({ layers }) =>
+  Object.values(layers).filter((asset) => asset).map((asset) => [asset!.blob, asset!.inspection] as const),
+))
+const sceneInspections = new Map(resources.starter.scenePack.assets.map(({ blobId }) => [
+  resources.assets.find(({ id }) => id === blobId)!.blob,
+  resources.sceneInspections.get(blobId)!,
+]))
+const resumed = await loadPendingCandidatePreview(
+  { async getPendingReview() { return { bundle: validateBundle(candidate.record), source: 'experience' as const, createdAt: 1 } } } as never,
+  () => ({
+    async readById(id: string) { return storedCandidateEntries.get(id) ?? null },
+    async readPublished({ collection }: { collection?: string } = {}) {
+      return [...storedCandidateEntries.values()].filter((value) => !collection || value.collection === collection)
+    },
+  } as never),
+  () => ({
+    async get(id: string) { return storedCandidateAssets.get(id) ?? null },
+    async list() { return [...storedCandidateAssets].map(([id, blob]) => ({ id, blob })) },
+  }),
+  async (blob) => characterInspections.get(blob)!,
+  async (blob) => sceneInspections.get(blob)!,
+)
+assert.equal(resumed?.source, 'experience')
+assert.equal(resumed?.name, candidate.preview.name)
+assert.equal(resumed?.source === 'experience' ? resumed.stageCount : 0, candidate.preview.stageCount)
+assert.equal(resumed?.source === 'experience' ? resumed.characterLayers.length : 0, candidate.preview.characterLayers.length)
+assert.equal(resumed?.source === 'experience' ? resumed.sceneLayers.length : 0, candidate.preview.sceneLayers.length)
 const blankDraft: ExperienceDraft = {
   id: 'draft-blank', ...createBlankExperienceDraftData(), createdAt: 1, updatedAt: 1,
 }

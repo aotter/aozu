@@ -5,11 +5,23 @@ import type { StagedCandidatePreview } from '@/core/application/candidate.ts'
 import { CharacterRenderer } from '@/ui/CharacterRenderer'
 import { SceneRenderer } from '@/ui/SceneRenderer'
 import { Button } from '@/ui/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/ui/components/ui/alert-dialog'
 
-export function CandidateReviewPage({ preview, onApprove, onCancel }: {
+export function CandidateReviewPage({ preview, onApprove, onCancel, onDiscard }: {
   preview: StagedCandidatePreview
   onApprove(): Promise<void>
   onCancel(): Promise<void>
+  onDiscard?(): Promise<void>
 }) {
   const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
@@ -54,6 +66,19 @@ export function CandidateReviewPage({ preview, onApprove, onCancel }: {
       <div className="mt-6 flex gap-2">
         <Button disabled={busy} onClick={() => void run(onApprove)}>{busy ? t(preview.source === 'character' ? 'candidate.saving' : 'candidate.activating') : t(preview.source === 'character' ? 'candidate.saveCharacter' : 'candidate.approve')}</Button>
         <Button variant="outline" disabled={busy} onClick={() => void run(onCancel)}>{t('candidate.cancel')}</Button>
+        {onDiscard && <AlertDialog>
+          <AlertDialogTrigger asChild><Button variant="destructive" disabled={busy}>{t('candidate.discard')}</Button></AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('candidate.discardTitle')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('candidate.discardDescription')}</AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={busy}>{t('common.close')}</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" disabled={busy} onClick={() => void run(onDiscard)}>{t('candidate.discard')}</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>}
       </div>
       {error && <p role="alert" className="mt-4 text-sm text-destructive">{t('startup.error')}</p>}
     </main>

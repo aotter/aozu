@@ -33,8 +33,10 @@ export interface BundleRecord {
     starter?: {
       id: string
       version: number
+      name?: string
       manifestSha256: string
       directionId: string
+      directionName?: string
       seed: import('./domain/starter.ts').ExperienceSeed
     }
   }

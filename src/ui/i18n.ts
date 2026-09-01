@@ -16,6 +16,11 @@ const en = {
     description: 'Continue a saved Companion or start a new one. Confirmed data is saved locally.',
     unavailable: 'Not available yet',
     chooseStarter: 'Start creating',
+    pending: {
+      title: 'Waiting for review',
+      description: 'Validated and stored locally, but not active yet.',
+      resume: 'Resume review',
+    },
     saved: {
       title: 'Saved companions',
       current: 'Current companion',
@@ -80,6 +85,9 @@ const en = {
     saveCharacter: 'Save character pack',
     saving: 'Saving…',
     cancel: 'Not now',
+    discard: 'Discard candidate',
+    discardTitle: 'Discard this candidate?',
+    discardDescription: 'This removes the staged bundle and its local assets. Saved companions are not affected.',
   },
   characterDraft: {
     required: 'Required',

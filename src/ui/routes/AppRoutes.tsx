@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 
 import type { Application } from '@/bootstrap.ts'
-import type { CompanionStartup } from '@/core/application/companion.ts'
 import type { StagedCandidatePreview } from '@/core/application/candidate.ts'
 import { AppHeader } from '@/ui/AppHeader'
 import { AppMenu } from '@/ui/AppMenu'
@@ -20,10 +20,13 @@ export function AppRoutes({ application }: { application: Application }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
-  const [startup, setStartup] = useState<CompanionStartup>()
+  const [startup, setStartup] = useState<Awaited<ReturnType<Application['loadStartup']>>>()
   const [loadError, setLoadError] = useState(false)
   const [preview, setPreview] = useState<StagedCandidatePreview>()
-  const refresh = useCallback(async () => setStartup(await application.loadStartup()), [application])
+  const refresh = useCallback(async () => {
+    const next = await application.loadStartup()
+    flushSync(() => setStartup(next))
+  }, [application])
 
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- IndexedDB is the external startup source.
@@ -63,6 +66,7 @@ export function AppRoutes({ application }: { application: Application }) {
 
   const flowReturnTo = (location.state as { returnTo?: FlowReturnTo } | null)?.returnTo
   const closeFlow = () => navigate(flowReturnTo ?? '/start', { replace: true })
+  const review = preview ?? startup.pendingReview ?? undefined
   const prepareReview = async (task: Promise<StagedCandidatePreview>) => {
     setPreview(await task)
     navigate('/review')
@@ -75,16 +79,16 @@ export function AppRoutes({ application }: { application: Application }) {
   />
   const showBack = location.pathname !== '/' && location.pathname !== '/start'
   const goBack = () => {
-    if (location.pathname === '/review' && preview) {
+    if (location.pathname === '/review' && review) {
       setPreview(undefined)
-      navigate(-1)
+      closeFlow()
       return
     }
     closeFlow()
   }
   const headerTitle = location.pathname === '/companion' && startup.status === 'main'
     ? startup.companion.name
-    : location.pathname === '/review' ? preview?.name : undefined
+    : location.pathname === '/review' ? review?.name : undefined
   const headerActions = location.pathname === '/companion' && startup.status === 'main' ? <AppMenu
     exportData={application.exportData}
     prepareImport={(blob) => prepareReview(application.prepareImport(blob))}
@@ -109,6 +113,8 @@ export function AppRoutes({ application }: { application: Application }) {
       }}
       onChooseStarter={() => navigate('/starter', { state: { returnTo: '/start' } })}
       prepareImport={(blob) => prepareReview(application.prepareImport(blob))}
+      pendingReview={startup.pendingReview}
+      onResumeReview={() => navigate('/review', { state: { returnTo: '/start' } })}
     />} />
     <Route path="/starter" element={<StarterDraftPage
       loadStarters={application.listStarters}
@@ -117,18 +123,25 @@ export function AppRoutes({ application }: { application: Application }) {
     />} />
     <Route path="/character" element={characterDraftPage} />
     <Route path="/character/:step" element={characterDraftPage} />
-    <Route path="/review" element={preview ? <CandidateReviewPage
-      preview={preview}
+    <Route path="/review" element={review ? <CandidateReviewPage
+      preview={review}
       onApprove={async () => {
-        if (preview.source === 'character') await application.approveCharacterDraft()
-        else await application.approveCandidate(preview.bundleId, true)
+        if (review.source === 'character') await application.approveCharacterDraft()
+        else await application.approveCandidate(review.bundleId, true)
         setPreview(undefined)
         await refresh()
-        navigate(preview.source === 'character' ? '/start' : '/companion', { replace: true })
+        navigate(review.source === 'character' ? '/start' : '/companion', { replace: true })
       }}
       onCancel={async () => {
         setPreview(undefined)
-        navigate(-1)
+        await refresh()
+        closeFlow()
+      }}
+      onDiscard={review.source === 'character' ? undefined : async () => {
+        await application.discardPendingReview(review.bundleId)
+        setPreview(undefined)
+        await refresh()
+        navigate('/start', { replace: true })
       }}
     /> : <Navigate to="/start" replace />} />
     <Route path="/companion" element={startup.status === 'main' ? <CompanionPage

@@ -318,8 +318,10 @@ export function assembleExperienceCandidate(
       ...(story ? { starter: {
         id: story.starter.id,
         version: story.starter.version,
+        name: story.starter.name,
         manifestSha256: story.starter.manifestSha256,
         directionId: story.direction.id,
+        directionName: story.direction.name,
         seed: structuredClone(story.seed),
       } } : {}),
     },

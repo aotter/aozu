@@ -9,6 +9,7 @@ import {
   META_STORE,
   openCompanionDatabase,
 } from "./database.ts"
+import { decodePendingReview, PENDING_REVIEW_KEY } from './candidate-review.ts'
 
 const ACTIVE_BUNDLE_KEY = "active-bundle-id"
 const SAVED_BUNDLE_PREFIX = "saved-bundle:"
@@ -18,20 +19,6 @@ const readBundle = async (database: CompanionDatabase, id: string): Promise<Bund
 
 export function createIndexedDbBundleRepository() {
   return {
-    async stageCandidate(record: BundleRecord): Promise<ValidatedBundle> {
-      validateBundle(record)
-      const database = await openCompanionDatabase()
-      await database.add(BUNDLE_STORE, structuredClone(record))
-      const stored = await readBundle(database, record.id)
-      if (!stored) throw new Error("Candidate read-back failed")
-      try {
-        return validateBundle(stored)
-      } catch (error) {
-        await database.delete(BUNDLE_STORE, record.id)
-        throw error
-      }
-    },
-
     async activate(id: string, approved: true): Promise<ValidatedBundle> {
       if (approved !== true) throw new Error("Explicit approval required")
       const database = await openCompanionDatabase()
@@ -40,10 +27,12 @@ export function createIndexedDbBundleRepository() {
       const validated = validateBundle(record)
       const previousActiveId = await database.get(META_STORE, ACTIVE_BUNDLE_KEY)
       const transaction = database.transaction(META_STORE, "readwrite")
+      const pending = decodePendingReview(await transaction.store.get(PENDING_REVIEW_KEY))
       await Promise.all([
         transaction.store.put(id, ACTIVE_BUNDLE_KEY),
         transaction.store.put(id, `${SAVED_BUNDLE_PREFIX}${id}`),
         ...(previousActiveId ? [transaction.store.put(previousActiveId, `${SAVED_BUNDLE_PREFIX}${previousActiveId}`)] : []),
+        ...(pending?.bundleId === id ? [transaction.store.delete(PENDING_REVIEW_KEY)] : []),
         transaction.done,
       ])
       await requestPersistentStorage()
@@ -57,6 +46,15 @@ export function createIndexedDbBundleRepository() {
       const record = await readBundle(database, id)
       if (!record) throw new Error(`Active bundle missing: ${id}`)
       return validateBundle(record)
+    },
+
+    async getPendingReview() {
+      const database = await openCompanionDatabase()
+      const pointer = decodePendingReview(await database.get(META_STORE, PENDING_REVIEW_KEY))
+      if (!pointer) return null
+      const record = await readBundle(database, pointer.bundleId)
+      if (!record) throw new Error(`Pending review bundle missing: ${pointer.bundleId}`)
+      return { bundle: validateBundle(record), source: pointer.source, createdAt: pointer.createdAt }
     },
 
     async listSaved(): Promise<BundleRecord[]> {
@@ -89,6 +87,35 @@ export function createIndexedDbBundleRepository() {
         ...(activeId === id ? [meta.delete(ACTIVE_BUNDLE_KEY)] : []),
         ...entryKeys.map((key) => entries.delete(key)),
         ...assetKeys.map((key) => assets.delete(key)),
+      ])
+      await transaction.done
+    },
+
+    async discardPendingReview(id: string): Promise<void> {
+      const database = await openCompanionDatabase()
+      const transaction = database.transaction([META_STORE, BUNDLE_STORE, ENTRY_STORE, ASSET_STORE], 'readwrite')
+      const meta = transaction.objectStore(META_STORE)
+      const pending = decodePendingReview(await meta.get(PENDING_REVIEW_KEY))
+      if (!pending || pending.bundleId !== id) {
+        await transaction.done
+        throw new Error(`Pending review not found: ${id}`)
+      }
+      const [activeId, savedId, entryKeys, assetKeys] = await Promise.all([
+        meta.get(ACTIVE_BUNDLE_KEY),
+        meta.get(`${SAVED_BUNDLE_PREFIX}${id}`),
+        transaction.objectStore(ENTRY_STORE).index('bundleId').getAllKeys(id),
+        transaction.objectStore(ASSET_STORE).index('bundleId').getAllKeys(id),
+      ])
+      if (activeId === id || savedId === id) {
+        transaction.abort()
+        await transaction.done.catch(() => undefined)
+        throw new Error('Cannot discard an active or saved Companion')
+      }
+      await Promise.all([
+        meta.delete(PENDING_REVIEW_KEY),
+        transaction.objectStore(BUNDLE_STORE).delete(id),
+        ...entryKeys.map((key) => transaction.objectStore(ENTRY_STORE).delete(key)),
+        ...assetKeys.map((key) => transaction.objectStore(ASSET_STORE).delete(key)),
       ])
       await transaction.done
     },
