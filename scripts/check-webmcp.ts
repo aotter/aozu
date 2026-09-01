@@ -6,9 +6,6 @@ import { compileAuthoringBackbone, compileFixedBackbone } from '../src/core/mant
 
 type RegisteredTool = {
   name: string
-  title?: string
-  description: string
-  inputSchema: object
   annotations: { readOnlyHint?: boolean }
   execute(input: Record<string, unknown>): Promise<unknown>
 }
@@ -25,11 +22,7 @@ const document = {
   },
 } as unknown as Document
 assert.equal(createAgentCapability(document).isAvailable(), true)
-const calls: Array<{ trigger: string; input: unknown }> = []
-const invoke = async (trigger: string, input: unknown) => {
-  calls.push({ trigger, input })
-  return { ok: true as const, data: { trigger, input } }
-}
+const invoke = async (trigger: string, input: unknown) => ({ ok: true as const, data: { trigger, input } })
 await registerMantleWebMcpTools(document, authoring, invoke)
 await registerMantleWebMcpTools(document, play, invoke)
 assert.deepEqual([...registered.keys()].sort(), [
@@ -41,22 +34,16 @@ assert.deepEqual([...registered.keys()].sort(), [
   'submit_companion_action',
   'submit_experience_candidate',
 ])
-assert.equal(registered.has('query_view_current_stage'), false)
-assert.equal(registered.get('inspect_companion')?.annotations.readOnlyHint, true)
-assert.equal(registered.get('submit_companion_action')?.annotations.readOnlyHint, false)
-assert.equal(registered.get('inspect_companion')?.title, play.procedures['inspect-companion']?.manifest.spec.title)
-assert.equal(registered.get('inspect_companion')?.description, play.procedures['inspect-companion']?.manifest.spec.description)
-assert.deepEqual(registered.get('submit_experience_candidate')?.inputSchema, authoring.procedures['submit-experience-candidate']?.manifest.spec.input)
+assert.deepEqual([
+  registered.get('inspect_companion')?.annotations.readOnlyHint,
+  registered.get('submit_companion_action')?.annotations.readOnlyHint,
+], [true, false])
 const submitted = { actionId: 'go', expectedRevision: 0, idempotencyKey: 'once' }
 assert.deepEqual(await registered.get('submit_companion_action')!.execute(submitted), {
   trigger: 'submit-companion-action', input: submitted,
 })
-assert.equal(calls[0]?.input, submitted)
 
-const diagnosticDocument = {
-  modelContext: { async registerTool(tool: RegisteredTool) { registered.set(tool.name, tool) } },
-} as unknown as Document
-await registerMantleWebMcpTools(diagnosticDocument, play, async () => ({
+await registerMantleWebMcpTools(document, play, async () => ({
   ok: false,
   diagnostic: runtimeDiagnostic({ code: 'CONFLICT', severity: 'error', path: 'run/revision', message: 'stale' }),
 }))

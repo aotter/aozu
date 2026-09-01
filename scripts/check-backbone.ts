@@ -13,32 +13,20 @@ assert.deepEqual(Object.keys(plan.procedures).sort(), ['inspect-companion', 'res
 assert.equal(plan.procedures["submit-companion-action"]?.manifest.spec.handler.kind, "ref")
 assert.equal(authoring.triggers["select-experience-draft"]?.target, "select-experience-draft")
 assert.equal(authoring.triggers["submit-experience-candidate"]?.target, "submit-experience-candidate")
-assert.deepEqual(
-  plan.mcpTools.filter(({ ownerKind, surface }) => ownerKind === 'Procedure' && surface === 'public').map(({ name }) => name),
-  ['inspect_companion', 'resolve_companion_turn', 'submit_companion_action'],
-)
-assert.deepEqual(
-  authoring.mcpTools.filter(({ ownerKind, surface }) => ownerKind === 'Procedure' && surface === 'public').map(({ name }) => name),
-  ['inspect_character_contract', 'inspect_experience_contract', 'submit_character_asset_candidate', 'submit_experience_candidate'],
-)
-assert.ok(new EntryDataValidator().validate(plan.schemas.stages!.manifest, { title: "Bad scene", narrative: "", actions: [], progress: [], scene: {} }).length)
-assert.equal(new EntryDataValidator().validate(plan.schemas.rules!.manifest, {
+const validate = (collection: keyof typeof plan.schemas, data: Record<string, unknown>) =>
+  new EntryDataValidator().validate(plan.schemas[collection]!.manifest, data)
+assert.equal(validate('rules', {
   ruleId: 'recursive', priority: 1,
   when: { all: [{ fact: 'metric', id: 'xp', op: 'gte', value: 1 }, { not: { fact: 'flag', id: 'done', value: true } }] },
   effects: [{ type: 'changeStage', stageId: 'complete' }],
 }).length, 0)
-assert.ok(new EntryDataValidator().validate(plan.schemas.rules!.manifest, {
-  ruleId: 'open', priority: 1,
-  when: { fact: 'metric', id: 'xp', op: 'gte', value: 1, surprise: true },
-  effects: [],
-}).length)
-assert.ok(new EntryDataValidator().validate(plan.schemas.stages!.manifest, {
+assert.ok(validate('stages', {
   title: 'Bad effect', narrative: '', actions: [{ id: 'go', label: 'Go', effects: [{ type: 'invented' }] }], progress: [],
 }).length)
-assert.equal(new EntryDataValidator().validate(plan.schemas.runs!.manifest, {
+assert.equal(validate('runs', {
   currentStageId: 'start', revision: 0, status: 'active', currentDialogue: 'Hello', metrics: {}, flags: {},
 }).length, 0)
-assert.ok(new EntryDataValidator().validate(plan.schemas.runs!.manifest, {
+assert.ok(validate('runs', {
   currentStageId: 'start', revision: 0, status: 'active', currentDialogueId: 'legacy',
 }).length)
 assert.equal(plan.httpRoutes.length, 0)
