@@ -138,6 +138,11 @@ export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage,
   if (!isCharacterDraftPopulated(draft) || !draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body || !draft.variants.find(({ group, id }) => group === 'expression' && id === 'neutral')?.layers.head) {
     throw new Error('Starter character is not editable with the current rig')
   }
+  const canonicalSha256 = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')!.layers.body!.inspection.sha256
+  for (const variant of draft.variants) {
+    if (variant.group === 'body') continue
+    for (const asset of Object.values(variant.layers)) if (asset) asset.canonicalSha256 = canonicalSha256
+  }
   draft.selected.props = [...propIds.values()]
   return draft
 }
@@ -214,6 +219,29 @@ export function validateCharacterAssetInspection(inspection: CharacterAssetInspe
   ) throw new Error('Asset must be a visible, transparent 512×768 RGBA PNG under 5 MiB')
 }
 
+export function measureCharacterAssetAlignment(
+  reference: CharacterAssetInspection | null,
+  candidate: CharacterAssetInspection,
+  tolerance = 32,
+) {
+  if (!reference?.visibleBounds || !candidate.visibleBounds) return { status: 'unverified' as const, reason: 'No comparable alpha bounds are available' }
+  const expected = reference.visibleBounds
+  const actual = candidate.visibleBounds
+  const delta = {
+    left: actual.x - expected.x,
+    top: actual.y - expected.y,
+    right: actual.x + actual.width - expected.x - expected.width,
+    bottom: actual.y + actual.height - expected.y - expected.height,
+  }
+  return {
+    status: Object.values(delta).every((value) => Math.abs(value) <= tolerance) ? 'aligned' as const : 'misaligned' as const,
+    expected,
+    actual,
+    delta,
+    tolerance,
+  }
+}
+
 export async function saveCharacterDraftAsset(
   drafts: CharacterDraftRepository,
   inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
@@ -232,14 +260,31 @@ export async function saveCharacterDraftAsset(
   ) throw new Error('Unknown character asset target')
   const inspection = await inspect(blob)
   validateCharacterAssetInspection(inspection)
-  const asset = { blob, filename, source, inspection }
+  const previousCanonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body?.inspection.sha256
+  const derived = !(target.group === 'body' && target.variantId === 'base')
+  const asset: CharacterDraftAsset = {
+    blob, filename, source, inspection,
+    ...(derived && previousCanonical ? { canonicalSha256: previousCanonical } : {}),
+  }
   const existing = draft.variants.find((variant) => variant.group === target.group && variant.id === target.variantId)
+  const variants = existing
+    ? draft.variants.map((variant) => variant === existing
+      ? { ...variant, label: target.label.trim(), layers: { ...variant.layers, [target.layer]: asset } }
+      : variant)
+    : [...draft.variants, { group: target.group, id: target.variantId, label: target.label.trim(), layers: { [target.layer]: asset } }]
+  const nextVariants = !derived && previousCanonical && previousCanonical !== inspection.sha256
+    ? variants.map((variant) => variant.group === 'body' ? variant : {
+        ...variant,
+        layers: Object.fromEntries(Object.entries(variant.layers).map(([layer, current]) => [
+          layer,
+          current && !current.canonicalSha256 ? { ...current, canonicalSha256: previousCanonical } : current,
+        ])),
+      })
+    : variants
   const next: CharacterDraft = {
     ...draft,
     approvedAt: undefined,
-    variants: existing
-      ? draft.variants.map((variant) => variant === existing ? { ...variant, layers: { ...variant.layers, [target.layer]: asset } } : variant)
-      : [...draft.variants, { group: target.group, id: target.variantId, label: target.label.trim(), layers: { [target.layer]: asset } }],
+    variants: nextVariants,
     updatedAt: Date.now(),
   }
   await drafts.put(next)
@@ -255,19 +300,47 @@ const ref = (pack: CharacterPack, appearanceId: string): AppearanceRef => ({
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}-${id}`
 const assetKey = (variant: Pick<CharacterDraftVariant, 'group' | 'id'>, layer: CharacterVariantLayer) => `${variantKey(variant)}-${layer}`
 const findVariant = (draft: CharacterDraft, group: CharacterVariantGroup, id: string) => draft.variants.find((variant) => variant.group === group && variant.id === id)
-const hasLayer = (draft: CharacterDraft, group: CharacterVariantGroup, id: string, layer: CharacterVariantLayer) => Boolean(findVariant(draft, group, id)?.layers[layer])
+const canonicalAsset = (draft: CharacterDraft) => findVariant(draft, 'body', 'base')?.layers.body
 
-const selectedVariants = (draft: CharacterDraft) => {
-  const outfit = draft.selected.outfit && hasLayer(draft, 'outfit', draft.selected.outfit, 'body')
-    ? findVariant(draft, 'outfit', draft.selected.outfit) : undefined
-  const expression = hasLayer(draft, 'expression', draft.selected.expression, 'head')
-    ? findVariant(draft, 'expression', draft.selected.expression) : findVariant(draft, 'expression', 'neutral')
-  const props = [...new Set(draft.selected.props)].map((id) => findVariant(draft, 'prop', id))
-  return [outfit ?? findVariant(draft, 'body', 'base'), expression, ...props]
-    .filter((variant): variant is CharacterDraftVariant => Boolean(variant && Object.keys(variant.layers).length))
+export function isCharacterDraftAssetCurrent(
+  draft: CharacterDraft,
+  variant: CharacterDraftVariant,
+  layer: CharacterVariantLayer,
+) {
+  const asset = variant.layers[layer]
+  if (!asset) return false
+  if (variant.group === 'body') return variant.id === 'base' && layer === 'body'
+  const canonical = canonicalAsset(draft)
+  if (!canonical) return false
+  return asset.canonicalSha256 === canonical.inspection.sha256
 }
 
-const renderPlacement = (group: CharacterVariantGroup, layer: CharacterVariantLayer, propOrder = 1) => {
+export const hasCurrentCharacterLayer = (
+  draft: CharacterDraft,
+  group: CharacterVariantGroup,
+  id: string,
+  layer: CharacterVariantLayer,
+) => {
+  const variant = findVariant(draft, group, id)
+  return Boolean(variant && isCharacterDraftAssetCurrent(draft, variant, layer))
+}
+
+const currentLayerEntries = (draft: CharacterDraft, variant: CharacterDraftVariant) =>
+  (Object.entries(variant.layers) as Array<[CharacterVariantLayer, CharacterDraftAsset | undefined]>)
+    .filter(([layer, asset]) => asset && isCharacterDraftAssetCurrent(draft, variant, layer)) as Array<[CharacterVariantLayer, CharacterDraftAsset]>
+
+const selectedVariants = (draft: CharacterDraft) => {
+  const outfit = draft.selected.outfit && hasCurrentCharacterLayer(draft, 'outfit', draft.selected.outfit, 'body')
+    ? findVariant(draft, 'outfit', draft.selected.outfit) : undefined
+  const expression = hasCurrentCharacterLayer(draft, 'expression', draft.selected.expression, 'head')
+    ? findVariant(draft, 'expression', draft.selected.expression)
+    : hasCurrentCharacterLayer(draft, 'expression', 'neutral', 'head') ? findVariant(draft, 'expression', 'neutral') : undefined
+  const props = [...new Set(draft.selected.props)].map((id) => findVariant(draft, 'prop', id))
+  return [outfit ?? findVariant(draft, 'body', 'base'), expression, ...props]
+    .filter((variant): variant is CharacterDraftVariant => Boolean(variant && currentLayerEntries(draft, variant).length))
+}
+
+export const characterAssetPlacement = (group: CharacterVariantGroup, layer: CharacterVariantLayer, propOrder = 1) => {
   if (group === 'body' || group === 'outfit') return { slot: 'character-skin', order: 1 }
   if (group === 'expression') return { slot: 'expression-head', order: 1 }
   return { slot: layer === 'back' ? 'item-back' : 'item-front', order: propOrder }
@@ -276,22 +349,22 @@ const renderPlacement = (group: CharacterVariantGroup, layer: CharacterVariantLa
 export function resolveCharacterDraftLayers(draft: CharacterDraft): Array<ResolvedCharacterLayer & { blob: Blob }> {
   const slotOrders = new Map<string, number>(CHARACTER_RIG.slots.map(({ id, order }) => [id, order]))
   const propOrders = new Map(draft.variants.filter(({ group }) => group === 'prop').map(({ id }, index) => [id, index + 1]))
-  return selectedVariants(draft).flatMap((variant) => Object.entries(variant.layers).map(([layer, asset]) => {
-    const placement = renderPlacement(variant.group, layer as CharacterVariantLayer, propOrders.get(variant.id))
+  return selectedVariants(draft).flatMap((variant) => currentLayerEntries(draft, variant).map(([layer, asset]) => {
+    const placement = characterAssetPlacement(variant.group, layer, propOrders.get(variant.id))
     return {
       id: assetKey(variant, layer as CharacterVariantLayer),
       blobId: assetKey(variant, layer as CharacterVariantLayer),
       slot: placement.slot,
       slotOrder: slotOrders.get(placement.slot)!,
       layerOrder: placement.order,
-      blob: asset!.blob,
+      blob: asset.blob,
     }
   })).sort((left, right) => left.slotOrder - right.slotOrder || left.layerOrder - right.layerOrder || left.id.localeCompare(right.id))
 }
 
 export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
   if (!draft.name.trim()) throw new Error('Companion name is required')
-  if (!hasLayer(draft, 'body', 'base', 'body') || !hasLayer(draft, 'expression', 'neutral', 'head')) throw new Error('Base body and neutral head are required')
+  if (!hasCurrentCharacterLayer(draft, 'body', 'base', 'body') || !hasCurrentCharacterLayer(draft, 'expression', 'neutral', 'head')) throw new Error('Base body and neutral head are required')
   const keys = new Set<string>()
   const propOrders = new Map(draft.variants.filter(({ group }) => group === 'prop').map(({ id }, index) => [id, index + 1]))
   for (const variant of draft.variants) {
@@ -308,18 +381,18 @@ export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
     rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
     creator: { name: 'Local user' },
     license: { id: 'private-use', embedding: 'allowed' },
-    assets: draft.variants.flatMap((variant) => Object.entries(variant.layers).map(([layer, asset]) => ({
-      id: assetKey(variant, layer as CharacterVariantLayer),
-      blobId: assetKey(variant, layer as CharacterVariantLayer),
+    assets: draft.variants.flatMap((variant) => currentLayerEntries(draft, variant).map(([layer, asset]) => ({
+      id: assetKey(variant, layer),
+      blobId: assetKey(variant, layer),
       mediaType: 'image/png' as const,
-      size: asset!.inspection.size,
-      sha256: asset!.inspection.sha256,
+      size: asset.inspection.size,
+      sha256: asset.inspection.sha256,
     }))),
     appearances: draft.variants.flatMap((variant) => {
-      const layers = Object.keys(variant.layers).map((layer) => {
-        const placement = renderPlacement(variant.group, layer as CharacterVariantLayer, propOrders.get(variant.id))
+      const layers = currentLayerEntries(draft, variant).map(([layer]) => {
+        const placement = characterAssetPlacement(variant.group, layer, propOrders.get(variant.id))
         return {
-          asset: { packId: draft.packId, packVersion: 1, assetId: assetKey(variant, layer as CharacterVariantLayer) },
+          asset: { packId: draft.packId, packVersion: 1, assetId: assetKey(variant, layer) },
           ...placement,
         }
       })
@@ -328,8 +401,8 @@ export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
     defaultComposition: [],
   }
   pack.defaultComposition = selectedVariants(draft).map((variant) => ref(pack, variantKey(variant)))
-  validateCharacterPack(pack, new Map(draft.variants.flatMap((variant) => Object.entries(variant.layers).map(([layer, asset]) => [
-    assetKey(variant, layer as CharacterVariantLayer), asset!.inspection,
+  validateCharacterPack(pack, new Map(draft.variants.flatMap((variant) => currentLayerEntries(draft, variant).map(([layer, asset]) => [
+    assetKey(variant, layer), asset.inspection,
   ] as const))))
   return pack
 }
@@ -342,9 +415,9 @@ export function buildCharacterDraftResources(draft: CharacterDraft) {
     packVersion: pack.version,
     composition: structuredClone(pack.defaultComposition),
   }
-  const assets = draft.variants.flatMap((variant) => Object.entries(variant.layers).map(([layer, asset]) => ({
-    id: assetKey(variant, layer as CharacterVariantLayer),
-    blob: asset!.blob,
+  const assets = draft.variants.flatMap((variant) => currentLayerEntries(draft, variant).map(([layer, asset]) => ({
+    id: assetKey(variant, layer),
+    blob: asset.blob,
   })))
   return { pack, state, assets, layers: resolveCharacterDraftLayers(draft) }
 }

@@ -32,7 +32,7 @@ export async function bindMantleWebMcpTools(
       signal.throwIfAborted()
       if (capability.kind !== 'procedure') throw new Error('Unsupported WebMCP capability')
       const result = await invoke(capability.trigger, input)
-      if (!result.ok) throw result.diagnostic
+      if (!result.ok) throw new Error(result.diagnostic.message, { cause: result.diagnostic })
       return result.data
     },
   })

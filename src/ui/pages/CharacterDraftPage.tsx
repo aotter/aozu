@@ -3,7 +3,7 @@ import { useEffect, useState, type ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
 
-import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, resolveCharacterDraftLayers } from '@/core/application/character-creation.ts'
+import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, hasCurrentCharacterLayer, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers } from '@/core/application/character-creation.ts'
 import type { CharacterAssetTarget, CharacterDraft, CharacterDraftVariant, CharacterVariantGroup, CharacterVariantLayer } from '@/core/domain/character.ts'
 import { CharacterAssetImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
@@ -61,8 +61,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, onReview
   if (!draft) return <StatusPage>{t('startup.loading')}</StatusPage>
 
   const previewLayers = resolveCharacterDraftLayers(draft)
-  const missing = REQUIRED_CHARACTER_TARGETS.filter((target) => !draft.variants
-    .find(({ group, id }) => group === target.group && id === target.variantId)?.layers[target.layer])
+  const missing = REQUIRED_CHARACTER_TARGETS.filter((target) => !hasCurrentCharacterLayer(draft, target.group, target.variantId, target.layer))
   const visibleVariants = category ? draft.variants.filter(({ group }) => category.group === group) : []
   const selectedVariant = visibleVariants.find((variant) => variantKey(variant) === selectedVariantKey)
   const persist = (next: CharacterDraft) => { setDraft(next); void updateDraft(next) }
@@ -159,7 +158,9 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, onReview
             </button>}
             {visibleVariants.map((variant) => {
               const group = CHARACTER_CREATION_GROUPS.find(({ group }) => group === variant.group)!
-              const thumbnail = variant.layers.front ?? group.layers.map((layer) => variant.layers[layer]).find(Boolean)
+              const thumbnail = variant.layers.front && isCharacterDraftAssetCurrent(draft, variant, 'front')
+                ? variant.layers.front
+                : group.layers.map((layer) => isCharacterDraftAssetCurrent(draft, variant, layer) ? variant.layers[layer] : undefined).find(Boolean)
               const selected = isSelected(variant)
               return <div key={variantKey(variant)} className={`relative min-w-0 overflow-hidden rounded-xl border bg-background transition-colors hover:border-foreground/40 ${selected ? 'border-foreground ring-1 ring-foreground' : ''}`}>
                 <button type="button" aria-label={variant.label} title={variant.label} aria-pressed={selected} className="block w-full" onClick={() => toggleVariant(variant)}>
@@ -181,8 +182,8 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, onReview
           const group = CHARACTER_CREATION_GROUPS.find(({ group }) => group === selectedVariant.group)!
           const layeredAccessory = selectedVariant.group === 'prop'
           const primaryLayer = layeredAccessory ? 'front' : group.layers[0]
-          const primaryAsset = selectedVariant.layers[primaryLayer]
-          const behindAsset = layeredAccessory ? selectedVariant.layers.back : undefined
+          const primaryAsset = isCharacterDraftAssetCurrent(draft, selectedVariant, primaryLayer) ? selectedVariant.layers[primaryLayer] : undefined
+          const behindAsset = layeredAccessory && isCharacterDraftAssetCurrent(draft, selectedVariant, 'back') ? selectedVariant.layers.back : undefined
           const PlaceholderIcon = selectedVariant.group === 'prop' ? ShapesIcon : undefined
           const required = REQUIRED_CHARACTER_TARGETS.some((target) => target.group === selectedVariant.group && target.variantId === selectedVariant.id)
           return <>

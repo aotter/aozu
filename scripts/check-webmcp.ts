@@ -28,6 +28,8 @@ assert.deepEqual([...registered.keys()].sort(), [
   'inspect_character_contract',
   'inspect_companion',
   'inspect_experience_contract',
+  'inspect_workspace',
+  'navigate_companion',
   'resolve_companion_turn',
   'submit_character_asset_candidate',
   'submit_companion_action',
@@ -49,6 +51,6 @@ await bindMantleWebMcpTools(document, play, async () => ({
   ok: false,
   diagnostic: runtimeDiagnostic({ code: 'CONFLICT', severity: 'error', path: 'run/revision', message: 'stale' }),
 }))
-await assert.rejects(registered.get('submit_companion_action')!.execute(submitted, {}))
+await assert.rejects(registered.get('submit_companion_action')!.execute(submitted, {}), /stale/)
 
 console.log('webmcp: ok')

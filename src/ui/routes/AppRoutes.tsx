@@ -5,6 +5,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 
 import type { Application } from '@/bootstrap.ts'
 import type { StagedCandidatePreview } from '@/core/application/candidate.ts'
+import { WORKSPACE_DESTINATIONS, type WorkspaceDestination } from '@/core/application/workspace.ts'
 import { AppHeader } from '@/ui/AppHeader'
 import { AppMenu } from '@/ui/AppMenu'
 import { CandidateReviewPage } from '@/ui/pages/CandidateReviewPage'
@@ -44,16 +45,6 @@ export function AppRoutes({ application }: { application: Application }) {
   }, [refresh])
 
   useEffect(() => {
-    const onDraftUpdate = () => {
-      if (!location.pathname.startsWith('/character')) navigate('/character', {
-        state: { returnTo: location.pathname === '/companion' ? '/companion' : '/start' },
-      })
-    }
-    window.addEventListener('character-draft-updated', onDraftUpdate)
-    return () => window.removeEventListener('character-draft-updated', onDraftUpdate)
-  }, [location.pathname, navigate])
-
-  useEffect(() => {
     const onCandidate = (event: Event) => {
       setPreview((event as CustomEvent<StagedCandidatePreview>).detail)
       navigate('/review', { state: { returnTo: location.pathname === '/companion' ? '/companion' : '/start' } })
@@ -61,6 +52,26 @@ export function AppRoutes({ application }: { application: Application }) {
     window.addEventListener('experience-candidate-staged', onCandidate)
     return () => window.removeEventListener('experience-candidate-staged', onCandidate)
   }, [location.pathname, navigate])
+
+  useEffect(() => {
+    const onNavigate = (event: Event) => {
+      const destination = (event as CustomEvent<{ destination: WorkspaceDestination }>).detail.destination
+      if (destination === 'character-review') {
+        void application.openCharacterDraft()
+          .then(application.prepareCharacter)
+          .then((next) => {
+            setPreview(next)
+            navigate('/review', { state: { returnTo: location.pathname === '/companion' ? '/companion' : '/start' } })
+          })
+        return
+      }
+      navigate(WORKSPACE_DESTINATIONS[destination], {
+        state: destination.startsWith('character-') || destination === 'experience-review' ? { returnTo: '/start' } : undefined,
+      })
+    }
+    window.addEventListener('companion-navigate', onNavigate)
+    return () => window.removeEventListener('companion-navigate', onNavigate)
+  }, [application, location.pathname, navigate])
 
   if (loadError) return <><AppHeader webmcpAvailable={false} /><StatusPage>{t('startup.error')}</StatusPage></>
   if (!startup) return <><AppHeader webmcpAvailable={false} /><StatusPage>{t('startup.loading')}</StatusPage></>

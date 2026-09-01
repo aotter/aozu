@@ -11,6 +11,7 @@ import {
   PROGRESS_BINDING_SCHEMA,
 } from '../domain/playbook.ts'
 import { CHARACTER_VARIANT_GROUPS } from '../domain/character.ts'
+import { WORKSPACE_DESTINATIONS } from '../application/workspace.ts'
 import { compileBundle } from '../bundle.ts'
 
 const source = (sourceId: string, manifest: object): ManifestSource => ({
@@ -47,6 +48,7 @@ const nextActionSchema = objectSchema({
   tool: { type: 'string', minLength: 1 },
   required: { type: 'boolean' },
   reason: { type: 'string', minLength: 1 },
+  input: { type: 'object' },
 }, ['tool', 'required'])
 
 const toolResultSchema = objectSchema({
@@ -443,6 +445,40 @@ const ALL_BACKBONE_SOURCES = [
     }),
   ),
   source(
+    'authoring/inspect-workspace.yaml',
+    envelope('Procedure', 'inspect-workspace', {
+      title: 'Inspect Workspace',
+      description: 'Start here on every page. Returns the current workflow phase, saved authoring and play state, blockers, allowed destinations, and the next tool or navigation action without guessing routes.',
+      input: emptyReadOnlyInput,
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.inspect-workspace' },
+    }),
+  ),
+  source(
+    'authoring/inspect-workspace-mcp.yaml',
+    envelope('Trigger', 'inspect-workspace', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'inspect-workspace' },
+    }),
+  ),
+  source(
+    'authoring/navigate-companion.yaml',
+    envelope('Procedure', 'navigate-companion', {
+      title: 'Navigate Companion',
+      description: 'Navigate the website to one destination returned by inspect_workspace. This changes only the browser surface and never mutates Companion data or approves a review.',
+      input: objectSchema({ destination: { enum: Object.keys(WORKSPACE_DESTINATIONS) } }, ['destination']),
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.navigate-companion' },
+    }),
+  ),
+  source(
+    'authoring/navigate-companion-mcp.yaml',
+    envelope('Trigger', 'navigate-companion', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'navigate-companion' },
+    }),
+  ),
+  source(
     "authoring/select-experience-draft.yaml",
     envelope("Procedure", "select-experience-draft", {
       title: 'Select Experience Draft',
@@ -523,8 +559,15 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-character-contract.yaml',
     envelope('Procedure', 'inspect-character-contract', {
       title: 'Inspect Character Contract',
-      description: 'Required first step before generating or changing character art. Returns the exact rig and production brief. Generate and preprocess assets outside the website, then submit only final 512×768 RGBA PNG layers. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
-      input: emptyReadOnlyInput,
+      description: 'Required before generating or changing character art. Optionally name one target to receive its exact reference layer, alpha bounds, z-order, canonical freshness, and alignment mode. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
+      input: {
+        ...objectSchema({
+          group: { enum: CHARACTER_VARIANT_GROUPS },
+          variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
+          layer: { enum: ['body', 'head', 'back', 'front'] },
+        }),
+        readOnly: true,
+      },
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.inspect-character-contract' },
     }),

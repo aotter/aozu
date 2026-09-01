@@ -39,6 +39,7 @@ export interface CharacterDraftAsset {
   filename: string
   source: 'user' | 'agent' | 'starter'
   inspection: CharacterAssetInspection
+  canonicalSha256?: string
 }
 
 export interface CharacterDraftVariant {
@@ -102,6 +103,8 @@ export interface CharacterAssetInspection {
   hasTransparentPixels: boolean
   hasVisiblePixels: boolean
   genuineRgba: boolean
+  visibleBounds?: { x: number; y: number; width: number; height: number }
+  visiblePixelCount?: number
   size: number
   sha256: string
 }

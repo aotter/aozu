@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 
-import { buildCharacterPack, createCharacterDraft, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, measureCharacterAssetAlignment, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset } from '../src/core/application/character-creation.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 import type { CharacterPackLibraryRecord } from '../src/core/application/ports.ts'
 
 const inspection = { width: 512, height: 768, hasTransparentPixels: true, hasVisiblePixels: true, genuineRgba: true, size: 10, sha256: 'a'.repeat(64) }
-const asset = { blob: new Blob(['sprite'], { type: 'image/png' }), filename: 'sprite.png', source: 'user' as const, inspection }
+const asset: CharacterDraftAsset = { blob: new Blob(['sprite'], { type: 'image/png' }), filename: 'sprite.png', source: 'user', inspection, canonicalSha256: inspection.sha256 }
 const draft = createCharacterDraft('test-character')
 draft.name = 'Test Character'
 const put = (group: CharacterVariantGroup, id: string, layer: CharacterVariantLayer) => {
@@ -116,4 +116,38 @@ const loaded = await loadCharacterProjection(
   state.id,
 )
 assert.deepEqual(loaded?.map(({ slot }) => slot), ['character-skin', 'expression-head'])
+
+let savedDraft = structuredClone(draft)
+const drafts = { async get() { return savedDraft }, async put(next: typeof savedDraft) { savedDraft = structuredClone(next) }, async clear() {} }
+const replacementInspection = { ...inspection, sha256: 'b'.repeat(64), visibleBounds: { x: 40, y: 10, width: 430, height: 730 }, visiblePixelCount: 100 }
+savedDraft = await saveCharacterDraftAsset(
+  drafts,
+  async () => replacementInspection,
+  savedDraft,
+  { group: 'body', variantId: 'base', label: 'New base', layer: 'body' },
+  new Blob(['replacement'], { type: 'image/png' }),
+  'replacement.png',
+  'agent',
+)
+assert.equal(hasCurrentCharacterLayer(savedDraft, 'expression', 'neutral', 'head'), false)
+assert.deepEqual(resolveCharacterDraftLayers(savedDraft).map(({ slot }) => slot), ['character-skin'])
+savedDraft = await saveCharacterDraftAsset(
+  drafts,
+  async () => ({ ...replacementInspection, sha256: 'c'.repeat(64), visibleBounds: { x: 60, y: 10, width: 390, height: 350 } }),
+  savedDraft,
+  { group: 'expression', variantId: 'neutral', label: 'New neutral', layer: 'head' },
+  new Blob(['neutral'], { type: 'image/png' }),
+  'neutral.png',
+  'agent',
+)
+assert.equal(hasCurrentCharacterLayer(savedDraft, 'expression', 'neutral', 'head'), true)
+assert.equal(savedDraft.variants.find(({ group, id }) => group === 'expression' && id === 'neutral')?.label, 'New neutral')
+assert.equal(measureCharacterAssetAlignment(
+  { ...inspection, visibleBounds: { x: 60, y: 10, width: 390, height: 350 } },
+  { ...inspection, visibleBounds: { x: 66, y: 14, width: 386, height: 348 } },
+).status, 'aligned')
+assert.equal(measureCharacterAssetAlignment(
+  { ...inspection, visibleBounds: { x: 60, y: 10, width: 390, height: 350 } },
+  { ...inspection, visibleBounds: { x: 120, y: 80, width: 300, height: 250 } },
+).status, 'misaligned')
 console.log('character creation: ok')
