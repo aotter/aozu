@@ -1,6 +1,5 @@
-import type { JsonSchema } from '@aotter/mantle-spec'
+import { jsonSchemaToZod, type JsonSchema } from '@aotter/mantle-spec'
 
-import type { AppearanceRef } from './character.ts'
 import type { ItemEffect } from './items.ts'
 
 export const PROGRESS_LOOP_IDS = ['rhythm', 'mastery', 'bond', 'journey', 'discovery', 'stewardship', 'challenge'] as const
@@ -63,7 +62,10 @@ const strictObject = (properties: Readonly<Record<string, JsonSchema>>, required
   additionalProperties: false,
 })
 
-const identifier: JsonSchema = { type: 'string', minLength: 1, maxLength: 100 }
+const nonBlank = (maxLength: number): JsonSchema => ({ type: 'string', minLength: 1, maxLength, pattern: '\\S' })
+const identifier = nonBlank(100)
+const declarativeIdentifier: JsonSchema = { ...identifier, pattern: '^[a-z0-9][a-z0-9:_-]{0,99}$' }
+const itemIdentifier: JsonSchema = { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,80}$' }
 const comparison = ['eq', 'gt', 'gte', 'lt', 'lte'] as const
 const appearanceSchema = strictObject({
   packId: identifier,
@@ -121,188 +123,136 @@ export const PLAYBOOK_SCHEMA_DEFS = CONDITION_SCHEMA.$defs!
 export const CONDITION_REF: JsonSchema = { $ref: '#/$defs/Condition' }
 export const PROGRESS_BINDING_SCHEMA: JsonSchema = strictObject({
   id: identifier,
-  label: { type: 'string', minLength: 1, maxLength: 500 },
+  label: nonBlank(500),
   source: strictObject({ fact: { const: 'metric' }, id: identifier }, ['fact', 'id']),
   max: { type: 'number', minimum: Number.MIN_VALUE },
 }, ['id', 'label', 'source'])
 
-const object = (value: unknown, label: string): Record<string, unknown> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`Invalid ${label}`)
-  return value as Record<string, unknown>
+export const PREPARED_ACTION_SCHEMA: JsonSchema = strictObject({
+  id: identifier,
+  label: nonBlank(200),
+  phrases: {
+    type: 'array', maxItems: PLAYBOOK_LIMITS.phrasesPerAction,
+    items: nonBlank(PLAYBOOK_LIMITS.phraseLength),
+  },
+  effects: { type: 'array', maxItems: PLAYBOOK_LIMITS.effectsPerActionOrRule, items: EFFECT_SCHEMA },
+}, ['id', 'label'])
+
+export const PLAYBOOK_RULE_SCHEMA: JsonSchema = {
+  ...strictObject({
+    ruleId: identifier,
+    priority: { type: 'integer' },
+    when: CONDITION_REF,
+    effects: { type: 'array', maxItems: PLAYBOOK_LIMITS.effectsPerActionOrRule, items: EFFECT_SCHEMA },
+  }, ['ruleId', 'priority', 'when', 'effects']),
+  $defs: PLAYBOOK_SCHEMA_DEFS,
 }
 
-const only = (value: Record<string, unknown>, fields: readonly string[], label: string) => {
-  if (Object.keys(value).some((field) => !fields.includes(field))) throw new Error(`Invalid ${label} fields`)
+const candidateAppearanceSchema = strictObject({
+  packId: declarativeIdentifier,
+  packVersion: { type: 'integer', minimum: 1 },
+  appearanceId: declarativeIdentifier,
+}, ['packId', 'packVersion', 'appearanceId'])
+const itemDefinitionSchema = strictObject({
+  id: itemIdentifier,
+  name: nonBlank(200),
+  equipSlot: declarativeIdentifier,
+  defaultAppearance: candidateAppearanceSchema,
+  grants: { type: 'array', items: identifier },
+  actionIds: { type: 'array', items: identifier },
+  stackable: { type: 'boolean' },
+  maxQuantity: { type: 'integer', minimum: 1 },
+  stateSchema: { type: 'object', additionalProperties: true },
+  appearanceFacts: {
+    type: 'array',
+    items: strictObject({
+      appearance: candidateAppearanceSchema,
+      facts: { type: 'array', items: identifier },
+    }, ['appearance', 'facts']),
+  },
+}, ['id', 'name'])
+const candidateActionSchema = strictObject({
+  ...PREPARED_ACTION_SCHEMA.properties,
+  id: declarativeIdentifier,
+}, ['id', 'label'])
+const candidateSceneSchema = strictObject({
+  compositionId: declarativeIdentifier,
+  characterStateId: declarativeIdentifier,
+}, ['compositionId'])
+
+export const EXPERIENCE_CANDIDATE_SCHEMA: JsonSchema = {
+  ...strictObject({
+    name: nonBlank(200),
+    initialStageId: declarativeIdentifier,
+    metrics: { type: 'object', additionalProperties: { type: 'number' } },
+    flags: { type: 'object', additionalProperties: { type: 'boolean' } },
+    itemDefinitions: { type: 'array', maxItems: 100, items: itemDefinitionSchema },
+    stages: {
+      type: 'array', minItems: 1, maxItems: PLAYBOOK_LIMITS.stages,
+      items: strictObject({
+        id: declarativeIdentifier,
+        title: nonBlank(500),
+        narrative: nonBlank(PLAYBOOK_LIMITS.dialogueLength),
+        terminal: { type: 'boolean' },
+        agentFallback: { type: 'boolean' },
+        scene: candidateSceneSchema,
+        actions: { type: 'array', maxItems: PLAYBOOK_LIMITS.actionsPerStage, items: candidateActionSchema },
+        progress: { type: 'array', items: PROGRESS_BINDING_SCHEMA },
+      }, ['id', 'title', 'narrative', 'actions']),
+    },
+    rules: {
+      type: 'array', maxItems: PLAYBOOK_LIMITS.rules,
+      items: strictObject({
+        ruleId: declarativeIdentifier,
+        priority: { type: 'integer' },
+        when: CONDITION_REF,
+        effects: { type: 'array', maxItems: PLAYBOOK_LIMITS.effectsPerActionOrRule, items: EFFECT_SCHEMA },
+      }, ['ruleId', 'priority', 'when', 'effects']),
+    },
+  }, ['name', 'initialStageId', 'metrics', 'stages']),
+  $defs: PLAYBOOK_SCHEMA_DEFS,
 }
 
-const nonEmpty = (value: unknown, label: string): string => {
-  if (typeof value !== 'string' || !value.trim()) throw new Error(`Invalid ${label}`)
-  return value
-}
+const conditionValidator = jsonSchemaToZod(CONDITION_SCHEMA)
+const effectValidator = jsonSchemaToZod(EFFECT_SCHEMA)
+const actionValidator = jsonSchemaToZod(PREPARED_ACTION_SCHEMA)
+const ruleValidator = jsonSchemaToZod(PLAYBOOK_RULE_SCHEMA)
+const progressValidator = jsonSchemaToZod(PROGRESS_BINDING_SCHEMA)
 
-const finite = (value: unknown, label: string): number => {
-  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error(`Invalid ${label}`)
-  return value
-}
-
-const positiveInteger = (value: unknown, label: string): number => {
-  if (!Number.isSafeInteger(value) || Number(value) < 1) throw new Error(`Invalid ${label}`)
-  return Number(value)
-}
-
-const parseAppearance = (value: unknown): AppearanceRef => {
-  const appearance = object(value, 'appearance')
-  only(appearance, ['packId', 'packVersion', 'appearanceId'], 'appearance')
-  return {
-    packId: nonEmpty(appearance.packId, 'appearance pack'),
-    packVersion: positiveInteger(appearance.packVersion, 'appearance version'),
-    appearanceId: nonEmpty(appearance.appearanceId, 'appearance id'),
-  }
+const parse = <T>(validator: ReturnType<typeof jsonSchemaToZod>, value: unknown, label: string): T => {
+  const result = validator.safeParse(value)
+  if (!result.success) throw new Error(`Invalid ${label}: ${result.error.issues[0]?.message ?? 'validation failed'}`)
+  return result.data as T
 }
 
 export const normalizePhrase = (value: string) => value.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en')
 
-export function parseCondition(value: unknown, depth = 0): Condition {
+export function parseCondition(value: unknown): Condition {
+  const condition = parse<Condition>(conditionValidator, value, 'condition')
+  let depth = 0
+  const pending: Array<{ condition: Condition; depth: number }> = [{ condition, depth: 0 }]
+  while (pending.length) {
+    const current = pending.pop()!
+    depth = Math.max(depth, current.depth)
+    if ('not' in current.condition) pending.push({ condition: current.condition.not, depth: current.depth + 1 })
+    else if ('all' in current.condition) pending.push(...current.condition.all.map((condition) => ({ condition, depth: current.depth + 1 })))
+    else if ('any' in current.condition) pending.push(...current.condition.any.map((condition) => ({ condition, depth: current.depth + 1 })))
+  }
   if (depth > PLAYBOOK_LIMITS.conditionDepth) throw new Error('Condition depth limit exceeded')
-  const condition = object(value, 'condition')
-  if ('all' in condition || 'any' in condition || 'not' in condition) {
-    const operator = 'all' in condition ? 'all' : 'any' in condition ? 'any' : 'not'
-    only(condition, [operator], 'condition')
-    if (operator === 'not') return { not: parseCondition(condition.not, depth + 1) }
-    const children = condition[operator]
-    if (!Array.isArray(children) || !children.length) throw new Error('Invalid compound condition')
-    const parsed = children.map((child) => parseCondition(child, depth + 1))
-    return operator === 'all' ? { all: parsed } : { any: parsed }
-  }
-  if (condition.fact === 'flag') {
-    only(condition, ['fact', 'id', 'value'], 'condition')
-    if (typeof condition.value !== 'boolean') throw new Error('Invalid flag condition')
-    return { fact: 'flag', id: nonEmpty(condition.id, 'condition id'), value: condition.value }
-  }
-  if (condition.fact === 'stage') {
-    only(condition, ['fact', 'id'], 'condition')
-    return { fact: 'stage', id: nonEmpty(condition.id, 'condition id') }
-  }
-  if (condition.fact === 'capability' || condition.fact === 'inventory' || condition.fact === 'equipped' || condition.fact === 'appearance') {
-    only(condition, ['fact', 'id'], 'condition')
-    return { fact: condition.fact, id: nonEmpty(condition.id, 'condition id') }
-  }
-  if (condition.fact === 'itemState') {
-    only(condition, ['fact', 'inventoryId', 'field', 'op', 'value'], 'condition')
-    if (condition.op !== 'eq' || !['string', 'number', 'boolean'].includes(typeof condition.value) || (typeof condition.value === 'number' && !Number.isFinite(condition.value))) {
-      throw new Error('Invalid item state condition')
-    }
-    return {
-      fact: 'itemState',
-      inventoryId: nonEmpty(condition.inventoryId, 'inventory id'),
-      field: nonEmpty(condition.field, 'item state field'),
-      op: 'eq',
-      value: condition.value as string | number | boolean,
-    }
-  }
-  if (condition.fact === 'metric' || condition.fact === 'quantity') {
-    only(condition, ['fact', 'id', 'op', 'value'], 'condition')
-    if (!comparison.includes(condition.op as typeof comparison[number])) throw new Error('Invalid comparison')
-    return {
-      fact: condition.fact,
-      id: nonEmpty(condition.id, 'condition id'),
-      op: condition.op as typeof comparison[number],
-      value: finite(condition.value, 'condition value'),
-    }
-  }
-  throw new Error('Unsupported condition')
+  return condition
 }
 
-export function parseEffect(value: unknown): Effect {
-  const effect = object(value, 'effect')
-  if (effect.type === 'addMetric') {
-    only(effect, ['type', 'metricId', 'amount'], 'effect')
-    return { type: effect.type, metricId: nonEmpty(effect.metricId, 'metric id'), amount: finite(effect.amount, 'metric amount') }
-  }
-  if (effect.type === 'setFlag') {
-    only(effect, ['type', 'flagId', 'value'], 'effect')
-    if (typeof effect.value !== 'boolean') throw new Error('Invalid flag value')
-    return { type: effect.type, flagId: nonEmpty(effect.flagId, 'flag id'), value: effect.value }
-  }
-  if (effect.type === 'changeStage') {
-    only(effect, ['type', 'stageId'], 'effect')
-    return { type: effect.type, stageId: nonEmpty(effect.stageId, 'stage id') }
-  }
-  if (effect.type === 'grantItem') {
-    only(effect, ['type', 'inventoryId', 'definitionId', 'quantity', 'state'], 'effect')
-    return {
-      type: effect.type,
-      inventoryId: nonEmpty(effect.inventoryId, 'inventory id'),
-      definitionId: nonEmpty(effect.definitionId, 'definition id'),
-      quantity: positiveInteger(effect.quantity, 'item quantity'),
-      ...(effect.state === undefined ? {} : { state: structuredClone(object(effect.state, 'item state')) }),
-    }
-  }
-  if (effect.type === 'consumeItem') {
-    only(effect, ['type', 'inventoryId', 'quantity'], 'effect')
-    return { type: effect.type, inventoryId: nonEmpty(effect.inventoryId, 'inventory id'), quantity: positiveInteger(effect.quantity, 'item quantity') }
-  }
-  if (effect.type === 'equipItem') {
-    only(effect, ['type', 'inventoryId', 'slot'], 'effect')
-    return { type: effect.type, inventoryId: nonEmpty(effect.inventoryId, 'inventory id'), slot: nonEmpty(effect.slot, 'item slot') }
-  }
-  if (effect.type === 'unequipItem') {
-    only(effect, ['type', 'slot'], 'effect')
-    return { type: effect.type, slot: nonEmpty(effect.slot, 'item slot') }
-  }
-  if (effect.type === 'setItemState') {
-    only(effect, ['type', 'inventoryId', 'state'], 'effect')
-    return { type: effect.type, inventoryId: nonEmpty(effect.inventoryId, 'inventory id'), state: structuredClone(object(effect.state, 'item state')) }
-  }
-  if (effect.type === 'setAppearanceOverride') {
-    only(effect, ['type', 'slot', 'appearance'], 'effect')
-    return {
-      type: effect.type,
-      slot: nonEmpty(effect.slot, 'appearance slot'),
-      appearance: effect.appearance === null ? null : parseAppearance(effect.appearance),
-    }
-  }
-  throw new Error(`Unsupported effect: ${String(effect.type)}`)
-}
+export const parseEffect = (value: unknown): Effect => parse(effectValidator, value, 'effect')
 
 export function parsePreparedAction(value: unknown): PreparedAction {
-  const action = object(value, 'action')
-  only(action, ['id', 'label', 'phrases', 'effects'], 'action')
-  const phrases = action.phrases ?? []
-  const effects = action.effects ?? []
-  if (!Array.isArray(phrases) || !Array.isArray(effects)) throw new Error('Invalid action lists')
-  return {
-    id: nonEmpty(action.id, 'action id'),
-    label: nonEmpty(action.label, 'action label'),
-    phrases: phrases.map((phrase) => nonEmpty(phrase, 'action phrase')),
-    effects: effects.map(parseEffect),
-  }
+  const action = parse<Omit<PreparedAction, 'phrases' | 'effects'> & Partial<Pick<PreparedAction, 'phrases' | 'effects'>>>(actionValidator, value, 'action')
+  return { ...action, phrases: action.phrases ?? [], effects: action.effects ?? [] }
 }
 
 export function parsePlaybookRule(value: unknown): PlaybookRule {
-  const rule = object(value, 'rule')
-  only(rule, ['ruleId', 'priority', 'when', 'effects'], 'rule')
-  if (!Number.isSafeInteger(rule.priority) || !Array.isArray(rule.effects)) throw new Error('Invalid rule')
-  return {
-    id: nonEmpty(rule.ruleId, 'rule id'),
-    priority: rule.priority as number,
-    when: parseCondition(rule.when),
-    effects: rule.effects.map(parseEffect),
-  }
+  const { ruleId, priority, when, effects } = parse<{ ruleId: string; priority: number; when: Condition; effects: Effect[] }>(ruleValidator, value, 'rule')
+  const condition = parseCondition(when)
+  return { id: ruleId, priority, when: condition, effects }
 }
 
-export function parseProgressBinding(value: unknown): MetricProgressBinding {
-  const binding = object(value, 'progress binding')
-  only(binding, ['id', 'label', 'source', 'max'], 'progress binding')
-  const source = object(binding.source, 'progress source')
-  only(source, ['fact', 'id'], 'progress source')
-  if (source.fact !== 'metric') throw new Error('Unsupported progress source')
-  const max = binding.max === undefined ? undefined : finite(binding.max, 'progress max')
-  if (max !== undefined && max <= 0) throw new Error('Progress max must be greater than zero')
-  return {
-    id: nonEmpty(binding.id, 'progress id'),
-    label: nonEmpty(binding.label, 'progress label'),
-    source: { fact: 'metric', id: nonEmpty(source.id, 'progress metric') },
-    ...(max === undefined ? {} : { max }),
-  }
-}
+export const parseProgressBinding = (value: unknown): MetricProgressBinding => parse(progressValidator, value, 'progress binding')

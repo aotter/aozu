@@ -1,16 +1,12 @@
-import { EntryDataValidator } from '@aotter/mantle-spec'
+import { EntryDataValidator, firstZodIssueAsJsonPointer, jsonSchemaToZod } from '@aotter/mantle-spec'
 
 import { compileBundle, type BundleRecord } from '../bundle.ts'
 import { resolveCharacterComposition, type AppearanceRef } from '../domain/character.ts'
 import type { ItemDefinition } from '../domain/items.ts'
 import {
   normalizePhrase,
-  PLAYBOOK_LIMITS as EXPERIENCE_LIMITS,
+  EXPERIENCE_CANDIDATE_SCHEMA,
   parseCondition,
-  parseEffect,
-  parsePlaybookRule,
-  parsePreparedAction,
-  parseProgressBinding,
   type Condition,
   type Effect,
   type MetricProgressBinding,
@@ -70,164 +66,34 @@ export interface AuthoredExperienceCandidate {
 const manifestFiles = Object.fromEntries(FIXED_BACKBONE_SOURCES.map(({ sourceId, text }) => [sourceId, text]))
 const idPattern = /^[a-z0-9][a-z0-9:_-]{0,99}$/
 const itemIdPattern = /^[a-z0-9][a-z0-9_-]{0,80}$/
+const candidateValidator = jsonSchemaToZod(EXPERIENCE_CANDIDATE_SCHEMA)
 
 const fail = (code: string, path: string, message: string): never => {
   throw new ExperienceCandidateValidationError({ code, path, message })
 }
 
-const object = (value: unknown, path: string): Record<string, unknown> => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return fail('invalid_type', path, 'Expected an object')
-  return value as Record<string, unknown>
-}
-
-const only = (value: Record<string, unknown>, keys: readonly string[], path: string) => {
-  const unexpected = Object.keys(value).find((key) => !keys.includes(key))
-  if (unexpected) fail('unknown_field', `${path}.${unexpected}`, 'Unknown field')
-}
-
-const text = (value: unknown, path: string, max = 8_000): string => {
-  if (typeof value !== 'string' || !value.trim() || value.length > max) return fail('invalid_string', path, 'Expected a non-empty string within the contract limit')
-  return value
-}
-
-const id = (value: unknown, path: string): string => {
-  const parsed = text(value, path, 100)
-  if (!idPattern.test(parsed)) fail('invalid_id', path, 'Expected a lowercase declarative ID')
-  return parsed
-}
-
-const list = (value: unknown, path: string): unknown[] => {
-  if (!Array.isArray(value)) return fail('invalid_type', path, 'Expected an array')
-  return value
-}
-
-const parseEffectShape = (value: unknown, path: string): Effect => {
-  try { return parseEffect(value) } catch (error) {
-    return fail('invalid_effect', path, error instanceof Error ? error.message : 'Invalid Effect')
-  }
-}
-
-const parseConditionShape = (value: unknown, path: string): Condition => {
-  try { return parseCondition(value) } catch (error) {
-    const message = error instanceof Error ? error.message : 'Invalid Condition'
-    return fail(message.includes('depth') ? 'condition_depth' : 'invalid_condition', path, message)
-  }
-}
-
-const validateAppearanceRefShape = (value: unknown, path: string) => {
-  const reference = object(value, path)
-  only(reference, ['packId', 'packVersion', 'appearanceId'], path)
-  id(reference.packId, `${path}.packId`)
-  id(reference.appearanceId, `${path}.appearanceId`)
-  if (!Number.isSafeInteger(reference.packVersion) || Number(reference.packVersion) < 1) fail('invalid_appearance', `${path}.packVersion`, 'Appearance pack version must be a positive integer')
-}
-
 const parseInput = (value: unknown): ExperienceCandidateInput => {
-  const candidate = object(value, 'candidate')
-  only(candidate, ['name', 'initialStageId', 'metrics', 'flags', 'itemDefinitions', 'stages', 'rules'], 'candidate')
-  const metrics = object(candidate.metrics, 'candidate.metrics')
-  const flags = candidate.flags === undefined ? {} : object(candidate.flags, 'candidate.flags')
-  const parsedMetrics: Record<string, number> = {}
-  const parsedFlags: Record<string, boolean> = {}
-  for (const [key, amount] of Object.entries(metrics)) {
-    id(key, `candidate.metrics.${key}`)
-    if (!Number.isFinite(amount)) fail('invalid_metric', `candidate.metrics.${key}`, 'Metric values must be finite numbers')
-    parsedMetrics[key] = amount as number
+  const parsed = candidateValidator.safeParse(value)
+  if (!parsed.success) {
+    const issue = firstZodIssueAsJsonPointer(parsed.error)
+    return fail('invalid_candidate', `candidate${issue.instancePath}`, issue.message)
   }
-  for (const [key, enabled] of Object.entries(flags)) {
-    id(key, `candidate.flags.${key}`)
-    if (typeof enabled !== 'boolean') fail('invalid_flag', `candidate.flags.${key}`, 'Flag values must be boolean')
-    parsedFlags[key] = enabled as boolean
+  const candidate = parsed.data as ExperienceCandidateInput
+  for (const field of ['metrics', 'flags'] as const) {
+    for (const key of Object.keys(candidate[field] ?? {})) {
+      if (!idPattern.test(key)) fail('invalid_id', `candidate.${field}.${key}`, 'Expected a lowercase declarative ID')
+    }
   }
-
-  const stages = list(candidate.stages, 'candidate.stages').map((raw, stageIndex) => {
-    const path = `candidate.stages[${stageIndex}]`
-    const stage = object(raw, path)
-    only(stage, ['id', 'title', 'narrative', 'terminal', 'agentFallback', 'scene', 'actions', 'progress'], path)
-    if (stage.terminal !== undefined && typeof stage.terminal !== 'boolean') fail('invalid_type', `${path}.terminal`, 'Expected a boolean')
-    if (stage.agentFallback !== undefined && typeof stage.agentFallback !== 'boolean') fail('invalid_type', `${path}.agentFallback`, 'Expected a boolean')
-    const terminal = stage.terminal as boolean | undefined
-    const agentFallback = stage.agentFallback as boolean | undefined
-    const scene = stage.scene === undefined ? undefined : object(stage.scene, `${path}.scene`)
-    if (scene) only(scene, ['compositionId', 'characterStateId'], `${path}.scene`)
-    const actions = list(stage.actions, `${path}.actions`).map((rawAction, actionIndex) => {
-      const actionPath = `${path}.actions[${actionIndex}]`
-      const action = object(rawAction, actionPath)
-      only(action, ['id', 'label', 'phrases', 'effects'], actionPath)
-      return {
-        id: id(action.id, `${actionPath}.id`),
-        label: text(action.label, `${actionPath}.label`, 200),
-        phrases: action.phrases === undefined ? [] : list(action.phrases, `${actionPath}.phrases`).map((phrase, phraseIndex) => text(phrase, `${actionPath}.phrases[${phraseIndex}]`, EXPERIENCE_LIMITS.phraseLength)),
-        effects: action.effects === undefined ? [] : list(action.effects, `${actionPath}.effects`).map((effect, effectIndex) => parseEffectShape(effect, `${actionPath}.effects[${effectIndex}]`)),
-      }
-    })
-    const progress = stage.progress === undefined ? [] : list(stage.progress, `${path}.progress`).map((binding, bindingIndex) => {
-      try { return parseProgressBinding(binding) } catch (error) {
-        return fail('invalid_progress_binding', `${path}.progress[${bindingIndex}]`, error instanceof Error ? error.message : 'Invalid progress binding')
-      }
-    })
-    return {
-      id: id(stage.id, `${path}.id`),
-      title: text(stage.title, `${path}.title`, 500),
-      narrative: text(stage.narrative, `${path}.narrative`),
-      ...(terminal === undefined ? {} : { terminal }),
-      ...(agentFallback === undefined ? {} : { agentFallback }),
-      ...(scene ? { scene: {
-        compositionId: id(scene.compositionId, `${path}.scene.compositionId`),
-        ...(scene.characterStateId === undefined ? {} : { characterStateId: id(scene.characterStateId, `${path}.scene.characterStateId`) }),
-      } } : {}),
-      actions,
-      progress,
-    }
-  })
-
-  const rules = candidate.rules === undefined ? [] : list(candidate.rules, 'candidate.rules').map((raw, ruleIndex) => {
-    const path = `candidate.rules[${ruleIndex}]`
-    const rule = object(raw, path)
-    only(rule, ['ruleId', 'priority', 'when', 'effects'], path)
-    if (!Number.isSafeInteger(rule.priority)) fail('invalid_priority', `${path}.priority`, 'Rule priority must be an integer')
-    return {
-      ruleId: id(rule.ruleId, `${path}.ruleId`),
-      priority: rule.priority as number,
-      when: parseConditionShape(rule.when, `${path}.when`),
-      effects: list(rule.effects, `${path}.effects`).map((effect, effectIndex) => parseEffectShape(effect, `${path}.effects[${effectIndex}]`)),
-    }
-  })
-
-  const itemDefinitions = candidate.itemDefinitions === undefined ? [] : list(candidate.itemDefinitions, 'candidate.itemDefinitions').map((raw, index) => {
-    const definitionValue = object(raw, `candidate.itemDefinitions[${index}]`)
-    const path = `candidate.itemDefinitions[${index}]`
-    only(definitionValue, ['id', 'name', 'equipSlot', 'defaultAppearance', 'grants', 'actionIds', 'stackable', 'maxQuantity', 'stateSchema', 'appearanceFacts'], path)
-    const definition = definitionValue as unknown as ItemDefinition
-    id(definition.id, `${path}.id`)
-    if (!itemIdPattern.test(definition.id)) fail('invalid_item_definition', `${path}.id`, 'Item definition ID is not runtime-compatible')
-    text(definition.name, `${path}.name`, 200)
-    if (definition.equipSlot !== undefined) id(definition.equipSlot, `${path}.equipSlot`)
-    if (definition.defaultAppearance !== undefined) validateAppearanceRefShape(definition.defaultAppearance, `${path}.defaultAppearance`)
-    for (const field of ['grants', 'actionIds'] as const) {
-      if (definition[field] !== undefined) list(definition[field], `${path}.${field}`).forEach((value, itemIndex) => text(value, `${path}.${field}[${itemIndex}]`, 100))
-    }
-    if (definition.stackable !== undefined && typeof definition.stackable !== 'boolean') fail('invalid_item_definition', `${path}.stackable`, 'stackable must be boolean')
-    if (definition.maxQuantity !== undefined && (!Number.isSafeInteger(definition.maxQuantity) || definition.maxQuantity < 1)) fail('invalid_item_definition', `${path}.maxQuantity`, 'maxQuantity must be a positive integer')
-    if (definition.stateSchema !== undefined) object(definition.stateSchema, `${path}.stateSchema`)
-    if (definition.appearanceFacts !== undefined) list(definition.appearanceFacts, `${path}.appearanceFacts`).forEach((rawBinding, bindingIndex) => {
-      const bindingPath = `${path}.appearanceFacts[${bindingIndex}]`
-      const binding = object(rawBinding, bindingPath)
-      only(binding, ['appearance', 'facts'], bindingPath)
-      validateAppearanceRefShape(binding.appearance, `${bindingPath}.appearance`)
-      list(binding.facts, `${bindingPath}.facts`).forEach((fact, factIndex) => text(fact, `${bindingPath}.facts[${factIndex}]`, 100))
-    })
-    return structuredClone(definition)
-  })
-
   return {
-    name: text(candidate.name, 'candidate.name', 200),
-    initialStageId: id(candidate.initialStageId, 'candidate.initialStageId'),
-    metrics: parsedMetrics,
-    flags: parsedFlags,
-    itemDefinitions,
-    stages,
-    rules,
+    ...candidate,
+    flags: candidate.flags ?? {},
+    itemDefinitions: candidate.itemDefinitions ?? [],
+    rules: candidate.rules ?? [],
+    stages: candidate.stages.map((stage) => ({
+      ...stage,
+      actions: stage.actions.map((action) => ({ ...action, phrases: action.phrases ?? [], effects: action.effects ?? [] })),
+      progress: stage.progress ?? [],
+    })),
   }
 }
 
@@ -256,8 +122,6 @@ const possibleRuleSources = (condition: Condition, allStages: ReadonlySet<string
   new Set([...allStages].filter((stageId) => conditionCanBe(condition, stageId, true)))
 
 const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterPackage, input: ExperienceCandidateInput) => {
-  if (!input.stages.length || input.stages.length > EXPERIENCE_LIMITS.stages) fail('stage_limit', 'candidate.stages', 'Stage count is outside the contract limit')
-  if ((input.rules?.length ?? 0) > EXPERIENCE_LIMITS.rules) fail('rule_limit', 'candidate.rules', 'Rule count exceeds the contract limit')
   const stages = new Map(input.stages.map((stage) => [stage.id, stage]))
   if (stages.size !== input.stages.length) fail('duplicate_stage', 'candidate.stages', 'Stage IDs must be unique')
   if (!stages.has(input.initialStageId)) fail('missing_initial_stage', 'candidate.initialStageId', 'Initial stage does not exist')
@@ -289,10 +153,11 @@ const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterP
     }
   }
 
-  const parsedRules = (input.rules ?? []).map((rule, index) => {
-    if (rule.effects.length > EXPERIENCE_LIMITS.effectsPerActionOrRule) fail('effect_limit', `candidate.rules[${index}].effects`, 'Rule effect count exceeds the contract limit')
-    try { return parsePlaybookRule(rule) } catch (error) {
-      return fail('invalid_rule', `candidate.rules[${index}]`, error instanceof Error ? error.message : 'Invalid rule')
+  const parsedRules = input.rules.map((rule, index) => {
+    try {
+      return { id: rule.ruleId, priority: rule.priority, when: parseCondition(rule.when), effects: rule.effects }
+    } catch (error) {
+      return fail('condition_depth', `candidate.rules[${index}].when`, error instanceof Error ? error.message : 'Invalid Condition')
     }
   })
   if (new Set(parsedRules.map(({ id: ruleId }) => ruleId)).size !== parsedRules.length) fail('duplicate_rule', 'candidate.rules', 'Rule IDs must be unique')
@@ -303,7 +168,6 @@ const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterP
   const phrases = new Map<string, string>()
   const edges = new Map<string, Set<string>>([...stages].map(([stageId]) => [stageId, new Set()]))
   for (const [stageId, stage] of stages) {
-    if (stage.actions.length > EXPERIENCE_LIMITS.actionsPerStage) fail('action_limit', `candidate.stages.${stageId}.actions`, 'Action count exceeds the contract limit')
     if (stage.terminal && (stage.actions.length || stage.agentFallback)) fail('invalid_terminal_stage', `candidate.stages.${stageId}`, 'Terminal stages cannot expose actions or agent fallback')
     if (!stage.terminal && !stage.agentFallback && !stage.actions.length) fail('stage_without_route', `candidate.stages.${stageId}`, 'Reachable non-terminal stages need a local action or agent fallback')
     if (stage.scene && (!sceneCompositions.has(stage.scene.compositionId) || (stage.scene.characterStateId && !characterStates.has(stage.scene.characterStateId)))) {
@@ -312,20 +176,13 @@ const validateExperience = (draft: ExperienceDraft, resources: ValidatedStarterP
     stage.actions.forEach((action, index) => {
       if (preparedActionIds.has(action.id)) fail('duplicate_action', `candidate.stages.${stageId}.actions[${index}].id`, 'Action IDs must be globally unique')
       preparedActionIds.add(action.id)
-      if (action.phrases.length > EXPERIENCE_LIMITS.phrasesPerAction) fail('phrase_limit', `candidate.stages.${stageId}.actions[${index}].phrases`, 'Action phrase count exceeds the contract limit')
-      if ((action.effects?.length ?? 0) > EXPERIENCE_LIMITS.effectsPerActionOrRule) fail('effect_limit', `candidate.stages.${stageId}.actions[${index}].effects`, 'Action effect count exceeds the contract limit')
-      const parsed = (() => {
-        try { return parsePreparedAction(action) } catch (error) {
-          return fail('invalid_action', `candidate.stages.${stageId}.actions[${index}]`, error instanceof Error ? error.message : 'Invalid action')
-        }
-      })()
-      for (const phrase of parsed.phrases) {
+      for (const phrase of action.phrases) {
         const normalized = normalizePhrase(phrase)
         const prior = phrases.get(normalized)
         if (prior) fail('ambiguous_phrase', `candidate.stages.${stageId}.actions[${index}].phrases`, `Prepared phrase is already used by action ${prior}`)
         phrases.set(normalized, action.id)
       }
-      for (const effect of parsed.effects) {
+      for (const effect of action.effects) {
         allEffects.push(effect)
         if (effect.type === 'changeStage') edges.get(stageId)!.add(effect.stageId)
       }

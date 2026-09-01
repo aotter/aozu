@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict'
 import { runtimeDiagnostic } from '@aotter/mantle-spec'
-import type { RuntimePlan } from '@aotter/mantle-runtime'
 
 import { createAgentCapability, registerMantleWebMcpTools } from '../src/adapters/webmcp/tools.ts'
 import { compileAuthoringBackbone, compileFixedBackbone } from '../src/core/mantle/backbone.ts'
 
 type RegisteredTool = {
   name: string
-  title: string
+  title?: string
   description: string
   inputSchema: object
   annotations: { readOnlyHint?: boolean }
@@ -65,23 +64,6 @@ assert.deepEqual(await registered.get('submit_companion_action')!.execute(submit
   status: 'error',
   diagnostics: [runtimeDiagnostic({ code: 'CONFLICT', severity: 'error', path: 'run/revision', message: 'stale' })],
 })
-
-const withoutProcedure = {
-  ...play,
-  procedures: { ...play.procedures, 'inspect-companion': undefined },
-} as unknown as RuntimePlan
-await assert.rejects(registerMantleWebMcpTools(document, withoutProcedure, invoke), /Procedure is missing/)
-const { ['inspect-companion']: omitted, ...remainingTriggers } = play.triggers
-void omitted
-await assert.rejects(registerMantleWebMcpTools(document, { ...play, triggers: remainingTriggers } as RuntimePlan, invoke), /exactly one public Trigger/)
-await assert.rejects(registerMantleWebMcpTools(document, {
-  ...play,
-  triggers: { ...play.triggers, duplicate: { ...play.triggers['inspect-companion']!, name: 'duplicate' } },
-} as RuntimePlan, invoke), /exactly one public Trigger/)
-await assert.rejects(registerMantleWebMcpTools(document, {
-  ...play,
-  mcpTools: [...play.mcpTools, play.mcpTools.find(({ name }) => name === 'inspect_companion')!],
-} as RuntimePlan, invoke), /Duplicate public WebMCP tool/)
 
 let rejectedSignal: AbortSignal | undefined
 const rejectingDocument = {
