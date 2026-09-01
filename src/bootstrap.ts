@@ -555,11 +555,9 @@ export function createApplication(document: Document) {
     const variant = draft.variants.find(({ group, id }) => group === input.group && id === input.variantId)
     const asset = variant?.layers[input.layer]
     const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
-    const neutralVariant = draft.variants.find(({ group, id }) => group === 'expression' && id === 'neutral')
-    const neutral = neutralVariant && isCharacterDraftAssetCurrent(draft, neutralVariant, 'head') ? neutralVariant.layers.head : undefined
-    const reference = input.group === 'expression' && input.variantId !== 'neutral' ? neutral : input.group === 'prop' || input.group === 'body' ? undefined : canonical
+    const reference = input.group === 'expression' || input.group === 'outfit' ? canonical : undefined
     const transform = variant?.transform ?? { x: 0, y: 0, scale: 1 }
-    const comparable = Boolean(asset && reference && (input.group === 'outfit' || (input.group === 'expression' && input.variantId !== 'neutral')))
+    const comparable = Boolean(asset && reference && input.group === 'outfit')
     const measurement = comparable
       ? measureCharacterAssetAlignment(reference!.inspection, asset!.inspection, 32, transform)
       : null
@@ -574,22 +572,13 @@ export function createApplication(document: Document) {
     const placementUsesEditSource = Boolean(reference && placementLayers.length === 1 && placementLayers[0]!.blob === reference.blob)
     const placement = characterAssetPlacement(input.group, input.layer)
     const lineage = input.group === 'body' ? 'establish-canonical'
-      : input.group === 'expression' && input.variantId !== 'neutral' ? 'edit-approved-neutral-head'
-        : input.group === 'expression' ? 'edit-canonical-body'
-          : input.group === 'outfit' ? 'edit-canonical-body'
-            : 'place-against-current-composite'
+      : input.group === 'expression' || input.group === 'outfit' ? 'edit-canonical-body'
+        : 'place-against-current-composite'
     const reviewDestination = input.group === 'expression' ? 'character-expressions'
       : input.group === 'outfit' ? 'character-outfits'
         : input.group === 'prop' ? 'character-props' : 'character-expressions'
-    const suggestedTransform = measurement?.status === 'misaligned' ? measurement.suggestedTransform : undefined
-    const transformSupported = suggestedTransform && suggestedTransform.scale >= 0.25 && suggestedTransform.scale <= 4 && Math.abs(suggestedTransform.x) <= 512 && Math.abs(suggestedTransform.y) <= 768
     const nextActions = !asset || !variant || !isCharacterDraftAssetCurrent(draft, variant, input.layer) ? [{
       tool: 'submit_character_asset_candidate', required: true, reason: 'Submit the final exact-canvas RGBA target layer.', input: { group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
-    }] : input.group === 'expression' && measurement?.status === 'misaligned' && transformSupported ? [{
-      tool: 'set_character_variant_transform', required: true, reason: 'Apply the suggested absolute transform, then inspect the rendered alignment again.',
-      input: { group: input.group, variantId: input.variantId, expectedUpdatedAt: draft.updatedAt, ...suggestedTransform },
-    }] : input.group === 'expression' && measurement?.status === 'misaligned' ? [{
-      tool: 'submit_character_asset_candidate', required: true, reason: 'The whole-head geometry drift is too large for the safe transform range; regenerate from the approved neutral head.', input: { group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
     }] : [{
       tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, and Align before user Review.', input: { destination: reviewDestination },
     }, {
@@ -667,13 +656,13 @@ export function createApplication(document: Document) {
           } : null,
           productionBrief: [
             'The first body/base/body candidate establishes the canonical character and registration frame.',
-            'Generate neutral whole-head from the canonical body. Generate every later expression by editing the approved neutral whole-head so its silhouette, hair, facial hair, and canvas coordinates stay fixed.',
+            'The canonical body includes the default face. Generate every optional whole-head expression by editing that canonical body while keeping head silhouette, hair, facial hair, and canvas coordinates fixed.',
             'Generate outfits by editing the canonical body while preserving pose, body center, head position, and foot line. Generate props against the returned current composite.',
             'Generate at 1024×1536 and deterministically downsample 50% to the exact 512×768 canvas. Never crop, reframe, or recenter.',
             'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
             'Submit only final RGBA PNG layers. The website validates but never repairs candidate images.',
             'Expression layers replace the whole aligned head, including the same fixed hairstyle and facial hair. Hair and facial hair are not customizable slots.',
-            'Expressions are variants of one whole-head slot. The canonical set is neutral, happy, sad, angry, surprised, and sleepy; additional expression variants are allowed.',
+            'No expression overlay means the default face baked into the body. Optional whole-head variants include happy, sad, angry, surprised, and sleepy; additional variants are allowed.',
             'Outfits are full-body variants. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. A prop may be positioned anywhere, including on the head or in a hand.',
           ],
           target,

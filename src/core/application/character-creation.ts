@@ -42,14 +42,12 @@ export const CHARACTER_CREATION_GROUPS: ReadonlyArray<{
 
 export const REQUIRED_CHARACTER_TARGETS = [
   { group: 'body', variantId: 'base', layer: 'body' },
-  { group: 'expression', variantId: 'neutral', layer: 'head' },
 ] as const
 
 const MAX_ASSET_BYTES = 5 * 1024 * 1024
 const variantIdPattern = /^[a-z0-9][a-z0-9_-]{0,39}$/
 const initialVariants = (): CharacterDraftVariant[] => [
   { group: 'body', id: 'base', label: 'Base body', layers: {} },
-  { group: 'expression', id: 'neutral', label: 'Neutral', layers: {} },
   { group: 'expression', id: 'happy', label: 'Happy', layers: {} },
   { group: 'expression', id: 'sad', label: 'Sad', layers: {} },
   { group: 'expression', id: 'angry', label: 'Angry', layers: {} },
@@ -65,7 +63,7 @@ export const createCharacterDraft = (packId = `character-${crypto.randomUUID()}`
   packId,
   name: 'My Companion',
   variants: initialVariants(),
-  selected: { expression: 'neutral', props: [] },
+  selected: { props: [] },
   updatedAt: Date.now(),
 })
 
@@ -78,13 +76,9 @@ const boundsCenter = ({ x, y, width, height }: NonNullable<CharacterAssetInspect
 
 export function characterRegistrationFrame(draft: CharacterDraft) {
   const bodyBounds = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body?.inspection.visibleBounds
-  const neutral = draft.variants.find(({ group, id }) => group === 'expression' && id === 'neutral')
-  const rawHeadBounds = neutral && isCharacterDraftAssetCurrent(draft, neutral, 'head') ? neutral.layers.head?.inspection.visibleBounds : undefined
-  const headBounds = rawHeadBounds ? transformCharacterBounds(rawHeadBounds, neutral?.transform) : undefined
   return {
     canvas: { ...CHARACTER_RIG.canvas },
     ...(bodyBounds ? { bodyBounds: { ...bodyBounds }, bodyCenter: boundsCenter(bodyBounds), footLine: bodyBounds.y + bodyBounds.height - 1 } : {}),
-    ...(headBounds ? { headBounds: { ...headBounds }, faceCenter: boundsCenter(headBounds), anchors: { head: boundsCenter(headBounds) } } : {}),
   }
 }
 
@@ -160,14 +154,13 @@ export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage,
     if (!appearance) throw new Error(`Starter appearance not found: ${reference.appearanceId}`)
     for (const layer of appearance.layers) {
       if (layer.slot === 'character-skin') put('body', 'base', 'Base body', 'body', layer.asset.assetId)
-      else if (layer.slot === 'expression-head') put('expression', 'neutral', 'Neutral', 'head', layer.asset.assetId)
       else if (layer.slot === 'item-back' || layer.slot === 'item-front') {
         const id = propId(appearance.id)
         put('prop', id, appearance.id, layer.slot === 'item-back' ? 'back' : 'front', layer.asset.assetId)
       }
     }
   }
-  if (!isCharacterDraftPopulated(draft) || !draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body || !draft.variants.find(({ group, id }) => group === 'expression' && id === 'neutral')?.layers.head) {
+  if (!isCharacterDraftPopulated(draft) || !draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body) {
     throw new Error('Starter character is not editable with the current rig')
   }
   const canonicalSha256 = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')!.layers.body!.inspection.sha256
@@ -191,8 +184,18 @@ type LegacyCharacterDraft = Omit<CharacterDraft, 'schemaVersion' | 'variants' | 
   selectedExpression: 'head-neutral' | 'head-happy'
 }
 
+const withoutDefaultExpression = (draft: CharacterDraft): CharacterDraft => {
+  const hasNeutral = draft.variants.some(({ group, id }) => group === 'expression' && id === 'neutral')
+  if (!hasNeutral && draft.selected.expression !== 'neutral') return draft
+  return {
+    ...draft,
+    variants: draft.variants.filter(({ group, id }) => group !== 'expression' || id !== 'neutral'),
+    selected: { ...draft.selected, expression: draft.selected.expression === 'neutral' ? undefined : draft.selected.expression },
+  }
+}
+
 export function migrateCharacterDraft(draft: CharacterDraft | CharacterDraftV2 | LegacyCharacterDraft): CharacterDraft {
-  if ('schemaVersion' in draft && draft.schemaVersion === 3) return draft
+  if ('schemaVersion' in draft && draft.schemaVersion === 3) return withoutDefaultExpression(draft)
   if ('schemaVersion' in draft && draft.schemaVersion === 2) {
     const usedPropIds = new Set(draft.variants.filter(({ group }) => group === 'prop').map(({ id }) => id))
     const migratedHeadwearIds = new Map<string, string>()
@@ -205,17 +208,17 @@ export function migrateCharacterDraft(draft: CharacterDraft | CharacterDraftV2 |
       migratedHeadwearIds.set(variant.id, id)
       return { ...variant, group: 'prop', id }
     })
-    return {
+    return withoutDefaultExpression({
       ...draft,
       schemaVersion: 3,
       variants,
       selected: {
-        expression: draft.selected.expression,
+        ...(draft.selected.expression !== 'neutral' ? { expression: draft.selected.expression } : {}),
         ...(draft.selected.outfit ? { outfit: draft.selected.outfit } : {}),
         props: [draft.selected.headwear ? migratedHeadwearIds.get(draft.selected.headwear) : undefined, draft.selected.prop]
           .filter((id): id is string => Boolean(id)),
       },
-    }
+    })
   }
   const legacy = draft as LegacyCharacterDraft
   const next: CharacterDraft = {
@@ -223,7 +226,7 @@ export function migrateCharacterDraft(draft: CharacterDraft | CharacterDraftV2 |
     name: legacy.name,
     updatedAt: legacy.updatedAt,
     selected: {
-      expression: legacy.selectedExpression === 'head-happy' ? 'happy' : 'neutral',
+      ...(legacy.selectedExpression === 'head-happy' ? { expression: 'happy' } : {}),
       ...(legacy.selectedBody === 'body-outfit' ? { outfit: 'outfit-1' } : {}),
       props: (legacy.assets['prop-back'] || legacy.assets['prop-front']) ? ['prop-1'] : [],
     },
@@ -232,7 +235,6 @@ export function migrateCharacterDraft(draft: CharacterDraft | CharacterDraftV2 |
     if (asset) next.variants.find((variant) => variant.group === group && variant.id === id)!.layers[layer] = asset
   }
   copy('body', 'base', 'body', legacy.assets['body-base'])
-  copy('expression', 'neutral', 'head', legacy.assets['head-neutral'])
   copy('expression', 'happy', 'head', legacy.assets['head-happy'])
   copy('outfit', 'outfit-1', 'body', legacy.assets['body-outfit'])
   copy('prop', 'prop-1', 'back', legacy.assets['prop-back'])
@@ -408,10 +410,8 @@ const selectedVariants = (
   const outfit = !(exclude?.group === 'outfit' && exclude.id === outfitId) && outfitId && hasCurrentCharacterLayer(draft, 'outfit', outfitId, 'body')
     ? findVariant(draft, 'outfit', outfitId) : undefined
   const expressionId = preview?.group === 'expression' ? preview.id : draft.selected.expression
-  const expression = exclude?.group === 'expression' && exclude.id === expressionId ? undefined
-    : hasCurrentCharacterLayer(draft, 'expression', expressionId, 'head')
-      ? findVariant(draft, 'expression', expressionId)
-      : hasCurrentCharacterLayer(draft, 'expression', 'neutral', 'head') ? findVariant(draft, 'expression', 'neutral') : undefined
+  const expression = expressionId && !(exclude?.group === 'expression' && exclude.id === expressionId) && hasCurrentCharacterLayer(draft, 'expression', expressionId, 'head')
+    ? findVariant(draft, 'expression', expressionId) : undefined
   const propIds = preview?.group === 'prop' ? [...draft.selected.props, preview.id] : draft.selected.props
   const props = [...new Set(propIds)]
     .filter((id) => exclude?.group !== 'prop' || exclude.id !== id)
@@ -458,16 +458,14 @@ export function resolveCharacterDraftReferenceLayers(
 ) {
   if (target.group === 'body') return []
   if (target.group === 'expression') {
-    return target.id === 'neutral'
-      ? resolveDraftLayers({ ...draft, selected: { ...draft.selected, expression: 'neutral' } }, undefined, target)
-      : resolveDraftLayers(draft, { group: 'expression', id: 'neutral' }, target)
+    return resolveDraftLayers({ ...draft, selected: { ...draft.selected, expression: undefined } }, undefined, target)
   }
   return resolveDraftLayers(draft, undefined, target)
 }
 
 export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
   if (!draft.name.trim()) throw new Error('Companion name is required')
-  if (!hasCurrentCharacterLayer(draft, 'body', 'base', 'body') || !hasCurrentCharacterLayer(draft, 'expression', 'neutral', 'head')) throw new Error('Base body and neutral head are required')
+  if (!hasCurrentCharacterLayer(draft, 'body', 'base', 'body')) throw new Error('Base body is required')
   const keys = new Set<string>()
   const propOrders = new Map(draft.variants.filter(({ group }) => group === 'prop').map(({ id }, index) => [id, index + 1]))
   for (const variant of draft.variants) {

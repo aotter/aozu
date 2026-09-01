@@ -18,12 +18,12 @@ const pack: CharacterPack = {
       { asset: { packId: 'guide', packVersion: 1, assetId: 'hat-front' }, slot: 'item-front', order: 1 },
     ] },
     { id: 'default', layers: [{ asset: { packId: 'guide', packVersion: 1, assetId: 'skin' }, slot: 'character-skin', order: 1 }] },
-    { id: 'neutral', layers: [{ asset: { packId: 'guide', packVersion: 1, assetId: 'head' }, slot: 'expression-head', order: 1 }] },
+    { id: 'happy', layers: [{ asset: { packId: 'guide', packVersion: 1, assetId: 'head' }, slot: 'expression-head', order: 1 }] },
   ],
   defaultComposition: [
     { packId: 'guide', packVersion: 1, appearanceId: 'hat' },
     { packId: 'guide', packVersion: 1, appearanceId: 'default' },
-    { packId: 'guide', packVersion: 1, appearanceId: 'neutral' },
+    { packId: 'guide', packVersion: 1, appearanceId: 'happy' },
   ],
 }
 const inspections = new Map(pack.assets.map(({ blobId }) => [blobId, inspection]))

@@ -15,11 +15,6 @@
       "mediaType": "image/png"
     },
     {
-      "blobId": "focus-neutral-head",
-      "path": "assets/expression-neutral.png",
-      "mediaType": "image/png"
-    },
-    {
       "blobId": "focus-studio-background",
       "path": "assets/studio-background.webp",
       "mediaType": "image/webp"
@@ -44,15 +39,8 @@
         "id": "body",
         "blobId": "focus-body",
         "mediaType": "image/png",
-        "size": 181996,
-        "sha256": "480573e91ca3dc31047433760950d8ca78c36b2e58b64ca2b56092d02460265a"
-      },
-      {
-        "id": "neutral-head",
-        "blobId": "focus-neutral-head",
-        "mediaType": "image/png",
-        "size": 18646,
-        "sha256": "fb69def1054a964780af8cb8b45825da3539017304a37adadbdd46143cfbce5b"
+        "size": 70439,
+        "sha256": "5ca88ed31ee0245f52434c319b77d41c4050a527d3dd69cc9b9e8872cdc795a8"
       }
     ],
     "appearances": [
@@ -69,20 +57,6 @@
             "order": 1
           }
         ]
-      },
-      {
-        "id": "expression-neutral",
-        "layers": [
-          {
-            "asset": {
-              "packId": "focus-friend",
-              "packVersion": 1,
-              "assetId": "neutral-head"
-            },
-            "slot": "expression-head",
-            "order": 1
-          }
-        ]
       }
     ],
     "defaultComposition": [
@@ -90,11 +64,6 @@
         "packId": "focus-friend",
         "packVersion": 1,
         "appearanceId": "body-base"
-      },
-      {
-        "packId": "focus-friend",
-        "packVersion": 1,
-        "appearanceId": "expression-neutral"
       }
     ]
   },
@@ -110,11 +79,6 @@
           "packId": "focus-friend",
           "packVersion": 1,
           "appearanceId": "body-base"
-        },
-        {
-          "packId": "focus-friend",
-          "packVersion": 1,
-          "appearanceId": "expression-neutral"
         }
       ]
     }
