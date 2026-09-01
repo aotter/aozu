@@ -26,7 +26,7 @@ const resources = await validateLoadedStarterPackage(
   { starter, assets: base.assets },
   inspectCharacterFixture,
   inspectSceneFixture,
-  '5',
+  '6',
 )
 const draft: ExperienceDraft = {
   id: 'draft-mastery-journey',

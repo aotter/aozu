@@ -21,7 +21,7 @@ remains the historical record of the initial eleven slices.
 
 1. **Mantle backbone** — pin Mantle prerelease dependencies and compile one
    minimal Fixed Backbone with run, stage, progress-event, `current-stage`, and
-   `submit-action` contracts.
+   `submit-companion-action` contracts.
 2. **IndexedDB Mantle storage** — implement the required entry/read/view
    semantic ports and prove hydrate plus optimistic concurrency across reloads.
 3. **Bundle activation** — store manifests and entries by bundle namespace,

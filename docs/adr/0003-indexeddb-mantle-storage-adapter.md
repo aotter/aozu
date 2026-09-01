@@ -123,7 +123,7 @@ Portable ZIP integrity is a snapshot of one export. Valid active-entry edits do
 not invalidate IndexedDB; export recalculates file lengths and hashes from the
 current canonical state.
 
-Companion owns one additional semantic `submit-action` repository operation for
+Companion owns one additional semantic `submit-companion-action` repository operation for
 product actions that must change multiple canonical entries atomically. Its
 IndexedDB implementation checks the expected run revision and commits all
 affected entries plus the progress event in one transaction. Agent-turn

@@ -1,16 +1,26 @@
 import assert from "node:assert/strict"
 import { EntryDataValidator } from "@aotter/mantle-spec"
-import { compileFixedBackbone, FIXED_BACKBONE_VERSION } from "../src/core/mantle/backbone.ts"
+import { compileAuthoringBackbone, compileFixedBackbone, FIXED_BACKBONE_VERSION } from "../src/core/mantle/backbone.ts"
 
 const plan = compileFixedBackbone()
+const authoring = compileAuthoringBackbone()
 
-assert.equal(FIXED_BACKBONE_VERSION, "5")
-assert.deepEqual(Object.keys(plan.schemas).sort(), ["character-loadouts", "character-packs", "character-states", "experience-drafts", "inventory-items", "item-definitions", "journal-entries", "pending-agent-turns", "progress-events", "rules", "runs", "scene-assets", "scene-compositions", "stages"])
+assert.equal(FIXED_BACKBONE_VERSION, "6")
+assert.deepEqual(Object.keys(plan.schemas).sort(), ["character-loadouts", "character-packs", "character-states", "inventory-items", "item-definitions", "journal-entries", "pending-agent-turns", "progress-events", "rules", "runs", "scene-assets", "scene-compositions", "stages"])
+assert.deepEqual(Object.keys(authoring.schemas), ['experience-drafts'])
 assert.equal(plan.views["current-stage"]?.query.kind, "declarative")
-assert.equal(plan.procedures["submit-action"]?.manifest.spec.handler.kind, "ref")
-assert.equal(plan.triggers["select-experience-draft"]?.target, "select-experience-draft")
-assert.equal(plan.triggers["submit-experience-candidate"]?.target, "submit-experience-candidate")
-assert.ok(plan.mcpTools.some(({ name }) => name === "submit_action"))
+assert.deepEqual(Object.keys(plan.procedures).sort(), ['inspect-companion', 'resolve-companion-turn', 'submit-companion-action'])
+assert.equal(plan.procedures["submit-companion-action"]?.manifest.spec.handler.kind, "ref")
+assert.equal(authoring.triggers["select-experience-draft"]?.target, "select-experience-draft")
+assert.equal(authoring.triggers["submit-experience-candidate"]?.target, "submit-experience-candidate")
+assert.deepEqual(
+  plan.mcpTools.filter(({ ownerKind, surface }) => ownerKind === 'Procedure' && surface === 'public').map(({ name }) => name),
+  ['inspect_companion', 'resolve_companion_turn', 'submit_companion_action'],
+)
+assert.deepEqual(
+  authoring.mcpTools.filter(({ ownerKind, surface }) => ownerKind === 'Procedure' && surface === 'public').map(({ name }) => name),
+  ['inspect_character_contract', 'inspect_experience_contract', 'submit_character_asset_candidate', 'submit_experience_candidate'],
+)
 assert.ok(new EntryDataValidator().validate(plan.schemas.stages!.manifest, { title: "Bad scene", narrative: "", actions: [], progress: [], scene: {} }).length)
 assert.equal(new EntryDataValidator().validate(plan.schemas.rules!.manifest, {
   ruleId: 'recursive', priority: 1,

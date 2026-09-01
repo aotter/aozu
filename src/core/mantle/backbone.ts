@@ -8,6 +8,7 @@ import {
   PROGRESS_LOOP_IDS,
   PROGRESS_BINDING_SCHEMA,
 } from '../domain/playbook.ts'
+import { CHARACTER_VARIANT_GROUPS } from '../domain/character.ts'
 
 const source = (sourceId: string, manifest: object): ManifestSource => ({
   sourceId,
@@ -30,9 +31,13 @@ const objectSchema = (properties: Readonly<Record<string, JsonSchema>>, required
 
 const actionSchema = objectSchema(
   {
-    id: { type: "string", minLength: 1 },
-    label: { type: "string", minLength: 1 },
-    phrases: { type: "array", items: { type: "string", minLength: 1 } },
+    id: { type: "string", minLength: 1, maxLength: 100 },
+    label: { type: "string", minLength: 1, maxLength: 200 },
+    phrases: {
+      type: "array",
+      maxItems: PLAYBOOK_LIMITS.phrasesPerAction,
+      items: { type: "string", minLength: 1, maxLength: PLAYBOOK_LIMITS.phraseLength },
+    },
     effects: { type: "array", maxItems: PLAYBOOK_LIMITS.effectsPerActionOrRule, items: EFFECT_SCHEMA },
   },
   ["id", "label"],
@@ -42,8 +47,69 @@ const progressSchema = PROGRESS_BINDING_SCHEMA
 
 const sceneReferenceSchema = objectSchema({
   compositionId: { type: "string", minLength: 1 },
-  characterStateId: { type: "string" },
+  characterStateId: { type: "string", minLength: 1 },
 }, ["compositionId"])
+
+const emptyReadOnlyInput = { ...objectSchema({}), readOnly: true }
+
+const nextActionSchema = objectSchema({
+  tool: { type: 'string', minLength: 1 },
+  required: { type: 'boolean' },
+  reason: { type: 'string', minLength: 1 },
+}, ['tool', 'required'])
+
+const toolResultSchema = objectSchema({
+  status: { const: 'ok' },
+  data: { type: 'object' },
+  nextActions: { type: 'array', items: nextActionSchema },
+}, ['status', 'data'])
+
+const stageProjectionSchema = objectSchema({
+  stageId: { type: 'string', minLength: 1 },
+  revision: { type: 'integer', minimum: 0 },
+  status: { enum: ['active', 'completed', 'blocked'] },
+  agentFallback: { type: 'boolean' },
+  title: { type: 'string' },
+  narrative: { type: 'string' },
+  scene: sceneReferenceSchema,
+  actions: { type: 'array', items: objectSchema({ id: { type: 'string' }, label: { type: 'string' } }, ['id', 'label']) },
+  progress: {
+    type: 'array',
+    items: objectSchema({
+      id: { type: 'string' }, label: { type: 'string' }, value: { type: ['string', 'number'] }, max: { type: 'number' },
+    }, ['id', 'label', 'value']),
+  },
+}, ['stageId', 'revision', 'status', 'agentFallback', 'title', 'narrative', 'actions', 'progress'])
+
+const experienceCandidateSchema = objectSchema({
+  name: { type: 'string', minLength: 1, maxLength: 200 },
+  initialStageId: { type: 'string', minLength: 1, maxLength: 100 },
+  metrics: { type: 'object', additionalProperties: { type: 'number' } },
+  flags: { type: 'object', additionalProperties: { type: 'boolean' } },
+  itemDefinitions: { type: 'array', maxItems: 100, items: { type: 'object' } },
+  stages: {
+    type: 'array', minItems: 1, maxItems: PLAYBOOK_LIMITS.stages,
+    items: objectSchema({
+      id: { type: 'string', minLength: 1, maxLength: 100 },
+      title: { type: 'string', minLength: 1, maxLength: 500 },
+      narrative: { type: 'string', minLength: 1, maxLength: PLAYBOOK_LIMITS.dialogueLength },
+      terminal: { type: 'boolean' },
+      agentFallback: { type: 'boolean' },
+      scene: sceneReferenceSchema,
+      actions: { type: 'array', maxItems: PLAYBOOK_LIMITS.actionsPerStage, items: actionSchema },
+      progress: { type: 'array', items: progressSchema },
+    }, ['id', 'title', 'narrative', 'actions']),
+  },
+  rules: {
+    type: 'array', maxItems: PLAYBOOK_LIMITS.rules,
+    items: objectSchema({
+      ruleId: { type: 'string', minLength: 1, maxLength: 100 },
+      priority: { type: 'integer' },
+      when: CONDITION_REF,
+      effects: { type: 'array', maxItems: PLAYBOOK_LIMITS.effectsPerActionOrRule, items: EFFECT_SCHEMA },
+    }, ['ruleId', 'priority', 'when', 'effects']),
+  },
+}, ['name', 'initialStageId', 'metrics', 'stages'])
 
 const experienceSeedSchema = objectSchema(
   {
@@ -104,9 +170,9 @@ const experienceDraftCreateProperties = {
   sceneCompositionId: experienceDraftProperties.sceneCompositionId,
 }
 
-export const FIXED_BACKBONE_VERSION = "5"
+export const FIXED_BACKBONE_VERSION = "6"
 
-export const FIXED_BACKBONE_SOURCES = [
+const ALL_BACKBONE_SOURCES = [
   source(
     "fixed/item-definition.yaml",
     envelope(
@@ -238,7 +304,7 @@ export const FIXED_BACKBONE_SOURCES = [
     ),
   ),
   source(
-    "fixed/experience-draft.yaml",
+    "authoring/experience-draft.yaml",
     envelope(
       "Schema",
       "experience-drafts",
@@ -402,90 +468,175 @@ export const FIXED_BACKBONE_SOURCES = [
     }),
   ),
   source(
-    "fixed/select-experience-draft.yaml",
+    "authoring/select-experience-draft.yaml",
     envelope("Procedure", "select-experience-draft", {
+      title: 'Select Experience Draft',
+      description: 'Persist the selected Starter and Direction as the current Experience Draft.',
       input: objectSchema(experienceDraftCreateProperties, experienceDraftRequired),
       output: { type: "object" },
       handler: { kind: "builtin", op: "create", schema: "experience-drafts" },
     }),
   ),
   source(
-    "fixed/select-experience-draft-mcp.yaml",
+    "authoring/select-experience-draft-mcp.yaml",
     envelope("Trigger", "select-experience-draft", {
       source: { kind: "mcp", surface: "staff" },
       target: { procedure: "select-experience-draft" },
     }),
   ),
   source(
-    "fixed/submit-experience-candidate.yaml",
-    envelope("Procedure", "submit-experience-candidate", {
-      input: objectSchema(
-        {
-          draftId: { type: "string", minLength: 1 },
-          expectedRevision: { type: "integer", minimum: 0 },
-          idempotencyKey: { type: "string", minLength: 1, maxLength: 100 },
-          candidateJson: { type: "string", minLength: 2, maxLength: 1_000_000 },
-        },
-        ["draftId", "expectedRevision", "idempotencyKey", "candidateJson"],
-      ),
-      output: objectSchema(
-        {
-          bundleId: { type: "string", minLength: 1 },
-          revision: { type: "integer", minimum: 1 },
-          replayed: { type: "boolean" },
-        },
-        ["bundleId", "revision", "replayed"],
-      ),
-      handler: { kind: "ref", ref: "companion.submit-experience-candidate" },
+    'authoring/inspect-experience-contract.yaml',
+    envelope('Procedure', 'inspect-experience-contract', {
+      title: 'Inspect Experience Contract',
+      description: 'Required first step for authoring an experience. Returns the selected immutable Starter identity, exact Experience Draft revision, Direction and Experience Seed, available visual references, incomplete Playbook skeleton, supported vocabulary, and validation limits. No runnable Companion exists until a complete candidate is validated and the user approves it.',
+      input: emptyReadOnlyInput,
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.inspect-experience-contract' },
     }),
   ),
   source(
-    "fixed/submit-experience-candidate-mcp.yaml",
+    'authoring/inspect-experience-contract-mcp.yaml',
+    envelope('Trigger', 'inspect-experience-contract', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'inspect-experience-contract' },
+    }),
+  ),
+  source(
+    "authoring/submit-experience-candidate.yaml",
+    envelope('Procedure', 'submit-experience-candidate', {
+      title: 'Submit Experience Candidate',
+      description: 'Submit one complete declarative Playbook for the exact inspected draft revision. Starter assets, fixed manifests, handlers, and application code cannot be replaced. Invalid or stale submissions return diagnostics without staging. A valid candidate remains inactive until explicit user review and approval.',
+      input: {
+        ...objectSchema({
+          draftId: { type: "string", minLength: 1 },
+          expectedRevision: { type: "integer", minimum: 0 },
+          idempotencyKey: { type: "string", minLength: 1, maxLength: 100 },
+          candidate: experienceCandidateSchema,
+        }, ['draftId', 'expectedRevision', 'idempotencyKey', 'candidate']),
+        $defs: PLAYBOOK_SCHEMA_DEFS,
+      },
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.submit-experience-candidate' },
+    }),
+  ),
+  source(
+    "authoring/submit-experience-candidate-mcp.yaml",
     envelope("Trigger", "submit-experience-candidate", {
       source: { kind: "mcp", surface: "public" },
       target: { procedure: "submit-experience-candidate" },
     }),
   ),
   source(
-    "fixed/submit-action.yaml",
-    envelope("Procedure", "submit-action", {
-      input: objectSchema(
-        {
-          runId: { type: "string", minLength: 1 },
-          actionId: { type: "string", minLength: 1 },
-          expectedRevision: { type: "integer", minimum: 0 },
-          idempotencyKey: { type: "string", minLength: 1, "x-mcp-hint": "idempotency-key" },
-          text: { type: "string" },
-        },
-        ["runId", "actionId", "expectedRevision", "idempotencyKey"],
-      ),
-      output: objectSchema({
-        stageId: { type: "string" },
-        revision: { type: "integer" },
-        status: { enum: ["active", "completed", "blocked"] },
-        title: { type: "string" },
-        narrative: { type: "string" },
-        scene: sceneReferenceSchema,
-        actions: { type: "array", items: actionSchema },
-        progress: { type: "array", items: progressSchema },
-      }),
-      handler: { kind: "ref", ref: "companion.submit-action" },
+    'authoring/inspect-character-contract.yaml',
+    envelope('Procedure', 'inspect-character-contract', {
+      title: 'Inspect Character Contract',
+      description: 'Required first step before generating or changing character art. Returns the exact rig and production brief. Generate and preprocess assets outside the website, then submit only final 512×768 RGBA PNG layers. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
+      input: emptyReadOnlyInput,
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.inspect-character-contract' },
     }),
   ),
   source(
-    "fixed/submit-action-mcp.yaml",
-    envelope("Trigger", "submit-action-mcp", {
-      source: { kind: "mcp", surface: "public" },
-      target: { procedure: "submit-action" },
+    'authoring/inspect-character-contract-mcp.yaml',
+    envelope('Trigger', 'inspect-character-contract', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'inspect-character-contract' },
+    }),
+  ),
+  source(
+    'authoring/submit-character-asset-candidate.yaml',
+    envelope('Procedure', 'submit-character-asset-candidate', {
+      title: 'Submit Character Asset Candidate',
+      description: 'Fill one layer of a character variant with a final PNG candidate. Inspect the contract first. A variant belongs to body, expression, outfit, or prop. Props are independent, multi-select, full-canvas overlays placed anywhere relative to the canonical character and may contain front and back layers. Send a data:image/png;base64 URL only after producing an exact 512×768 RGBA image with real transparency. Whole-head expressions include the complete aligned head, hairstyle, and facial hair. This stages a draft candidate only and never approves or activates it.',
+      input: objectSchema({
+        group: { enum: CHARACTER_VARIANT_GROUPS },
+        variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
+        label: { type: 'string', minLength: 1, maxLength: 80 },
+        layer: { enum: ['body', 'head', 'back', 'front'] },
+        filename: { type: 'string', minLength: 1, maxLength: 200 },
+        dataUrl: { type: 'string', pattern: '^data:image/png;base64,', maxLength: 7_100_000 },
+      }, ['group', 'variantId', 'label', 'layer', 'filename', 'dataUrl']),
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.submit-character-asset-candidate' },
+    }),
+  ),
+  source(
+    'authoring/submit-character-asset-candidate-mcp.yaml',
+    envelope('Trigger', 'submit-character-asset-candidate', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'submit-character-asset-candidate' },
+    }),
+  ),
+  source(
+    'fixed/inspect-companion.yaml',
+    envelope('Procedure', 'inspect-companion', {
+      title: 'Inspect Companion',
+      description: 'Required first step for Companion interaction. Read the current stage, revision, prepared actions, and persisted pending user turns. When a pending turn exists, act as the character and call resolve_companion_turn; put the character response in the website instead of printing it in agent chat.',
+      input: emptyReadOnlyInput,
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.inspect-companion' },
+    }),
+  ),
+  source(
+    'fixed/inspect-companion-mcp.yaml',
+    envelope('Trigger', 'inspect-companion', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'inspect-companion' },
+    }),
+  ),
+  source(
+    'fixed/submit-companion-action.yaml',
+    envelope('Procedure', 'submit-companion-action', {
+      title: 'Submit Companion Action',
+      description: 'Execute one prepared website action with the exact current revision. The website validates and atomically records effects and progress. Inspect first; never invent action IDs or revisions.',
+      input: objectSchema({
+          actionId: { type: "string", minLength: 1 },
+          expectedRevision: { type: "integer", minimum: 0 },
+          idempotencyKey: { type: "string", minLength: 1, maxLength: 100, "x-mcp-hint": "idempotency-key" },
+      }, ['actionId', 'expectedRevision', 'idempotencyKey']),
+      output: stageProjectionSchema,
+      handler: { kind: 'ref', ref: 'companion.submit-companion-action' },
+    }),
+  ),
+  source(
+    'fixed/submit-companion-action-mcp.yaml',
+    envelope('Trigger', 'submit-companion-action', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'submit-companion-action' },
+    }),
+  ),
+  source(
+    'fixed/resolve-companion-turn.yaml',
+    envelope('Procedure', 'resolve-companion-turn', {
+      title: 'Resolve Companion Turn',
+      description: 'Write the character response and validated effects directly into the website for one persisted pending turn. Keep your normal agent personality outside the tool; apply the Companion character voice only to dialogue. Do not repeat the dialogue in agent chat after this succeeds.',
+      input: objectSchema({
+        turnId: { type: 'string', minLength: 1 },
+        idempotencyKey: { type: 'string', minLength: 1, maxLength: 100 },
+        dialogue: { type: 'string', minLength: 1, maxLength: PLAYBOOK_LIMITS.dialogueLength },
+        effects: { type: 'array', maxItems: PLAYBOOK_LIMITS.effectsPerTransaction, items: EFFECT_SCHEMA },
+      }, ['turnId', 'idempotencyKey', 'dialogue', 'effects']),
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.resolve-companion-turn' },
+    }),
+  ),
+  source(
+    'fixed/resolve-companion-turn-mcp.yaml',
+    envelope('Trigger', 'resolve-companion-turn', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'resolve-companion-turn' },
     }),
   ),
 ] as const satisfies readonly ManifestSource[]
 
+export const AUTHORING_BACKBONE_SOURCES = ALL_BACKBONE_SOURCES.filter(({ sourceId }) => sourceId.startsWith('authoring/'))
+export const FIXED_BACKBONE_SOURCES = ALL_BACKBONE_SOURCES.filter(({ sourceId }) => sourceId.startsWith('fixed/'))
+
 const diagnosticError = (phase: string, diagnostics: readonly Diagnostic[]) =>
   new Error(`${phase}: ${diagnostics.map(({ code, path }) => `${code}@${path}`).join(", ")}`)
 
-export function compileFixedBackbone(): RuntimePlan {
-  const parsed = parseManifestSources({ sources: FIXED_BACKBONE_SOURCES })
+const compileBackbone = (sources: readonly ManifestSource[]): RuntimePlan => {
+  const parsed = parseManifestSources({ sources })
   if (!parsed.ok) throw diagnosticError("parse", parsed.diagnostics)
 
   const linked = linkManifestSet(parsed.value)
@@ -495,3 +646,6 @@ export function compileFixedBackbone(): RuntimePlan {
   if (!compiled.ok) throw diagnosticError("compile", compiled.diagnostics)
   return compiled.value
 }
+
+export const compileAuthoringBackbone = () => compileBackbone(AUTHORING_BACKBONE_SOURCES)
+export const compileFixedBackbone = () => compileBackbone(FIXED_BACKBONE_SOURCES)
