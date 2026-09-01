@@ -198,6 +198,7 @@ export default function Home() {
   const suppressToolClickRef = useRef(false);
   const paperDollRef = useRef<HTMLDivElement>(null);
   const partnerListRef = useRef<HTMLDivElement>(null);
+  const mobilePartnerListRef = useRef<HTMLDivElement>(null);
   const travelInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -781,7 +782,11 @@ export default function Home() {
           </nav>
           {panel !== 'wardrobe' && <button className="mobile-tools-toggle" type="button" aria-expanded={mobileToolsOpen} onClick={toggleTools} onPointerDown={beginToolPull} onPointerMove={moveToolPull} onPointerUp={finishToolPull} onPointerCancel={finishToolPull}>{mobileToolsOpen ? '收起' : '選單'}</button>}
           {mobileToolsOpen && <section className="mobile-tools-drawer" aria-label="夥伴工具">
-            <div className="mobile-partner-strip">{AOZU_PARTNERS.map((partner) => <button key={partner.id} className={partner.id === activePartner.id ? 'is-active' : ''} type="button" disabled={!runtime || busy} onClick={() => switchPartner(partner)}><PartnerArt partner={partner} decorative /><span>{partner.displayName}</span></button>)}</div>
+            <div className="mobile-partner-carousel">
+              <button className="mobile-partner-arrow is-left" type="button" aria-label="向左瀏覽夥伴" onClick={() => mobilePartnerListRef.current?.scrollBy({ left: -190, behavior: 'smooth' })}>‹</button>
+              <div ref={mobilePartnerListRef} className="mobile-partner-strip">{AOZU_PARTNERS.map((partner) => <button key={partner.id} className={partner.id === activePartner.id ? 'is-active' : ''} type="button" disabled={!runtime || busy} onClick={() => switchPartner(partner)}><PartnerArt partner={partner} decorative /><span>{partner.displayName}</span></button>)}</div>
+              <button className="mobile-partner-arrow is-right" type="button" aria-label="向右瀏覽夥伴" onClick={() => mobilePartnerListRef.current?.scrollBy({ left: 190, behavior: 'smooth' })}>›</button>
+            </div>
             <nav className="mobile-life-strip" aria-label="生活任務">{lifeControls.map((control) => <button key={control.id} type="button" onClick={() => selectLifeControl(control)}><b style={{ background: control.tone }}>{control.mark}</b>{control.label}</button>)}</nav>
             <nav className="mobile-panel-strip" aria-label="夥伴管理">{panels.map((item) => <button key={item.id} type="button" onClick={() => openPanel(item.id)}><b>{item.icon}</b>{item.label}</button>)}</nav>
           </section>}
