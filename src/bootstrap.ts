@@ -12,7 +12,7 @@ import { bindMantleWebMcpTools, createAgentCapability } from './adapters/webmcp/
 import { loadStarterCatalog } from './adapters/browser/starter-packages.ts'
 import { queueAgentTurn, resolveAgentTurn } from './core/application/agent-turn.ts'
 import { AUTHORING_NAMESPACE, assembleExperienceCandidate, ExperienceCandidateValidationError } from './core/application/authoring.ts'
-import { approveCandidate as approveStagedCandidate } from './core/application/candidate.ts'
+import { approveCandidate as approveStagedCandidate, loadPendingCandidatePreview } from './core/application/candidate.ts'
 import { loadCompanionStartup } from './core/application/companion.ts'
 import { loadStage, submitAction as submitPreparedAction, submitInteraction } from './core/application/stage.ts'
 import {
@@ -148,12 +148,22 @@ export function createApplication(document: Document) {
   }
   const application = {
     async loadStartup() {
-      const startup = await loadCompanionStartup(agent, bundles, createIndexedDbEntryRepository)
+      const [startup, pendingReview] = await Promise.all([
+        loadCompanionStartup(agent, bundles, createIndexedDbEntryRepository),
+        loadPendingCandidatePreview(
+          bundles,
+          createIndexedDbEntryRepository,
+          createIndexedDbAssetRepository,
+          inspectCharacterImage,
+          inspectSceneImage,
+        ),
+      ])
       if (startup.savedCompanions.length) void requestPersistentStorage(document.defaultView?.navigator.storage)
-      if (startup.status !== 'main') return startup
+      if (startup.status !== 'main') return { ...startup, pendingReview }
       const entries = createIndexedDbEntryRepository(startup.bundleId)
       return {
         ...startup,
+        pendingReview,
         character: await loadCharacterProjection(
           entries,
           createIndexedDbAssetRepository,
@@ -219,6 +229,9 @@ export function createApplication(document: Document) {
     },
     async approveCandidate(bundleId: string, approved: true) {
       return approveStagedCandidate(bundles, bundleId, approved)
+    },
+    async discardPendingReview(bundleId: string) {
+      await bundles.discardPendingReview(bundleId)
     },
     async activateCompanion(bundleId: string) {
       return bundles.activate(bundleId, true)

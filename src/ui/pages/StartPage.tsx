@@ -4,14 +4,17 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/ui/components/ui/button'
 import { DataControls } from '@/ui/DataControls'
 import type { SavedCompanion } from '@/core/application/companion'
+import type { StagedCandidatePreview } from '@/core/application/candidate'
 
 const startOptions = ['starter', 'bundle'] as const
 
-export function StartPage({ savedCompanions, onOpenCompanion, onDeleteCompanion, onChooseStarter, prepareImport }: {
+export function StartPage({ savedCompanions, pendingReview, onOpenCompanion, onDeleteCompanion, onChooseStarter, onResumeReview, prepareImport }: {
   savedCompanions: SavedCompanion[]
+  pendingReview: StagedCandidatePreview | null
   onOpenCompanion(bundleId: string): Promise<void>
   onDeleteCompanion(bundleId: string): Promise<void>
   onChooseStarter(): void
+  onResumeReview(): void
   prepareImport(blob: Blob): Promise<void>
 }) {
   const { t } = useTranslation()
@@ -22,6 +25,16 @@ export function StartPage({ savedCompanions, onOpenCompanion, onDeleteCompanion,
     <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-3xl flex-col justify-center px-4 py-10">
       <h1 className="font-heading text-3xl font-semibold tracking-tight">{t('start.title')}</h1>
       <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">{t('start.description')}</p>
+      {pendingReview && <section className="mt-8">
+        <h2 className="font-heading text-lg font-medium">{t('start.pending.title')}</h2>
+        <article className="mt-3 flex items-center justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm">
+          <div className="min-w-0">
+            <h3 className="truncate font-heading font-medium">{pendingReview.name}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{t('start.pending.description')}</p>
+          </div>
+          <Button onClick={onResumeReview}>{t('start.pending.resume')}</Button>
+        </article>
+      </section>}
       {savedCompanions.length > 0 && <section className="mt-8">
         <h2 className="font-heading text-lg font-medium">{t('start.saved.title')}</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">

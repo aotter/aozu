@@ -32,14 +32,6 @@ import {
 
 type EntryRow = Entry & { authorId: string | null }
 
-export async function importEntries(bundleId: string, entries: readonly Entry[]) {
-  const database = await openCompanionDatabase()
-  const transaction = database.transaction(ENTRY_STORE, 'readwrite')
-  for (const entry of entries) {
-    await transaction.store.add({ ...structuredClone(entry), bundleId, authorId: null })
-  }
-  await transaction.done
-}
 type EntrySort = NonNullable<ListEntriesArgs["sort"]>
 
 const valueAt = (entry: EntryRow, field: string) =>

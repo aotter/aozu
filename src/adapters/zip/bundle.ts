@@ -10,7 +10,8 @@ import { inspectCharacterImage } from '../browser/character-image.ts'
 import { inspectSceneImage } from '../browser/scene-image.ts'
 import { createIndexedDbAssetRepository } from '../indexeddb/asset-repository.ts'
 import { createIndexedDbBundleRepository } from '../indexeddb/bundle-repository.ts'
-import { createIndexedDbEntryRepository, importEntries } from '../indexeddb/mantle-storage.ts'
+import { persistImportedCandidate } from '../indexeddb/candidate-review.ts'
+import { createIndexedDbEntryRepository } from '../indexeddb/mantle-storage.ts'
 
 const MAX_ARCHIVE = 50 * 1024 * 1024
 const MAX_EXPANDED = 100 * 1024 * 1024
@@ -268,26 +269,29 @@ export async function stagePortableBundle(blob: Blob): Promise<StagedCandidatePr
     if (scene && typeof scene.characterStateId === 'string' && !publishedCharacterStates.has(scene.characterStateId)) throw new Error(`Stage character state is missing: ${stage.id}`)
   }
   const bundles = createIndexedDbBundleRepository()
-  await bundles.stageCandidate(record)
-  await importEntries(id, entries)
-  const assetRepository = createIndexedDbAssetRepository(id)
-  for (const [assetId, asset] of assets) await assetRepository.put(assetId, asset)
-  const storedEntries = createIndexedDbEntryRepository(id)
-  for (const entry of entries) {
-    const stored = await storedEntries.readById(entry.id)
-    if (!stored || stored.collection !== entry.collection || stored.status !== entry.status || stored.version !== entry.version || JSON.stringify(stored.data) !== JSON.stringify(entry.data)) {
-      throw new Error(`Entry read-back failed: ${entry.id}`)
+  await persistImportedCandidate(record, entries, assets)
+  try {
+    const assetRepository = createIndexedDbAssetRepository(id)
+    const storedEntries = createIndexedDbEntryRepository(id)
+    for (const entry of entries) {
+      const stored = await storedEntries.readById(entry.id)
+      if (!stored || stored.collection !== entry.collection || stored.status !== entry.status || stored.version !== entry.version || JSON.stringify(stored.data) !== JSON.stringify(entry.data)) {
+        throw new Error(`Entry read-back failed: ${entry.id}`)
+      }
     }
+    const storedAssets = await assetRepository.list()
+    if (storedAssets.length !== assets.size) throw new Error('Asset read-back count mismatch')
+    for (const asset of storedAssets) {
+      const descriptorAsset = descriptor.assets.find(({ id: assetId }) => assetId === asset.id)!
+      const expected = integrityByPath.get(descriptorAsset.path)!
+      const bytes = new Uint8Array(await asset.blob.arrayBuffer())
+      if (asset.blob.type !== descriptorAsset.mediaType || bytes.byteLength !== expected.byteLength || await digest(bytes) !== expected.sha256) throw new Error(`Asset read-back failed: ${asset.id}`)
+    }
+    await loadStage(storedEntries, descriptor.metadata.runId)
+  } catch (error) {
+    await bundles.discardPendingReview(id)
+    throw error
   }
-  const storedAssets = await assetRepository.list()
-  if (storedAssets.length !== assets.size) throw new Error('Asset read-back count mismatch')
-  for (const asset of storedAssets) {
-    const descriptorAsset = descriptor.assets.find(({ id: assetId }) => assetId === asset.id)!
-    const expected = integrityByPath.get(descriptorAsset.path)!
-    const bytes = new Uint8Array(await asset.blob.arrayBuffer())
-    if (asset.blob.type !== descriptorAsset.mediaType || bytes.byteLength !== expected.byteLength || await digest(bytes) !== expected.sha256) throw new Error(`Asset read-back failed: ${asset.id}`)
-  }
-  await loadStage(storedEntries, descriptor.metadata.runId)
   return {
     source: 'import',
     bundleId: id,

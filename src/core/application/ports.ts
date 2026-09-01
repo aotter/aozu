@@ -49,11 +49,18 @@ export interface PendingTurnRepository {
 }
 
 export interface BundleActivationRepository {
-  stageCandidate(record: BundleRecord): Promise<ValidatedBundle>
   activate(id: string, approved: true): Promise<ValidatedBundle>
   getActive(): Promise<ValidatedBundle | null>
+  getPendingReview(): Promise<PendingCandidateReview | null>
   listSaved(): Promise<BundleRecord[]>
+  discardPendingReview(id: string): Promise<void>
   deleteSaved(id: string): Promise<void>
+}
+
+export interface PendingCandidateReview {
+  bundle: ValidatedBundle
+  source: 'experience' | 'import'
+  createdAt: number
 }
 
 export type EntryRepositoryFactory = (bundleId: string) => EntryRepository & EntryReader
