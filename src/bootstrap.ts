@@ -4,6 +4,7 @@ import { bootMantleRuntime, InvokeFailure, type MantleRuntime } from '@aotter/ma
 import { createIndexedDbBundleRepository } from './adapters/indexeddb/bundle-repository.ts'
 import { createIndexedDbAssetRepository } from './adapters/indexeddb/asset-repository.ts'
 import { createIndexedDbCharacterDraftRepository } from './adapters/indexeddb/character-draft-repository.ts'
+import { createIndexedDbCharacterPackLibraryRepository } from './adapters/indexeddb/character-pack-library-repository.ts'
 import { ExperienceSubmissionConflict, persistTriggeredExperienceCandidate } from './adapters/indexeddb/experience-candidate-repository.ts'
 import { createIndexedDbEntryRepository, createIndexedDbMantleStorageAdapter } from './adapters/indexeddb/mantle-storage.ts'
 import { createIndexedDbActionRepository } from './adapters/indexeddb/action-repository.ts'
@@ -29,6 +30,8 @@ import {
   createCharacterDraft,
   buildCharacterDraftResources,
   isCharacterDraftPopulated,
+  installCharacterDraft,
+  listInstalledCharacterPacks,
   loadCharacterProjection,
   migrateCharacterDraft,
   saveCharacterDraftAsset,
@@ -69,6 +72,7 @@ export function createApplication(document: Document) {
   const agent = createAgentCapability(document)
   const bundles = createIndexedDbBundleRepository()
   const characterDrafts = createIndexedDbCharacterDraftRepository()
+  const characterPacks = createIndexedDbCharacterPackLibraryRepository()
   const browser = document.defaultView
   let starterPackages: ReturnType<typeof loadStarterCatalog> | undefined
   const loadStarters = () => starterPackages ??= loadStarterCatalog(
@@ -219,10 +223,11 @@ export function createApplication(document: Document) {
       return saveCharacterDraftAsset(characterDrafts, inspectCharacterImage, draft, target, blob, filename, source)
     },
     prepareCharacter: (draft: CharacterDraft) => reviewCharacterDraft(inspectCharacterImage, draft),
+    listCharacterPacks: () => listInstalledCharacterPacks(characterPacks, inspectCharacterImage),
     async approveCharacterDraft() {
       const draft = await characterDrafts.get()
       if (!draft) throw new Error('Character draft not found')
-      await reviewCharacterDraft(inspectCharacterImage, draft)
+      await installCharacterDraft(characterPacks, inspectCharacterImage, draft)
       const approved = { ...draft, approvedAt: Date.now(), updatedAt: Date.now() }
       await characterDrafts.put(approved)
       return approved

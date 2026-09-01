@@ -22,6 +22,8 @@ import type { StagedCandidatePreview } from './candidate.ts'
 import type {
   AssetRepositoryFactory,
   CharacterDraftRepository,
+  CharacterPackLibraryRecord,
+  CharacterPackLibraryRepository,
 } from './ports.ts'
 
 export const CHARACTER_CREATION_GROUPS: ReadonlyArray<{
@@ -352,20 +354,64 @@ export async function reviewCharacterDraft(
   draft: CharacterDraft,
 ): Promise<StagedCandidatePreview> {
   const { pack, assets, layers } = buildCharacterDraftResources(draft)
-  const blobs = new Map(assets.map(({ id, blob }) => [id, blob]))
-  const storedInspections = new Map<string, CharacterAssetInspection>()
-  for (const asset of pack.assets) {
-    const blob = blobs.get(asset.blobId)
-    if (!blob) throw new Error(`Character asset read-back failed: ${asset.id}`)
-    storedInspections.set(asset.blobId, await inspect(blob))
-  }
-  validateCharacterPack(pack, storedInspections)
+  await validateLibraryRecord(inspect, { name: draft.name.trim(), pack, composition: pack.defaultComposition, assets })
   return {
     source: 'character',
     name: draft.name.trim(),
     appearanceCount: pack.appearances.length,
     layers,
   }
+}
+
+export interface InstalledCharacterPackProjection {
+  id: string
+  version: number
+  name: string
+  rigProfile: CharacterPack['rigProfile']
+  defaultComposition: AppearanceRef[]
+  layers: Array<ResolvedCharacterLayer & { blob: Blob }>
+}
+
+async function validateLibraryRecord(
+  inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
+  record: CharacterPackLibraryRecord,
+): Promise<InstalledCharacterPackProjection> {
+  const blobs = new Map(record.assets.map(({ id, blob }) => [id, blob]))
+  const inspections = new Map<string, CharacterAssetInspection>()
+  for (const asset of record.pack.assets) {
+    const blob = blobs.get(asset.blobId)
+    if (!blob) throw new Error(`Character asset read-back failed: ${asset.id}`)
+    inspections.set(asset.blobId, await inspect(blob))
+  }
+  validateCharacterPack(record.pack, inspections)
+  return {
+    id: record.pack.id,
+    version: record.pack.version,
+    name: record.name,
+    rigProfile: structuredClone(record.pack.rigProfile),
+    defaultComposition: structuredClone(record.composition),
+    layers: resolveCharacterComposition(record.pack, record.composition)
+      .map((layer) => ({ ...layer, blob: blobs.get(layer.blobId)! })),
+  }
+}
+
+export async function installCharacterDraft(
+  library: CharacterPackLibraryRepository,
+  inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
+  draft: CharacterDraft,
+): Promise<InstalledCharacterPackProjection> {
+  const { pack, assets } = buildCharacterDraftResources(draft)
+  const record = { name: draft.name.trim(), pack, composition: structuredClone(pack.defaultComposition), assets }
+  const projection = await validateLibraryRecord(inspect, record)
+  await library.install(record)
+  return projection
+}
+
+export async function listInstalledCharacterPacks(
+  library: CharacterPackLibraryRepository,
+  inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
+): Promise<InstalledCharacterPackProjection[]> {
+  return Promise.all((await library.list()).map((record) => validateLibraryRecord(inspect, record)))
 }
 
 export async function loadCharacterProjection(

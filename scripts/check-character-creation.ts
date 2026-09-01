@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 
-import { buildCharacterPack, createCharacterDraft, loadCharacterProjection, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, createCharacterDraft, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft } from '../src/core/application/character-creation.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
+import type { CharacterPackLibraryRecord } from '../src/core/application/ports.ts'
 
 const inspection = { width: 512, height: 768, hasTransparentPixels: true, hasVisiblePixels: true, genuineRgba: true, size: 10, sha256: 'a'.repeat(64) }
 const asset = { blob: new Blob(['sprite'], { type: 'image/png' }), filename: 'sprite.png', source: 'user' as const, inspection }
@@ -30,9 +31,28 @@ assert.deepEqual(resolveCharacterDraftLayers(draft).map(({ layerOrder }) => laye
 const preview = await reviewCharacterDraft(async () => inspection, draft)
 assert.equal(preview.source, 'character')
 assert.equal('bundleId' in preview, false)
+const installed: CharacterPackLibraryRecord[] = []
+const library = {
+  async install(record: CharacterPackLibraryRecord) {
+    if (installed.some(({ pack }) => pack.id === record.pack.id && pack.version === record.pack.version)) throw new Error('already installed')
+    installed.push(structuredClone(record))
+  },
+  async list() { return structuredClone(installed) },
+}
+const firstInstalled = await installCharacterDraft(library, async () => inspection, draft)
+assert.equal(firstInstalled.id, pack.id)
+assert.equal((await listInstalledCharacterPacks(library, async () => inspection))[0]?.layers.length, 6)
+await assert.rejects(() => installCharacterDraft(library, async () => inspection, draft), /already installed/)
+const secondDraft = structuredClone(draft)
+secondDraft.packId = 'test-character-two'
+secondDraft.name = 'Test Character Two'
+await installCharacterDraft(library, async () => inspection, secondDraft)
+assert.equal((await listInstalledCharacterPacks(library, async () => inspection)).length, 2)
 const incomplete = createCharacterDraft('incomplete')
 incomplete.variants.find(({ group, id }) => group === 'body' && id === 'base')!.layers.body = asset
 assert.throws(() => buildCharacterPack(incomplete), /required/)
+await assert.rejects(() => installCharacterDraft(library, async () => inspection, incomplete), /required/)
+assert.equal(installed.length, 2)
 
 const migrated = migrateCharacterDraft({
   id: 'current', packId: 'legacy', name: 'Legacy', updatedAt: 1,
