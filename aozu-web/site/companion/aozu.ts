@@ -11,14 +11,37 @@ export const AOZU_PARTNERS = [
   { id: 'xixi', kind: 'human', name: 'AOZU · 電獺少女・嘻嘻', displayName: '嘻嘻', role: '元氣行動教練', image: '/assets/aotter-girl-xixi-hd-v2.png', accent: '#5d9fd0', personality: '爽朗、自信、感染力十足', quote: '笑一下，下一個任務我們就一起動起來！', capabilities: ['健身挑戰', '穿搭日誌', '日常應援'] },
 ] as const
 
-export const AOZU_GEAR = [
-  { id: 'none', label: '原本造型', actionId: 'wear-none', image: null },
-  { id: 'explorer', label: '探險套裝', actionId: 'wear-explorer', image: '/assets/otter-explorer-accessories-v1.png' },
-  { id: 'coffee', label: '咖啡日常', actionId: 'wear-coffee', image: '/assets/otter-coffee-accessories-v1.png' },
-  { id: 'focus', label: '專注模式', actionId: 'wear-focus', image: '/assets/otter-focus-accessories-v1.png' },
-  { id: 'night', label: '夜行配件', actionId: 'wear-night', image: '/assets/otter-night-accessories-v1.png' },
-  { id: 'voyage', label: '遠航裝備', actionId: 'wear-voyage', image: '/assets/otter-voyage-accessories-v1.png' },
+export const AOZU_WARDROBE_SLOTS = [
+  { id: 'wardrobe-head', label: '頭部', x: 50, y: 17, size: 44 },
+  { id: 'wardrobe-body', label: '衣服', x: 50, y: 58, size: 72 },
+  { id: 'wardrobe-back', label: '背部', x: 72, y: 59, size: 38 },
+  { id: 'wardrobe-hand', label: '手持', x: 22, y: 57, size: 32 },
 ] as const
+
+export type AozuWardrobeSlotId = (typeof AOZU_WARDROBE_SLOTS)[number]['id']
+
+export const AOZU_WARDROBE_ITEMS = [
+  { id: 'explorer-bandana', label: '赤葉頭巾', theme: '探險', slot: 'wardrobe-head', image: '/assets/otter-explorer-accessories-v1.png', crop: [610, 230, 370, 390] },
+  { id: 'explorer-vest', label: '多袋探險背心', theme: '探險', slot: 'wardrobe-body', image: '/assets/otter-explorer-accessories-v1.png', crop: [55, 130, 530, 620] },
+  { id: 'explorer-binoculars', label: '黑金望遠鏡', theme: '探險', slot: 'wardrobe-back', image: '/assets/otter-explorer-accessories-v1.png', crop: [160, 790, 440, 300] },
+  { id: 'explorer-compass', label: '黃金羅盤', theme: '探險', slot: 'wardrobe-hand', image: '/assets/otter-explorer-accessories-v1.png', crop: [735, 735, 220, 310] },
+  { id: 'coffee-scarf', label: '奶泡小領巾', theme: '咖啡', slot: 'wardrobe-head', image: '/assets/otter-coffee-accessories-v1.png', crop: [620, 160, 350, 410] },
+  { id: 'coffee-apron', label: '手沖咖啡圍裙', theme: '咖啡', slot: 'wardrobe-body', image: '/assets/otter-coffee-accessories-v1.png', crop: [30, 170, 600, 920] },
+  { id: 'coffee-dripper', label: '隨行手沖包', theme: '咖啡', slot: 'wardrobe-back', image: '/assets/otter-coffee-accessories-v1.png', crop: [620, 1050, 330, 370] },
+  { id: 'coffee-cup', label: '拿鐵隨行杯', theme: '咖啡', slot: 'wardrobe-hand', image: '/assets/otter-coffee-accessories-v1.png', crop: [705, 570, 265, 410] },
+  { id: 'focus-headphones', label: '專注耳機', theme: '專注', slot: 'wardrobe-head', image: '/assets/otter-focus-accessories-v1.png', crop: [250, 50, 520, 390] },
+  { id: 'focus-jacket', label: '智慧機能外套', theme: '專注', slot: 'wardrobe-body', image: '/assets/otter-focus-accessories-v1.png', crop: [100, 430, 820, 670] },
+  { id: 'focus-tablet', label: '智慧共筆板', theme: '專注', slot: 'wardrobe-back', image: '/assets/otter-focus-accessories-v1.png', crop: [55, 1060, 500, 310] },
+  { id: 'focus-stylus', label: '記憶觸控筆', theme: '專注', slot: 'wardrobe-hand', image: '/assets/otter-focus-accessories-v1.png', crop: [570, 1090, 120, 320] },
+  { id: 'night-moon', label: '弦月髮飾', theme: '夜航', slot: 'wardrobe-head', image: '/assets/otter-night-accessories-v1.png', crop: [620, 1120, 220, 310] },
+  { id: 'night-cape', label: '星夜旅行披風', theme: '夜航', slot: 'wardrobe-body', image: '/assets/otter-night-accessories-v1.png', crop: [80, 100, 830, 650] },
+  { id: 'night-satchel', label: '星軌側背包', theme: '夜航', slot: 'wardrobe-back', image: '/assets/otter-night-accessories-v1.png', crop: [70, 1030, 530, 360] },
+  { id: 'night-lantern', label: '暖光提燈', theme: '夜航', slot: 'wardrobe-hand', image: '/assets/otter-night-accessories-v1.png', crop: [680, 760, 270, 360] },
+  { id: 'voyage-cap', label: '波浪船長帽', theme: '遠航', slot: 'wardrobe-head', image: '/assets/otter-voyage-accessories-v1.png', crop: [280, 70, 470, 270] },
+  { id: 'voyage-jacket', label: '紅白遠航夾克', theme: '遠航', slot: 'wardrobe-body', image: '/assets/otter-voyage-accessories-v1.png', crop: [220, 350, 760, 720] },
+  { id: 'voyage-tag', label: '港口行李吊牌', theme: '遠航', slot: 'wardrobe-back', image: '/assets/otter-voyage-accessories-v1.png', crop: [130, 1070, 280, 340] },
+  { id: 'voyage-passport', label: '掌上航海證', theme: '遠航', slot: 'wardrobe-hand', image: '/assets/otter-voyage-accessories-v1.png', crop: [30, 420, 220, 300] },
+] as const satisfies ReadonlyArray<{ id: string; label: string; theme: string; slot: AozuWardrobeSlotId; image: string; crop: readonly [number, number, number, number] }>
 
 export const AOZU_TRAVEL_ACCESSORIES = [
   { id: 'route-pin', icon: '⌖', threshold: 30, skill: '規劃', names: { otter: '葉脈旅標', seal: '泡泡旅標', whale: '星航旅標', weasel: '琥珀路章', mikan: '晴橘路章', space: '星圖定位章', xixi: '元氣行程章' } },
@@ -61,14 +84,20 @@ const lifeActions: AgentCustomization['stages'][number]['actions'] = [
   { id: 'travel', label: '繼續規劃', phrases: ['繼續規劃', '安排旅行', '完成行程'], effects: [{ type: 'addMetric', metricId: 'exploration', amount: 12 }, { type: 'addMetric', metricId: 'bond', amount: 2 }] },
 ]
 
-const wardrobeActions: AgentCustomization['stages'][number]['actions'] = AOZU_GEAR.map((gear) => ({
-  id: gear.actionId,
-  label: `換上${gear.label}`,
-  phrases: [`換上${gear.label}`],
-  effects: gear.id === 'none'
-    ? [{ type: 'unequipItem' as const, slot: 'accessory' }]
-    : [{ type: 'equipItem' as const, inventoryId: `gear-${gear.id}`, slot: 'accessory' }],
-}))
+const wardrobeActions: AgentCustomization['stages'][number]['actions'] = [
+  ...AOZU_WARDROBE_SLOTS.map((slot) => ({
+    id: `clear-${slot.id}`,
+    label: `卸下${slot.label}物件`,
+    phrases: [`卸下${slot.label}物件`],
+    effects: [{ type: 'unequipItem' as const, slot: slot.id }],
+  })),
+  ...AOZU_WARDROBE_ITEMS.map((item) => ({
+    id: `wear-${item.id}`,
+    label: `穿上${item.label}`,
+    phrases: [`穿上${item.label}`],
+    effects: [{ type: 'equipItem' as const, inventoryId: `wardrobe-${item.id}`, slot: item.slot }],
+  })),
+]
 
 const makeCustomization = (partner: (typeof AOZU_PARTNERS)[number]): AgentCustomization => ({
   id: `aozu-${partner.id}-v4`,
@@ -83,11 +112,11 @@ const makeCustomization = (partner: (typeof AOZU_PARTNERS)[number]): AgentCustom
     actions: [...lifeActions, ...wardrobeActions],
   }],
   items: [
-    ...AOZU_GEAR.filter(({ id }) => id !== 'none').map(({ id, label }) => ({
-      id: `gear-${id}`,
+    ...AOZU_WARDROBE_ITEMS.map(({ id, label, slot }) => ({
+      id: `wardrobe-${id}`,
       name: label,
-      inventoryId: `gear-${id}`,
-      equipSlot: 'accessory',
+      inventoryId: `wardrobe-${id}`,
+      equipSlot: slot,
       grants: [`wardrobe.${id}`],
       state: { x: 0, y: 0, scale: 1 },
       stateSchema: {
@@ -147,7 +176,12 @@ const makeCustomization = (partner: (typeof AOZU_PARTNERS)[number]): AgentCustom
       },
     },
   ],
-  initialEquipment: partner.id === 'otter' ? { accessory: 'gear-explorer' } : {},
+  initialEquipment: partner.id === 'otter' ? {
+    'wardrobe-head': 'wardrobe-explorer-bandana',
+    'wardrobe-body': 'wardrobe-explorer-vest',
+    'wardrobe-back': 'wardrobe-explorer-binoculars',
+    'wardrobe-hand': 'wardrobe-explorer-compass',
+  } : {},
 })
 
 export const AOZU_CUSTOMIZATION = makeCustomization(AOZU_PARTNERS[0])
@@ -156,9 +190,9 @@ export type AozuStartup = Extract<Awaited<ReturnType<Application['loadStartup']>
 export async function ensureAozuCompanions(application: Application): Promise<AozuStartup> {
   let startup = await application.loadStartup()
   const currentName = startup.status === 'main' ? startup.companion.name : null
-  const explorerPlacement = startup.status === 'main' ? startup.loadout.itemStates['gear-explorer'] : undefined
+  const explorerPlacement = startup.status === 'main' ? startup.loadout.itemStates['wardrobe-explorer-vest'] : undefined
   const currentHasPlacement = startup.status === 'main'
-    && startup.stage.actions.some(({ id }) => id === 'wear-explorer')
+    && startup.stage.actions.some(({ id }) => id === 'wear-explorer-vest')
     && typeof explorerPlacement?.x === 'number'
     && typeof explorerPlacement?.y === 'number'
     && typeof explorerPlacement?.scale === 'number'

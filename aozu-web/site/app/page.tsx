@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
 
-import { AOZU_GEAR, AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, DEFAULT_TRAVEL_JOURNAL, ensureAozuCompanions, type AozuStartup, type TravelJournalState } from '../companion/aozu.ts';
+import { AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, AOZU_WARDROBE_ITEMS, AOZU_WARDROBE_SLOTS, DEFAULT_TRAVEL_JOURNAL, ensureAozuCompanions, type AozuStartup, type AozuWardrobeSlotId, type TravelJournalState } from '../companion/aozu.ts';
 import { createApplication, type Application } from '../companion/src/bootstrap.ts';
 
 const modules = [
@@ -24,6 +24,7 @@ const panels = [
 type PanelId = (typeof panels)[number]['id'];
 type ModuleId = (typeof modules)[number]['id'];
 type Partner = (typeof AOZU_PARTNERS)[number];
+type WardrobeItem = (typeof AOZU_WARDROBE_ITEMS)[number];
 type Placement = { x: number; y: number; scale: number };
 type TravelKind = 'spot' | 'food';
 type TravelChatMessage = { id: string; from: 'partner' | 'user'; text: string };
@@ -35,6 +36,14 @@ const lifeControls: readonly { id: string; mark: string; label: string; panel: P
   { id: 'move', mark: '行', label: '旅遊', panel: 'quests', module: 'travel', tone: '#559fd0' },
   { id: 'learn', mark: '育', label: '健身', panel: 'quests', module: 'fitness', tone: '#9272cb' },
 ];
+
+const conversationGuides: Record<ModuleId, { intro: string; placeholder: string; done: string }> = {
+  meals: { intro: '把今天吃了什麼、份量或飽足感貼給我，我會幫你整理成飲食紀錄。', placeholder: '例如：晚餐是雞胸、半碗飯和青菜，大約七分飽', done: '我已經收進今日飲食節奏，下一步我們只要決定是否需要補水或蔬菜。' },
+  money: { intro: '把收據文字、店名、金額與用途貼給我，我會幫你分類。', placeholder: '例如：林百貨 520 元，旅遊紀念品', done: '已經幫你整理這筆支出，也保留在今日的共同記憶裡。' },
+  steps: { intro: '把手機或手錶的步數貼給我，我會幫你換算今天的小任務。', placeholder: '例如：今天 6840 步，晚上還可以走 12 分鐘', done: '步數已記下，再一起走一小段就能完成今日行動任務。' },
+  travel: { intro: '把想去的景點或想吃的店告訴我，我會再問位置，然後寫進旅行手札。', placeholder: '例如：我想去林百貨／想吃阿裕牛肉湯', done: '我已經把它放進旅行手札了。' },
+  fitness: { intro: '把你想做的運動、可用時間與今天體感貼給我，我會陪你拆成可完成的訓練。', placeholder: '例如：今天有 20 分鐘，肩頸有點緊，想做輕量全身', done: '收到，今天先以輕量完成為目標，做完後再由你的體感調整下一次。' },
+};
 
 const defaultPlacement: Placement = { x: 0, y: 0, scale: 1 };
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value));
@@ -68,6 +77,11 @@ function PartnerArt({ partner, className = '', decorative = false }: { partner: 
   return <img className={`partner-art ${className}`} src={partner.image} alt={decorative ? '' : partner.displayName} />;
 }
 
+function WardrobeSprite({ item, className = '' }: { item: WardrobeItem; className?: string }) {
+  const [x, y, width, height] = item.crop;
+  return <span className={`wardrobe-sprite ${className}`} style={{ aspectRatio: `${width} / ${height}` }}><img src={item.image} alt="" style={{ width: `${(1024 / width) * 100}%`, height: `${(1536 / height) * 100}%`, left: `${-(x / width) * 100}%`, top: `${-(y / height) * 100}%` }} /></span>;
+}
+
 export default function Home() {
   const [runtime, setRuntime] = useState<AozuStartup | null>(null);
   const [runtimeError, setRuntimeError] = useState('');
@@ -77,15 +91,26 @@ export default function Home() {
   const [toast, setToast] = useState('');
   const [dataStatus, setDataStatus] = useState('');
   const [introOpen, setIntroOpen] = useState(true);
-  const [placementDraft, setPlacementDraft] = useState<{ key: string; value: Placement } | null>(null);
+  const [placementDraft, setPlacementDraft] = useState<Record<string, Placement>>({});
+  const [selectedWardrobeItemId, setSelectedWardrobeItemId] = useState('explorer-vest');
+  const [magnetSlot, setMagnetSlot] = useState<AozuWardrobeSlotId | null>(null);
+  const [wardrobeGhost, setWardrobeGhost] = useState<{ item: WardrobeItem; x: number; y: number; snapping: boolean } | null>(null);
   const [travelKind, setTravelKind] = useState<TravelKind>('spot');
   const [travelDay, setTravelDay] = useState<1 | 2 | 3>(1);
   const [travelInput, setTravelInput] = useState('');
   const [pendingPlace, setPendingPlace] = useState<{ name: string; kind: TravelKind; day: 1 | 2 | 3 } | null>(null);
   const [travelChat, setTravelChat] = useState<TravelChatMessage[]>([]);
+  const [roomInput, setRoomInput] = useState('');
+  const [roomMessage, setRoomMessage] = useState('');
+  const [roomUserMessage, setRoomUserMessage] = useState('');
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const [mobileConsoleOpen, setMobileConsoleOpen] = useState(false);
   const [consoleWidth, setConsoleWidth] = useState(31);
-  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; origin: Placement; moved: boolean } | null>(null);
+  const dragRef = useRef<{ pointerId: number; item: WardrobeItem; startX: number; startY: number; origin: Placement; current: Placement; moved: boolean; snapping: boolean } | null>(null);
+  const closetDragRef = useRef<{ pointerId: number; item: WardrobeItem; startX: number; startY: number; moved: boolean; snapping: boolean } | null>(null);
+  const suppressWardrobeClickRef = useRef(false);
   const resizeRef = useRef<{ pointerId: number; startX: number; startWidth: number; totalWidth: number } | null>(null);
+  const paperDollRef = useRef<HTMLDivElement>(null);
   const partnerListRef = useRef<HTMLDivElement>(null);
   const travelInputRef = useRef<HTMLInputElement>(null);
 
@@ -113,15 +138,12 @@ export default function Home() {
 
   const activeModule = modules.find(({ id }) => id === activeModuleId) ?? modules[3];
   const activePartner = AOZU_PARTNERS.find(({ name }) => name === runtime?.companion.name) ?? AOZU_PARTNERS[0];
-  const equippedDefinition = runtime?.loadout.equippedDefinitionIds.find((id) => id.startsWith('gear-'));
-  const equippedGearId = equippedDefinition?.slice('gear-'.length) ?? 'none';
-  const equippedGear = AOZU_GEAR.find(({ id }) => id === equippedGearId) ?? AOZU_GEAR[0];
-  const gearImage = activePartner.id === 'otter' ? equippedGear.image : null;
   const wardrobeEnabled = activePartner.id === 'otter';
-  const placementKey = `${runtime?.bundleId ?? 'loading'}:${equippedGearId}:r${runtime?.stage.revision ?? 0}`;
-  const storedPlacement = placementFrom(runtime?.loadout.itemStates[`gear-${equippedGearId}`]);
-  const placement = placementDraft?.key === placementKey ? placementDraft.value : storedPlacement;
-  const placementDirty = placementDraft?.key === placementKey;
+  const equippedWardrobeItems = wardrobeEnabled ? AOZU_WARDROBE_ITEMS.filter(({ id }) => runtime?.loadout.equippedDefinitionIds.includes(`wardrobe-${id}`)) : [];
+  const selectedWardrobeItem = AOZU_WARDROBE_ITEMS.find(({ id }) => id === selectedWardrobeItemId) ?? equippedWardrobeItems[0] ?? AOZU_WARDROBE_ITEMS[0];
+  const selectedWardrobePlacement = placementDraft[`wardrobe-${selectedWardrobeItem.id}`] ?? placementFrom(runtime?.loadout.itemStates[`wardrobe-${selectedWardrobeItem.id}`]);
+  const equippedWardrobeLabel = equippedWardrobeItems.map(({ label }) => label).join('、') || '原本造型';
+  const activeGuide = conversationGuides[activeModule.id];
   const travelJournal = (runtime?.loadout.itemStates['travel-journal'] as TravelJournalState | undefined) ?? DEFAULT_TRAVEL_JOURNAL;
   const travelScore = Object.values(travelJournal.points).reduce((total, value) => total + value, 0);
   const activeTravelAccessory = AOZU_TRAVEL_ACCESSORIES.find(({ id }) => id === travelJournal.equippedAccessoryId);
@@ -166,6 +188,10 @@ export default function Home() {
       setPendingPlace(null);
       setTravelChat([]);
       setTravelInput('');
+      setRoomInput('');
+      setRoomMessage('');
+      setRoomUserMessage('');
+      setMobileToolsOpen(false);
       setToast(`${partner.displayName}來到房間了`);
       window.setTimeout(() => setToast(''), 1800);
     } catch (error) {
@@ -175,20 +201,24 @@ export default function Home() {
     }
   };
 
-  const updatePlacement = (next: Placement) => {
-    setPlacementDraft({ key: placementKey, value: next });
+  const placementFor = (item: WardrobeItem) => placementDraft[`wardrobe-${item.id}`] ?? placementFrom(runtime?.loadout.itemStates[`wardrobe-${item.id}`]);
+
+  const updatePlacement = (item: WardrobeItem, next: Placement) => {
+    setPlacementDraft((drafts) => ({ ...drafts, [`wardrobe-${item.id}`]: next }));
   };
 
-  const beginGearDrag = (event: ReactPointerEvent<HTMLImageElement>) => {
-    if (panel !== 'wardrobe' || !gearImage || busy) return;
+  const beginWardrobeLayerDrag = (item: WardrobeItem, event: ReactPointerEvent<HTMLSpanElement>) => {
+    if (panel !== 'wardrobe' || busy) return;
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
-    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, origin: placement, moved: false };
+    setSelectedWardrobeItemId(item.id);
+    const origin = placementFor(item);
+    dragRef.current = { pointerId: event.pointerId, item, startX: event.clientX, startY: event.clientY, origin, current: origin, moved: false, snapping: false };
   };
 
-  const moveGear = (event: ReactPointerEvent<HTMLImageElement>) => {
+  const moveWardrobeLayer = (event: ReactPointerEvent<HTMLSpanElement>) => {
     const drag = dragRef.current;
-    const bounds = event.currentTarget.parentElement?.getBoundingClientRect();
+    const bounds = paperDollRef.current?.getBoundingClientRect();
     if (!drag || drag.pointerId !== event.pointerId || !bounds) return;
     const next = {
       x: clamp(drag.origin.x + ((event.clientX - drag.startX) / bounds.width) * 100, -35, 35),
@@ -196,34 +226,71 @@ export default function Home() {
       scale: drag.origin.scale,
     };
     drag.moved = Math.abs(event.clientX - drag.startX) > 2 || Math.abs(event.clientY - drag.startY) > 2;
-    updatePlacement(next);
+    drag.snapping = Math.hypot(next.x, next.y) < 13;
+    drag.current = next;
+    setMagnetSlot(drag.snapping ? drag.item.slot : null);
+    updatePlacement(drag.item, next);
   };
 
-  const finishGearDrag = (event: ReactPointerEvent<HTMLImageElement>) => {
+  const savePlacement = async (item: WardrobeItem, next: Placement) => {
+    if (!runtime || busy) return;
+    setBusy(true);
+    try {
+      const { application } = await bootAozu();
+      await application.setItemState(`wardrobe-${item.id}`, next, runtime.stage.revision);
+      await refresh(application);
+      setToast(`${item.label}${next.x === 0 && next.y === 0 ? '已磁吸就位' : '位置已保存'}`);
+      window.setTimeout(() => setToast(''), 1800);
+    } catch (error) {
+      setRuntimeError(messageFrom(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const finishWardrobeLayerDrag = (event: ReactPointerEvent<HTMLSpanElement>) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     dragRef.current = null;
-    if (drag.moved) setToast('位置已調整，按「固定位置」保存');
+    setMagnetSlot(null);
+    const next = drag.snapping ? defaultPlacement : drag.current;
+    updatePlacement(drag.item, next);
+    if (drag.moved) void savePlacement(drag.item, next);
   };
 
-  const savePlacement = async () => {
-    if (!runtime || !gearImage || busy) return;
-    setBusy(true);
-    setRuntimeError('');
-    try {
-      const { application } = await bootAozu();
-      await application.setItemState(`gear-${equippedGearId}`, placement, runtime.stage.revision);
-      await refresh(application);
-      setToast(`${equippedGear.label}已固定在${activePartner.displayName}身上`);
-      window.setTimeout(() => setToast(''), 2200);
-    } catch (error) {
-      setRuntimeError(messageFrom(error));
-      const { application } = await bootAozu();
-      await refresh(application);
-    } finally {
-      setBusy(false);
-    }
+  const equipWardrobeItem = (item: WardrobeItem) => {
+    setSelectedWardrobeItemId(item.id);
+    void runAction(`wear-${item.id}`, `${item.label}已磁吸到${AOZU_WARDROBE_SLOTS.find(({ id }) => id === item.slot)?.label}`);
+  };
+
+  const beginClosetDrag = (item: WardrobeItem, event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (!runtime || busy || !wardrobeEnabled) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    closetDragRef.current = { pointerId: event.pointerId, item, startX: event.clientX, startY: event.clientY, moved: false, snapping: false };
+    setWardrobeGhost({ item, x: event.clientX, y: event.clientY, snapping: false });
+  };
+
+  const moveClosetDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = closetDragRef.current;
+    const bounds = paperDollRef.current?.getBoundingClientRect();
+    if (!drag || drag.pointerId !== event.pointerId || !bounds) return;
+    drag.moved = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > 6;
+    drag.snapping = event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+    setMagnetSlot(drag.snapping ? drag.item.slot : null);
+    setWardrobeGhost({ item: drag.item, x: event.clientX, y: event.clientY, snapping: drag.snapping });
+  };
+
+  const finishClosetDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = closetDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    closetDragRef.current = null;
+    suppressWardrobeClickRef.current = drag.moved;
+    setWardrobeGhost(null);
+    setMagnetSlot(null);
+    if (drag.snapping) equipWardrobeItem(drag.item);
+    window.setTimeout(() => { suppressWardrobeClickRef.current = false; }, 0);
   };
 
   const persistTravelJournal = async (next: TravelJournalState) => {
@@ -249,15 +316,27 @@ export default function Home() {
     setPanel('quests');
     setActiveModuleId('travel');
     setIntroOpen(false);
+    setRoomMessage(conversationGuides.travel.intro);
+    setMobileConsoleOpen(false);
     window.setTimeout(() => travelInputRef.current?.focus(), 0);
   };
 
   const selectLifeControl = (control: (typeof lifeControls)[number]) => {
     setIntroOpen(false);
     setPanel(control.panel);
+    setMobileToolsOpen(false);
+    setMobileConsoleOpen(control.panel === 'wardrobe');
     if (!control.module) return;
     setActiveModuleId(control.module);
+    setRoomMessage(conversationGuides[control.module].intro);
     if (control.module === 'travel') window.setTimeout(() => travelInputRef.current?.focus(), 0);
+  };
+
+  const openPanel = (nextPanel: PanelId) => {
+    setIntroOpen(false);
+    setPanel(nextPanel);
+    setMobileToolsOpen(false);
+    setMobileConsoleOpen(true);
   };
 
   const beginConsoleResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -279,19 +358,21 @@ export default function Home() {
     resizeRef.current = null;
   };
 
-  const submitTravelChat = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const value = travelInput.trim();
+  const sendTravelMessage = async (value: string) => {
     if (!value || busy) return;
+    setRoomUserMessage(value);
 
     if (!pendingPlace) {
       const pending = { name: value, kind: travelKind, day: travelDay };
+      const reply = `「${value}」記下來了。它在什麼位置、哪一區，或靠近哪個地標？`;
       setPendingPlace(pending);
       setTravelChat((messages) => [...messages,
         { id: `user-${Date.now()}`, from: 'user', text: value },
-        { id: `partner-${Date.now()}`, from: 'partner', text: `「${value}」記下來了。它在什麼位置、哪一區，或靠近哪個地標？` },
+        { id: `partner-${Date.now()}`, from: 'partner', text: reply },
       ]);
+      setRoomMessage(reply);
       setTravelInput('');
+      setRoomInput('');
       return;
     }
 
@@ -309,14 +390,37 @@ export default function Home() {
     const saved = await persistTravelJournal({ ...travelJournal, entries: [...travelJournal.entries, entry], points });
     if (!saved) return;
 
+    const reply = `完成！我把「${entry.name}」排進第 ${entry.day} 天手札。規劃 +6、${entry.kind === 'food' ? '品味' : '探索'} +8、羈絆 +1。`;
     setTravelChat((messages) => [...messages,
       { id: `user-${Date.now()}`, from: 'user', text: value },
-      { id: `partner-${Date.now()}`, from: 'partner', text: `完成！我把「${entry.name}」排進第 ${entry.day} 天手札。規劃 +6、${entry.kind === 'food' ? '品味' : '探索'} +8、羈絆 +1。` },
+      { id: `partner-${Date.now()}`, from: 'partner', text: reply },
     ]);
+    setRoomMessage(reply);
     setPendingPlace(null);
     setTravelInput('');
+    setRoomInput('');
     setToast(`${entry.name}已加入旅行手札`);
     window.setTimeout(() => setToast(''), 2200);
+  };
+
+  const submitTravelChat = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void sendTravelMessage(travelInput.trim());
+  };
+
+  const submitRoomChat = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const value = roomInput.trim();
+    if (!value || busy) return;
+    setIntroOpen(false);
+    if (activeModule.id === 'travel') {
+      await sendTravelMessage(value);
+      return;
+    }
+    setRoomUserMessage(value);
+    setRoomInput('');
+    setRoomMessage(activeGuide.done);
+    await runAction(activeModule.id, `${activeModule.label}已寫進共同記憶`);
   };
 
   const toggleJournalEntry = async (entryId: string) => {
@@ -417,41 +521,49 @@ export default function Home() {
             <h2>我進來了，我是{activePartner.displayName}</h2>
             <p>{activePartner.role}｜{activePartner.personality}<br />{activePartner.quote}</p>
             <div>{activePartner.capabilities.map((capability) => <small key={capability}>{capability}</small>)}</div>
-            <button type="button" onClick={() => setIntroOpen(false)}>開始一起生活</button>
-          </section> : <div className="companion-dialogue"><small>{activePartner.role}</small><p>{activeModule.quest}</p><span>{activeModule.reward}</span></div>}
+            <button type="button" onClick={() => { setIntroOpen(false); setRoomMessage(activeGuide.intro); }}>開始一起生活</button>
+          </section> : <form className="room-chat" onSubmit={submitRoomChat}>
+            <div className="room-chat-message"><span className="room-chat-avatar"><PartnerArt partner={activePartner} decorative /></span><p><strong>{activePartner.displayName}</strong>{roomMessage || activeGuide.intro}</p></div>
+            {roomUserMessage && <small className="room-user-echo">你說：{roomUserMessage}</small>}
+            <div className="room-chat-composer"><input value={roomInput} maxLength={120} onChange={(event) => setRoomInput(event.target.value)} placeholder={pendingPlace && activeModule.id === 'travel' ? '貼上位置或附近地標' : activeGuide.placeholder} /><button type="submit" disabled={!runtime || busy || !roomInput.trim()} aria-label={`送出給${activePartner.displayName}`}>送出</button></div>
+          </form>}
 
-          <div className={`paper-doll partner-${activePartner.kind} ${panel === 'wardrobe' && gearImage ? 'is-editing' : ''}`} aria-label={`${activePartner.displayName}，${equippedGear.label}${activeTravelAccessoryName ? `，${activeTravelAccessoryName}` : ''}`}>
+          <div ref={paperDollRef} className={`paper-doll partner-${activePartner.kind} ${panel === 'wardrobe' && wardrobeEnabled ? 'is-editing' : ''}`} aria-label={`${activePartner.displayName}，${equippedWardrobeLabel}${activeTravelAccessoryName ? `，${activeTravelAccessoryName}` : ''}`}>
             <PartnerArt partner={activePartner} className="doll-base" />
-            {gearImage && <img
-              className="doll-layer"
-              src={gearImage}
-              alt={equippedGear.label}
-              draggable={false}
-              style={{ '--gear-x': `${placement.x}%`, '--gear-y': `${placement.y}%`, '--gear-scale': placement.scale } as CSSProperties}
-              onPointerDown={beginGearDrag}
-              onPointerMove={moveGear}
-              onPointerUp={finishGearDrag}
-              onPointerCancel={finishGearDrag}
-            />}
+            {panel === 'wardrobe' && wardrobeEnabled && AOZU_WARDROBE_SLOTS.map((slot) => <span key={slot.id} className={`snap-target snap-${slot.id} ${magnetSlot === slot.id ? 'is-magnetic' : ''}`} style={{ '--slot-x': `${slot.x}%`, '--slot-y': `${slot.y}%` } as CSSProperties}><i />{slot.label}</span>)}
+            {equippedWardrobeItems.map((item) => {
+              const slot = AOZU_WARDROBE_SLOTS.find(({ id }) => id === item.slot)!;
+              const itemPlacement = placementFor(item);
+              return <span key={item.id} className={`doll-item slot-${item.slot} ${selectedWardrobeItem.id === item.id ? 'is-selected' : ''}`} style={{ '--slot-x': `${slot.x}%`, '--slot-y': `${slot.y}%`, '--slot-size': `${slot.size}%`, '--item-x': `${itemPlacement.x}%`, '--item-y': `${itemPlacement.y}%`, '--item-scale': itemPlacement.scale } as CSSProperties} onPointerDown={(event) => beginWardrobeLayerDrag(item, event)} onPointerMove={moveWardrobeLayer} onPointerUp={finishWardrobeLayerDrag} onPointerCancel={finishWardrobeLayerDrag}>
+                <WardrobeSprite item={item} />
+              </span>;
+            })}
             {activeTravelAccessory && <span className={`travel-charm charm-${activeTravelAccessory.id}`} aria-label={activeTravelAccessoryName}>
               <i>{activeTravelAccessory.icon}</i><small>{activeTravelAccessoryName}</small>
             </span>}
           </div>
 
-          {panel === 'wardrobe' && gearImage && <div className="placement-editor" aria-label="服裝位置控制器">
-            <div><strong>拖曳服裝對準角色</strong><small>{placementDirty ? '尚未固定' : '位置已固定'}</small></div>
-            <label><span>大小</span><input type="range" min="0.7" max="1.3" step="0.05" value={placement.scale} onChange={(event) => updatePlacement({ ...placement, scale: Number(event.target.value) })} /></label>
-            <button type="button" onClick={() => updatePlacement(defaultPlacement)}>重設</button>
-            <button className="save-placement" type="button" disabled={busy || !placementDirty} onClick={savePlacement}>{busy ? '保存中…' : '固定位置'}</button>
+          {panel === 'wardrobe' && wardrobeEnabled && equippedWardrobeItems.some(({ id }) => id === selectedWardrobeItem.id) && <div className="placement-editor" aria-label="物件位置控制器">
+            <div><strong>{selectedWardrobeItem.label}</strong><small>拖回對應光圈就會磁吸就位</small></div>
+            <label><span>大小</span><input type="range" min="0.7" max="1.3" step="0.05" value={selectedWardrobePlacement.scale} onChange={(event) => updatePlacement(selectedWardrobeItem, { ...selectedWardrobePlacement, scale: Number(event.target.value) })} /></label>
+            <button type="button" onClick={() => updatePlacement(selectedWardrobeItem, defaultPlacement)}>吸回原位</button>
+            <button className="save-placement" type="button" disabled={busy} onClick={() => void savePlacement(selectedWardrobeItem, placementFor(selectedWardrobeItem))}>{busy ? '保存中…' : '固定'}</button>
           </div>}
 
           <div className="companion-profile">
-            <span className="rarity">UR</span><div><strong>{activePartner.displayName}</strong><small>{activePartner.role} ・ revision {runtime?.stage.revision ?? 0}</small></div><b>Lv.12</b><i><span style={{ width: '76%' }} /></i>
+            <span className="rarity">UR</span><div><strong>{activePartner.displayName}</strong><small>{activePartner.role} ・ 羈絆 76</small></div><b>Lv.12</b><i><span style={{ width: '76%' }} /></i>
           </div>
 
           <nav className="game-dock" aria-label="夥伴管理">
-            {panels.map((item) => <button key={item.id} className={panel === item.id ? 'is-active' : ''} type="button" onClick={() => setPanel(item.id)}><span>{item.icon}</span>{item.label}</button>)}
+            {panels.map((item) => <button key={item.id} className={panel === item.id ? 'is-active' : ''} type="button" onClick={() => openPanel(item.id)}><span>{item.icon}</span>{item.label}</button>)}
           </nav>
+          <button className="mobile-tools-toggle" type="button" aria-expanded={mobileToolsOpen} onClick={() => setMobileToolsOpen((open) => !open)}>{mobileToolsOpen ? '收起夥伴工具' : '展開夥伴工具'}</button>
+          {mobileToolsOpen && <section className="mobile-tools-drawer" aria-label="夥伴工具">
+            <div className="mobile-partner-strip">{AOZU_PARTNERS.map((partner) => <button key={partner.id} className={partner.id === activePartner.id ? 'is-active' : ''} type="button" disabled={!runtime || busy} onClick={() => switchPartner(partner)}><PartnerArt partner={partner} decorative /><span>{partner.displayName}</span></button>)}</div>
+            <nav className="mobile-life-strip" aria-label="生活任務">{lifeControls.map((control) => <button key={control.id} type="button" onClick={() => selectLifeControl(control)}><b style={{ background: control.tone }}>{control.mark}</b>{control.label}</button>)}</nav>
+            <nav className="mobile-panel-strip" aria-label="夥伴管理">{panels.map((item) => <button key={item.id} type="button" onClick={() => openPanel(item.id)}><b>{item.icon}</b>{item.label}</button>)}</nav>
+          </section>}
+          {wardrobeGhost && <span className={`wardrobe-drag-ghost ${wardrobeGhost.snapping ? 'is-snapping' : ''}`} style={{ left: wardrobeGhost.x, top: wardrobeGhost.y }}><WardrobeSprite item={wardrobeGhost.item} /></span>}
           {toast && <div className="game-toast" role="status">✓ {toast}</div>}
         </section>
 
@@ -475,7 +587,8 @@ export default function Home() {
           onPointerCancel={finishConsoleResize}
         ><span>⋮</span></button>
 
-        <aside className={`game-console ${panel === 'quests' && activeModuleId === 'travel' ? 'is-travel' : ''}`} aria-live="polite">
+        <aside className={`game-console ${panel === 'quests' && activeModuleId === 'travel' ? 'is-travel' : ''} ${mobileConsoleOpen ? 'is-mobile-open' : ''}`} aria-live="polite">
+          <button className="mobile-console-close" type="button" onClick={() => setMobileConsoleOpen(false)} aria-label="關閉詳細面板">返回{activePartner.displayName}</button>
           <nav className="life-control-bar" aria-label="食衣住行育控制">
             {lifeControls.map((control) => {
               const active = control.panel === 'wardrobe' ? panel === 'wardrobe' : panel === 'quests' && activeModuleId === control.module;
@@ -487,8 +600,8 @@ export default function Home() {
             {activeModuleId === 'travel' ? <section className="travel-chat" aria-label="旅行規劃對話">
               <div className="travel-chat-head"><span><i />夥伴通話中</span><button type="button" onClick={() => setPanel('journal')}>打開旅行手札</button></div>
               <div className="travel-chat-log" aria-live="polite">
-                <article className="from-partner"><b>{activePartner.displayName.slice(0, 1)}</b><p><strong>{activePartner.displayName}</strong>把想去的景點或想吃的店告訴我，我會再問位置，排進三日行程並替我們累積能力點數。</p></article>
-                {travelChat.map((message) => <article key={message.id} className={message.from === 'partner' ? 'from-partner' : 'from-user'}>{message.from === 'partner' && <b>{activePartner.displayName.slice(0, 1)}</b>}<p>{message.text}</p></article>)}
+                <article className="from-partner"><b><PartnerArt partner={activePartner} decorative /></b><p><strong>{activePartner.displayName}</strong>把想去的景點或想吃的店告訴我，我會再問位置，排進三日行程並替我們累積能力點數。</p></article>
+                {travelChat.map((message) => <article key={message.id} className={message.from === 'partner' ? 'from-partner' : 'from-user'}>{message.from === 'partner' && <b><PartnerArt partner={activePartner} decorative /></b>}<p>{message.text}</p></article>)}
               </div>
               <div className="travel-skill-strip"><span>探索 <b>{travelJournal.points.exploration}</b></span><span>品味 <b>{travelJournal.points.taste}</b></span><span>規劃 <b>{travelJournal.points.planning}</b></span><span>羈絆 <b>{travelJournal.points.bond}</b></span></div>
               {!pendingPlace && <div className="travel-chat-options">
@@ -506,12 +619,22 @@ export default function Home() {
           </>}
 
           {panel === 'wardrobe' && <>
-            <div className="console-heading"><div><span>PAPER DOLL</span><h1>{activePartner.displayName}的衣櫥</h1></div><b>{activeTravelAccessoryName ?? equippedGear.label}</b></div>
-            {!wardrobeEnabled && <div className="wardrobe-lock"><span>衣</span><strong>整套服裝目前是布丁獺版型</strong><p>{activePartner.displayName}仍可裝備下方三件專屬旅行配件；它們會隨手札能力點數逐一解鎖。</p></div>}
-            {wardrobeEnabled && <div className="gear-grid">
-              {AOZU_GEAR.map((gear) => <button key={gear.id} className={gear.id === equippedGearId && wardrobeEnabled ? 'gear-card is-equipped' : 'gear-card'} type="button" disabled={!runtime || busy || !wardrobeEnabled} onClick={() => runAction(gear.actionId, `已換上${gear.label}`)} aria-pressed={gear.id === equippedGearId}>
-                <span className="gear-preview"><img src="/assets/mascot-otter-v1.png" alt="" />{gear.image && <img src={gear.image} alt="" />}</span><strong>{gear.label}</strong><small>{gear.id === equippedGearId ? '使用中' : '點一下換裝'}</small>
-              </button>)}
+            <div className="console-heading"><div><span>MAGNETIC CLOSET</span><h1>{activePartner.displayName}的物件櫃</h1></div><b>{equippedWardrobeItems.length} / 4</b></div>
+            {!wardrobeEnabled && <div className="wardrobe-lock"><span>衣</span><strong>磁吸紙娃娃目前是布丁獺版型</strong><p>{activePartner.displayName}仍可裝備下方的專屬旅行配件；它們會隨手札能力點數逐一解鎖。</p></div>}
+            {wardrobeEnabled && <div className="closet-slots">
+              {AOZU_WARDROBE_SLOTS.map((slot) => {
+                const items = AOZU_WARDROBE_ITEMS.filter((item) => item.slot === slot.id);
+                const equipped = equippedWardrobeItems.find((item) => item.slot === slot.id);
+                return <section key={slot.id} className="closet-slot">
+                  <header><div><span>{slot.label}</span><strong>{equipped?.label ?? '尚未裝備'}</strong></div><button type="button" disabled={!runtime || busy || !equipped} onClick={() => void runAction(`clear-${slot.id}`, `已卸下${slot.label}物件`)}>卸下</button></header>
+                  <div>{items.map((item) => {
+                    const isEquipped = equipped?.id === item.id;
+                    return <button key={item.id} className={`closet-item ${isEquipped ? 'is-equipped' : ''}`} type="button" disabled={!runtime || busy} aria-pressed={isEquipped} onClick={() => { if (!suppressWardrobeClickRef.current) equipWardrobeItem(item); }} onPointerDown={(event) => beginClosetDrag(item, event)} onPointerMove={moveClosetDrag} onPointerUp={finishClosetDrag} onPointerCancel={finishClosetDrag}>
+                      <WardrobeSprite item={item} /><strong>{item.label}</strong><small>{isEquipped ? '已吸附' : '拖到角色或點一下'}</small>
+                    </button>;
+                  })}</div>
+                </section>;
+              })}
             </div>}
             <div className="accessory-section-heading"><div><span>TRAVEL REWARDS</span><h2>旅行配件</h2></div><small>{travelScore} 能力點</small></div>
             <div className="travel-accessory-grid">
@@ -523,7 +646,7 @@ export default function Home() {
                 </button>;
               })}
             </div>
-            <div className="closet-note"><span>✓</span><p><strong>{wardrobeEnabled ? '服裝可以拖曳固定，旅行配件由任務解鎖' : '每位夥伴都有三件專屬旅行配件'}</strong>把景點與餐廳加入手札、完成 checklist，就會累積探索、品味、規劃與羈絆。</p></div>
+            <div className="closet-note"><span>✓</span><p><strong>{wardrobeEnabled ? '四個部位各自磁吸，同類新物件會自動替換舊物件' : '每位夥伴都有三件專屬旅行配件'}</strong>可從物件櫃拖到角色身上，也可穿好後再拖曳調整；靠近光圈就會自動吸附。</p></div>
           </>}
 
           {panel === 'journal' && <>
