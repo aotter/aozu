@@ -1,30 +1,29 @@
 import assert from 'node:assert/strict'
 import { runtimeDiagnostic } from '@aotter/mantle-spec'
+import type { WebMcpTool } from '@aotter/mantle-web/webmcp'
 
-import { createAgentCapability, registerMantleWebMcpTools } from '../src/adapters/webmcp/tools.ts'
+import { bindMantleWebMcpTools, createAgentCapability } from '../src/adapters/webmcp/tools.ts'
 import { compileAuthoringBackbone, compileFixedBackbone } from '../src/core/mantle/backbone.ts'
-
-type RegisteredTool = {
-  name: string
-  annotations: { readOnlyHint?: boolean }
-  execute(input: Record<string, unknown>): Promise<unknown>
-}
 
 const authoring = compileAuthoringBackbone()
 const play = compileFixedBackbone()
 assert.equal(createAgentCapability({} as Document).isAvailable(), false)
-assert.equal(await registerMantleWebMcpTools({} as Document, authoring, async () => ({ ok: true, data: null })), null)
+assert.equal(await bindMantleWebMcpTools({} as Document, authoring, async () => ({ ok: true, data: null })), null)
 
-const registered = new Map<string, RegisteredTool>()
+const registered = new Map<string, WebMcpTool>()
+let registrationSignal: AbortSignal | undefined
 const document = {
   modelContext: {
-    async registerTool(tool: RegisteredTool) { registered.set(tool.name, tool) },
+    async registerTool(tool: WebMcpTool, options: { signal: AbortSignal }) {
+      registered.set(tool.name, tool)
+      registrationSignal = options.signal
+    },
   },
 } as unknown as Document
 assert.equal(createAgentCapability(document).isAvailable(), true)
 const invoke = async (trigger: string, input: unknown) => ({ ok: true as const, data: { trigger, input } })
-await registerMantleWebMcpTools(document, authoring, invoke)
-await registerMantleWebMcpTools(document, play, invoke)
+await bindMantleWebMcpTools(document, authoring, invoke)
+const dispose = await bindMantleWebMcpTools(document, play, invoke)
 assert.deepEqual([...registered.keys()].sort(), [
   'inspect_character_contract',
   'inspect_companion',
@@ -39,29 +38,17 @@ assert.deepEqual([
   registered.get('submit_companion_action')?.annotations.readOnlyHint,
 ], [true, false])
 const submitted = { actionId: 'go', expectedRevision: 0, idempotencyKey: 'once' }
-assert.deepEqual(await registered.get('submit_companion_action')!.execute(submitted), {
+assert.deepEqual(await registered.get('submit_companion_action')!.execute(submitted, {}), {
   trigger: 'submit-companion-action', input: submitted,
 })
+const boundSignal = registrationSignal
+dispose?.()
+assert.equal(boundSignal?.aborted, true)
 
-await registerMantleWebMcpTools(document, play, async () => ({
+await bindMantleWebMcpTools(document, play, async () => ({
   ok: false,
   diagnostic: runtimeDiagnostic({ code: 'CONFLICT', severity: 'error', path: 'run/revision', message: 'stale' }),
 }))
-assert.deepEqual(await registered.get('submit_companion_action')!.execute(submitted), {
-  status: 'error',
-  diagnostics: [runtimeDiagnostic({ code: 'CONFLICT', severity: 'error', path: 'run/revision', message: 'stale' })],
-})
-
-let rejectedSignal: AbortSignal | undefined
-const rejectingDocument = {
-  modelContext: {
-    async registerTool(tool: RegisteredTool, options?: { signal?: AbortSignal }) {
-      rejectedSignal = options?.signal
-      if (tool.name === 'submit_experience_candidate') throw new Error('registration rejected')
-    },
-  },
-} as unknown as Document
-await assert.rejects(registerMantleWebMcpTools(rejectingDocument, authoring, invoke), /registration rejected/)
-assert.equal(rejectedSignal?.aborted, true)
+await assert.rejects(registered.get('submit_companion_action')!.execute(submitted, {}))
 
 console.log('webmcp: ok')

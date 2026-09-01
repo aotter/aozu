@@ -8,7 +8,7 @@ import { ExperienceSubmissionConflict, persistTriggeredExperienceCandidate } fro
 import { createIndexedDbEntryRepository, createIndexedDbMantleStorageAdapter } from './adapters/indexeddb/mantle-storage.ts'
 import { createIndexedDbActionRepository } from './adapters/indexeddb/action-repository.ts'
 import { createIndexedDbPendingTurnRepository } from './adapters/indexeddb/pending-turn-repository.ts'
-import { createAgentCapability, registerMantleWebMcpTools } from './adapters/webmcp/tools.ts'
+import { bindMantleWebMcpTools, createAgentCapability } from './adapters/webmcp/tools.ts'
 import { loadStarterCatalog } from './adapters/browser/starter-packages.ts'
 import { queueAgentTurn, resolveAgentTurn } from './core/application/agent-turn.ts'
 import { AUTHORING_NAMESPACE, assembleExperienceCandidate, ExperienceCandidateValidationError } from './core/application/authoring.ts'
@@ -461,9 +461,9 @@ export function createApplication(document: Document) {
   }
 
   void Promise.all([
-    registerMantleWebMcpTools(document, authoringPlan, async (trigger, input) =>
+    bindMantleWebMcpTools(document, authoringPlan, async (trigger, input) =>
       (await getAuthoringRuntime()).invokeTrigger({ trigger, input, ctx: invokeContext })),
-    registerMantleWebMcpTools(document, playPlan, invokePlayTrigger),
+    bindMantleWebMcpTools(document, playPlan, invokePlayTrigger),
   ]).catch((error) => console.error('WebMCP registration failed', error))
   return application
 }
