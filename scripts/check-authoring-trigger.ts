@@ -32,6 +32,7 @@ const runtime = await bootMantleRuntime({
     },
   },
   handlers: {
+    'companion.create-local-companion': async () => ({ status: 'ok', data: { bundleId: 'bundle:local' } }),
     'companion.inspect-experience-contract': async () => ({ status: 'ok', data: {} }),
     'companion.inspect-character-contract': async () => ({ status: 'ok', data: {} }),
     'companion.submit-character-asset-candidate': async (input) => {
@@ -56,6 +57,7 @@ const selected = await runtime.invokeTrigger({
 })
 assert.equal(selected.ok, true)
 assert.equal(createdEntry?.collection, 'experience-drafts')
+assert.equal((await runtime.invokeTrigger({ trigger: 'create-local-companion', input: {}, ctx: context })).ok, true)
 const candidate = {
   name: 'Triggered', seed: (await loadFocusStudioFixture()).starter.directions[0]!.seed,
   initialStageId: 'start', metrics: { xp: 0 }, flags: {}, itemDefinitions: [],

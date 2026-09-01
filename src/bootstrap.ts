@@ -12,7 +12,7 @@ import { createIndexedDbPendingTurnRepository } from './adapters/indexeddb/pendi
 import { bindMantleWebMcpTools, createAgentCapability } from './adapters/webmcp/tools.ts'
 import { loadStarterCatalog } from './adapters/browser/starter-packages.ts'
 import { queueAgentTurn, resolveAgentTurn } from './core/application/agent-turn.ts'
-import { AUTHORING_NAMESPACE, assembleExperienceCandidate, ExperienceCandidateValidationError, selectExperienceCharacter } from './core/application/authoring.ts'
+import { AUTHORING_NAMESPACE, assembleExperienceCandidate, createLocalExperienceCandidateInput, ExperienceCandidateValidationError, selectExperienceCharacter } from './core/application/authoring.ts'
 import { approveCandidate as approveStagedCandidate, loadPendingCandidatePreview } from './core/application/candidate.ts'
 import { loadCompanionStartup } from './core/application/companion.ts'
 import { loadStage, submitAction as submitPreparedAction, submitInteraction } from './core/application/stage.ts'
@@ -121,6 +121,7 @@ export function createApplication(document: Document) {
     plan: authoringPlan,
     storage: createIndexedDbMantleStorageAdapter(AUTHORING_NAMESPACE),
     handlers: {
+      'companion.create-local-companion': createLocalCompanion,
       'companion.inspect-experience-contract': inspectExperienceContract,
       'companion.submit-experience-candidate': submitExperienceCandidate,
       'companion.inspect-character-contract': inspectCharacterContract,
@@ -157,6 +158,21 @@ export function createApplication(document: Document) {
       composition: installed.state.composition,
     })
     return toExperienceDraft(updated)
+  }
+
+  const resolveLocalCreation = async () => {
+    const draft = await openExperienceDraft()
+    if (!draft?.character) throw new Error('Select and approve a Character before creating a Companion')
+    const [story, character] = await Promise.all([
+      loadDraftStory(draft),
+      loadInstalledCharacterPackResources(characterPacks, inspectCharacterImage, draft.character),
+    ])
+    return {
+      draft,
+      story,
+      character,
+      candidate: createLocalExperienceCandidateInput(draft, story, { name: character.name, stateId: character.state.id }),
+    }
   }
 
   const active = async () => {
@@ -238,6 +254,17 @@ export function createApplication(document: Document) {
     },
     prepareCharacter: (draft: CharacterDraft) => reviewCharacterDraft(inspectCharacterImage, draft),
     listCharacterPacks: () => listInstalledCharacterPacks(characterPacks, inspectCharacterImage),
+    async inspectCreation() {
+      const { draft, character, candidate } = await resolveLocalCreation()
+      return {
+        character: character.name,
+        story: draft.story?.direction.name,
+        stages: candidate.stages.length,
+        actions: candidate.stages.reduce((count, stage) => count + stage.actions.length, 0),
+        metrics: Object.keys(candidate.metrics).length,
+        rules: candidate.rules.length,
+      }
+    },
     selectCharacterPack,
     async approveCharacterDraft(selectForAuthoring = false) {
       let draft = await characterDrafts.get()
@@ -271,6 +298,12 @@ export function createApplication(document: Document) {
     async activateCompanion(bundleId: string) {
       return bundles.activate(bundleId, true)
     },
+    async createCompanion() {
+      const result = await (await getAuthoringRuntime()).invokeTrigger({
+        trigger: 'create-local-companion', input: {}, ctx: { user: null, staff: null, env: {} },
+      })
+      if (!result.ok) throw new Error(result.diagnostic.message ?? 'Companion could not be created')
+    },
     async deleteCompanion(bundleId: string) {
       await bundles.deleteSaved(bundleId)
     },
@@ -296,6 +329,18 @@ export function createApplication(document: Document) {
     },
     exportData: exportPortableBundle,
     prepareImport: stagePortableBundle,
+  }
+  async function createLocalCompanion() {
+    const { draft, candidate } = await resolveLocalCreation()
+    const submission = await persistExperienceCandidate({
+      draftId: draft.id,
+      expectedRevision: draft.revision,
+      expectedCharacterUpdatedAt: 0,
+      idempotencyKey: crypto.randomUUID(),
+      candidate,
+    }, false)
+    await bundles.activate(submission.data.bundleId, true)
+    return { ...submission, data: { ...submission.data, awaitingUserReview: false } }
   }
   async function inspectExperienceContract() {
       const draft = await openExperienceDraft()
@@ -345,7 +390,9 @@ export function createApplication(document: Document) {
       }
   }
 
-  async function submitExperienceCandidate(rawInput: unknown) {
+  const submitExperienceCandidate = (rawInput: unknown) => persistExperienceCandidate(rawInput, true)
+
+  async function persistExperienceCandidate(rawInput: unknown, notify: boolean) {
     const input = rawInput as { draftId: string; expectedRevision: number; expectedCharacterUpdatedAt: number; idempotencyKey: string; candidate: unknown }
     try {
       const entry = await createIndexedDbEntryRepository(AUTHORING_NAMESPACE).readById(input.draftId)
@@ -378,7 +425,7 @@ export function createApplication(document: Document) {
         input.idempotencyKey,
         candidate,
       )
-      if (!result.replayed) browser?.dispatchEvent(new browser.CustomEvent('experience-candidate-staged', { detail: candidate.preview }))
+      if (notify && !result.replayed) browser?.dispatchEvent(new browser.CustomEvent('experience-candidate-staged', { detail: candidate.preview }))
       return { status: 'ok', data: { ...result, awaitingUserReview: true }, nextActions: [] }
     } catch (error) {
       if (error instanceof ExperienceCandidateValidationError) {

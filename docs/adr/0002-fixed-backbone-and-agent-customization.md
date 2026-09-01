@@ -25,7 +25,7 @@ semantic-validation decisions below remain in force.
 Every resolved bundle is assembled from three layers:
 
 ```text
-Fixed Backbone + Agent-completed Starter Draft = Resolved Bundle
+Fixed Backbone + Starter Playbook or Agent-customized Draft = Resolved Bundle
 ```
 
 ### Fixed Backbone
@@ -41,10 +41,11 @@ and never ship inside resolved bundles.
 
 ### Starter authoring input
 
-A versioned static Starter selects Progress Loops, supplies visual resources and
-an incomplete skeleton, and provides authoring guidance. It supplies no hidden
-executable stages, actions, metrics, or rules. Direction recipes are package
-data, not engine-level types or TypeScript constants.
+A versioned static Starter selects Progress Loops, supplies visual resources,
+an explicit default Playbook, skeleton constraints, and authoring guidance.
+The default stages, actions, metrics, and rules are inspectable package data,
+not engine-level types or TypeScript constants. An agent may replace that
+default with a candidate that passes the same constraints.
 
 Each Direction declares a completion mode. A `finite` experience is expected to
 reach a terminal stage; a `continuous` experience may intentionally keep a

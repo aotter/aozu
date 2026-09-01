@@ -12,10 +12,9 @@ starting point require an application release. The fixture was not an approved
 product requirement and must not survive as sample content, fallback behavior,
 or migration data.
 
-A Starter needs curated visuals and authoring guidance, but it is incomplete by
-design. The user's agent supplies the Playbook. Browsers without WebMCP must
-still be able to browse packages and retain a selection without silently
-inventing executable content.
+A Starter needs curated visuals and a complete default Playbook so the primary
+creation flow works without an agent. An agent may customize that same draft,
+but WebMCP availability cannot decide whether a user can create a Companion.
 
 Authoring state must also respect the Mantle boundary. React and WebMCP adapters
 must not write IndexedDB records themselves. Mutating commands enter through a
@@ -34,9 +33,10 @@ contains:
 - declared asset files with media types;
 - one validated Character Pack and named character states;
 - one validated Scene Pack and named scene compositions;
-- one or more Directions, each with a resolved `ExperienceSeed`;
-- an incomplete Playbook skeleton made of required IDs and authoring
-  instructions, never executable stages or actions.
+- one or more Directions, each with a resolved `ExperienceSeed` and validated
+  default Playbook;
+- Playbook skeleton requirements and authoring instructions used to validate
+  both the packaged default and optional agent customization.
 
 The application owns one generic parser, loader, and validator. Package names,
 Direction recipes, Progress Loop IDs, briefs, skeleton requirements, visual
@@ -55,11 +55,12 @@ shape before presenting the package.
 Selecting a package and Direction invokes the fixed
 `select-experience-draft` Mantle Trigger. Its builtin Procedure creates an
 operational `experience-drafts` entry containing the package identity and
-version, a canonical manifest SHA-256, full Direction and resolved seed
-snapshot, selected character and scene references, and revision zero. It
-contains no Blob and no executable Playbook. The digest makes content changes
-under an unchanged package version a hard failure. The newest created draft is
-the selected draft; older drafts cannot be submitted after a newer selection.
+version, a canonical manifest SHA-256, Direction and resolved seed snapshot,
+selected character and scene references, and revision zero. The executable
+default remains in the immutable package rather than being copied into mutable
+draft state. The digest makes content changes under an unchanged package
+version a hard failure. The newest created draft is the selected draft; older
+drafts cannot be submitted after a newer selection.
 
 `inspect_experience_contract` is read-only. It reads the selected draft through
 the prepared Mantle runtime and returns the exact revision, package resources,
@@ -86,6 +87,12 @@ The agent may author only declared Playbook data: name, initial metrics and
 flags, item definitions, stages, narrative, prepared actions and phrases,
 rules, visual bindings, terminal points, and persisted agent fallbacks. It
 cannot replace assets, fixed manifests, handler bindings, or application code.
+
+`create-local-companion` is a non-public Mantle Trigger used by the normal UI.
+It resolves the selected package Playbook, or an intentionally taskless shell
+for Blank Story, then enters the same assembly, semantic validation, atomic
+storage, and activation path. The `/create` page is the user's review surface,
+so this path does not add a second candidate review step.
 
 ### Validation and activation
 
@@ -130,11 +137,12 @@ only meaningful for a complete resolved experience.
 ## Consequences
 
 - Content packages can be added and revised independently of application code.
-- No hidden default can turn a draft or character into a runnable experience.
+- Every Story Direction has an explicit, inspectable default Playbook; Blank
+  Story creates no story or tasks.
 - The authoring flow remains durable and revision-safe without exposing
   IndexedDB as an application API.
 - Package authors must bump versions when immutable package content changes.
 - An inactive candidate may remain unused if the user declines approval; it is
   safe because it cannot affect the active pointer.
-- Remote registries, ZIP as a required authoring format, a general visual
-  workflow editor, and automatic completion without WebMCP remain out of scope.
+- Remote registries, ZIP as a required authoring format, and a general visual
+  workflow editor remain out of scope.

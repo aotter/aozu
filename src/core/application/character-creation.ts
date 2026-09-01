@@ -427,6 +427,7 @@ export async function loadInstalledCharacterPackResources(
   const selected = { ...record, composition: structuredClone(composition) }
   const projection = await validateLibraryRecord(inspect, selected)
   return {
+    name: record.name,
     pack: structuredClone(record.pack),
     state: {
       id: `character:${record.pack.id}:v${record.pack.version}`,

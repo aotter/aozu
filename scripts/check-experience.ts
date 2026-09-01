@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { assembleExperienceCandidate, ExperienceCandidateValidationError, selectExperienceCharacter, type ExperienceCandidateInput } from '../src/core/application/authoring.ts'
+import { assembleExperienceCandidate, createLocalExperienceCandidateInput, ExperienceCandidateValidationError, selectExperienceCharacter, type ExperienceCandidateInput } from '../src/core/application/authoring.ts'
 import { approveCandidate, loadPendingCandidatePreview } from '../src/core/application/candidate.ts'
 import { validateBundle } from '../src/core/bundle.ts'
 import { buildCharacterDraftResources, createCharacterDraftFromStarter } from '../src/core/application/character-creation.ts'
@@ -27,6 +27,15 @@ const draft: ExperienceDraft = {
 const characterDraft = createCharacterDraftFromStarter(resources, 'character:focus-default')
 const characterResources = buildCharacterDraftResources(characterDraft)
 const characterStateId = characterResources.state.id
+const dailyDraft: ExperienceDraft = {
+  id: 'draft-daily-study', ...createExperienceDraftData(resources, 'daily-study'), createdAt: 1, updatedAt: 1,
+}
+const localInput = createLocalExperienceCandidateInput(dailyDraft, resources, { name: 'Focus Friend', stateId: characterStateId })
+assert.equal(localInput.initialStageId, 'study-session')
+assert.equal(localInput.stages[0]?.actions[0]?.id, 'complete-focus-session')
+assert.deepEqual(localInput.stages[0]?.scene, { compositionId: 'scene:focus-studio', characterStateId })
+const localCandidate = assembleExperienceCandidate('bundle-local', dailyDraft, resources, characterResources, localInput, 1)
+assert.equal(localCandidate.preview.initialTitle, 'Daily Study')
 let selectedDraftEntry = {
   id: draft.id,
   collection: 'experience-drafts',
@@ -136,6 +145,11 @@ assert.equal(resumed?.source === 'experience' ? resumed.sceneLayers.length : 0, 
 const blankDraft: ExperienceDraft = {
   id: 'draft-blank', ...createBlankExperienceDraftData(), createdAt: 1, updatedAt: 1,
 }
+const localBlankInput = createLocalExperienceCandidateInput(blankDraft, null, { name: 'Focus Friend', stateId: characterStateId })
+assert.equal(localBlankInput.stages[0]?.actions.length, 0)
+assert.equal(localBlankInput.stages[0]?.agentFallback, true)
+assert.deepEqual(localBlankInput.stages[0]?.scene, { characterStateId })
+assert.equal(assembleExperienceCandidate('bundle-local-blank', blankDraft, null, characterResources, localBlankInput, 1).preview.story, null)
 const blank = assembleExperienceCandidate('bundle-blank', blankDraft, null, characterResources, {
   name: 'Blank Story',
   seed: { kind: 'story', directionId: 'custom-story', loopIds: ['rhythm'], completionMode: 'continuous', brief: 'Create a small story.' },

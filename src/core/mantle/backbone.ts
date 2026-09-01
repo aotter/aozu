@@ -460,10 +460,27 @@ const ALL_BACKBONE_SOURCES = [
     }),
   ),
   source(
+    'authoring/create-local-companion.yaml',
+    envelope('Procedure', 'create-local-companion', {
+      title: 'Create Local Companion',
+      description: 'Validate and activate the selected Character and Starter Playbook without agent participation.',
+      input: objectSchema({}),
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.create-local-companion' },
+    }),
+  ),
+  source(
+    'authoring/create-local-companion-trigger.yaml',
+    envelope('Trigger', 'create-local-companion', {
+      source: { kind: 'mcp', surface: 'staff' },
+      target: { procedure: 'create-local-companion' },
+    }),
+  ),
+  source(
     'authoring/inspect-experience-contract.yaml',
     envelope('Procedure', 'inspect-experience-contract', {
       title: 'Inspect Experience Contract',
-      description: 'Required first step for authoring an experience. Returns the exact Experience Draft revision, selected character resources, optional Story seed and scene resources, Playbook skeleton, vocabulary, and limits. For Blank Story, author a suitable seed and complete Playbook. No runnable Companion exists until a complete candidate is validated and the user approves it.',
+      description: 'Required first step when an agent customizes an experience. Returns the exact Experience Draft revision, selected character resources, optional Story seed and scene resources, Playbook skeleton, vocabulary, and limits. The local creation flow can activate a Starter Playbook without agent participation.',
       input: emptyReadOnlyInput,
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.inspect-experience-contract' },
