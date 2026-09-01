@@ -22,6 +22,7 @@ import {
   type CharacterDraft,
   type CharacterVariantGroup,
   type CharacterVariantLayer,
+  type CharacterVariantTransform,
 } from './core/domain/character.ts'
 import {
   CHARACTER_CREATION_GROUPS,
@@ -35,10 +36,18 @@ import {
   loadInstalledCharacterPackResources,
   loadCharacterProjection,
   migrateCharacterDraft,
+  hasCurrentCharacterLayer,
+  isCharacterDraftAssetCurrent,
+  measureCharacterAssetAlignment,
+  characterAssetPlacement,
+  characterRegistrationFrame,
+  resolveCharacterDraftReferenceLayers,
+  setCharacterVariantTransform,
+  transformCharacterBounds,
   saveCharacterDraftAsset,
   reviewCharacterDraft,
 } from './core/application/character-creation.ts'
-import { inspectCharacterImage } from './adapters/browser/character-image.ts'
+import { inspectCharacterImage, renderCharacterCompositeDataUrl } from './adapters/browser/character-image.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
 import { planItemEffects } from './core/application/items.ts'
@@ -53,6 +62,7 @@ import {
   type StarterStorySelection,
 } from './core/domain/starter.ts'
 import { PLAYBOOK_LIMITS as EXPERIENCE_LIMITS } from './core/domain/playbook.ts'
+import { WORKSPACE_DESTINATIONS, workspaceNavigation, workspacePhase, type WorkspaceDestination } from './core/application/workspace.ts'
 import { compileAuthoringBackbone, compileFixedBackbone, FIXED_BACKBONE_VERSION } from './core/mantle/backbone.ts'
 
 const readDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
@@ -121,11 +131,14 @@ export function createApplication(document: Document) {
     plan: authoringPlan,
     storage: createIndexedDbMantleStorageAdapter(AUTHORING_NAMESPACE),
     handlers: {
+      'companion.inspect-workspace': inspectWorkspace,
+      'companion.navigate-companion': navigateCompanion,
       'companion.create-local-companion': createLocalCompanion,
       'companion.inspect-experience-contract': inspectExperienceContract,
       'companion.submit-experience-candidate': submitExperienceCandidate,
       'companion.inspect-character-contract': inspectCharacterContract,
       'companion.submit-character-asset-candidate': submitCharacterAssetCandidate,
+      'companion.set-character-variant-transform': setCharacterTransform,
     },
   })
 
@@ -139,7 +152,17 @@ export function createApplication(document: Document) {
   const openCharacterDraft = async () => {
     const existing = await characterDrafts.get()
     if (existing) {
-      const draft = migrateCharacterDraft(existing)
+      let draft = migrateCharacterDraft(existing)
+      let refreshed = false
+      const variants = await Promise.all(draft.variants.map(async (variant) => ({
+        ...variant,
+        layers: Object.fromEntries(await Promise.all(Object.entries(variant.layers).map(async ([layer, asset]) => {
+          if (!asset || asset.inspection.visibleBounds) return [layer, asset]
+          refreshed = true
+          return [layer, { ...asset, inspection: await inspectCharacterImage(asset.blob) }]
+        }))),
+      })))
+      if (refreshed) draft = { ...draft, variants }
       if (draft !== existing) await characterDrafts.put(draft)
       return draft
     }
@@ -251,6 +274,9 @@ export function createApplication(document: Document) {
     },
     async saveCharacterAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string, source: 'user' | 'agent' = 'user') {
       return saveCharacterDraftAsset(characterDrafts, inspectCharacterImage, draft, target, blob, filename, source)
+    },
+    async setCharacterVariantTransform(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string, transform: CharacterVariantTransform) {
+      return setCharacterVariantTransform(characterDrafts, group, variantId, draft.updatedAt, transform)
     },
     prepareCharacter: (draft: CharacterDraft) => reviewCharacterDraft(inspectCharacterImage, draft),
     listCharacterPacks: () => listInstalledCharacterPacks(characterPacks, inspectCharacterImage),
@@ -439,9 +465,184 @@ export function createApplication(document: Document) {
     }
   }
 
-  async function inspectCharacterContract() {
+  const characterNextActions = (draft: CharacterDraft) => {
+    const missing = REQUIRED_CHARACTER_TARGETS.filter((target) => !hasCurrentCharacterLayer(draft, target.group, target.variantId, target.layer))
+    return missing.length ? missing.map((target) => ({
+      tool: 'submit_character_asset_candidate',
+      required: true,
+      reason: `Fill ${target.group}/${target.variantId}/${target.layer} for the current canonical body.`,
+      input: { ...target, expectedUpdatedAt: draft.updatedAt },
+    })) : [{
+      tool: 'navigate_companion',
+      required: true,
+      reason: 'Ask the user to review and approve the complete Character Draft.',
+      input: { destination: 'character-review' },
+    }]
+  }
+
+  async function inspectWorkspace() {
+    const [startup, experience, storedCharacter] = await Promise.all([
+      application.loadStartup(),
+      openExperienceDraft(),
+      characterDrafts.get(),
+    ])
+    const character = storedCharacter ? migrateCharacterDraft(storedCharacter) : null
+    const missingCharacterTargets = character ? REQUIRED_CHARACTER_TARGETS
+      .filter((target) => !hasCurrentCharacterLayer(character, target.group, target.variantId, target.layer)) : REQUIRED_CHARACTER_TARGETS
+    const characterReady = Boolean(character && !missingCharacterTargets.length)
+    const pendingReview = startup.pendingReview
+    const phase = workspacePhase(browser?.location.pathname ?? '/')
+    const navigation = workspaceNavigation({
+      characterReady,
+      experienceReady: Boolean(experience?.character),
+      pendingReview: Boolean(pendingReview),
+      activeCompanion: startup.status === 'main',
+    })
+    const nextActions = pendingReview ? [{
+      tool: 'navigate_companion', required: true, reason: 'A candidate is waiting for explicit user review.', input: { destination: 'experience-review' },
+    }] : phase === 'character' && character ? characterNextActions(character) : startup.status === 'main' ? [{
+      tool: 'inspect_companion', required: true, reason: 'Inspect the active Companion before interaction.',
+    }] : missingCharacterTargets.length ? [{
+      tool: 'inspect_character_contract', required: true, reason: 'Inspect the current Character target and canonical reference before generating art.', input: missingCharacterTargets[0],
+    }] : experience?.character ? [{
+      tool: 'navigate_companion', required: true, reason: 'Review the resolved Character and Playbook, then create the Companion.', input: { destination: 'create' },
+    }] : [{
+      tool: 'navigate_companion', required: true, reason: 'Choose a Character and Story starting point.', input: { destination: 'starter' },
+    }]
+    return {
+      status: 'ok',
+      data: {
+        route: browser?.location.pathname ?? '/',
+        phase,
+        characterDraft: character ? {
+          name: character.name,
+          updatedAt: character.updatedAt,
+          approved: Boolean(character.approvedAt),
+          selected: character.selected,
+          missingTargets: missingCharacterTargets,
+        } : null,
+        experienceDraft: experience ? {
+          id: experience.id,
+          revision: experience.revision,
+          characterSelected: Boolean(experience.character),
+          story: experience.story?.direction.name ?? null,
+        } : null,
+        pendingReview: pendingReview ? { source: pendingReview.source, name: pendingReview.name } : null,
+        activeCompanion: startup.status === 'main' ? { id: startup.bundleId, name: startup.companion.name, stageId: startup.stage.stageId } : null,
+        savedCompanions: startup.savedCompanions,
+        navigation,
+      },
+      nextActions,
+    }
+  }
+
+  async function navigateCompanion(rawInput: unknown) {
+    const destination = (rawInput as { destination: WorkspaceDestination }).destination
+    const workspace = await inspectWorkspace()
+    if (!workspace.data.navigation.some(({ id }) => id === destination)) throw new Error(`Destination is unavailable: ${destination}`)
+    const path = WORKSPACE_DESTINATIONS[destination]
+    browser?.setTimeout(() => browser.dispatchEvent(new browser.CustomEvent('companion-navigate', { detail: { destination } })), 0)
+    return { status: 'ok', data: { destination, path }, nextActions: [] }
+  }
+
+  const characterTarget = async (draft: CharacterDraft, rawInput: unknown) => {
+    const input = rawInput as Partial<{ group: CharacterVariantGroup; variantId: string; layer: CharacterVariantLayer }>
+    if (!input.group && !input.variantId && !input.layer) return null
+    if (!input.group || !input.variantId || !input.layer) throw new Error('Character target requires group, variantId, and layer')
+    const group = CHARACTER_CREATION_GROUPS.find(({ group }) => group === input.group)
+    if (!group || !group.layers.includes(input.layer) || !/^[a-z0-9][a-z0-9_-]{0,39}$/.test(input.variantId)) throw new Error('Unknown character asset target')
+    if (input.group === 'body' && input.variantId !== 'base') throw new Error('The body group only supports body/base/body')
+    const variant = draft.variants.find(({ group, id }) => group === input.group && id === input.variantId)
+    const asset = variant?.layers[input.layer]
+    const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
+    const neutralVariant = draft.variants.find(({ group, id }) => group === 'expression' && id === 'neutral')
+    const neutral = neutralVariant && isCharacterDraftAssetCurrent(draft, neutralVariant, 'head') ? neutralVariant.layers.head : undefined
+    const reference = input.group === 'expression' && input.variantId !== 'neutral' ? neutral : input.group === 'prop' || input.group === 'body' ? undefined : canonical
+    const transform = variant?.transform ?? { x: 0, y: 0, scale: 1 }
+    const comparable = Boolean(asset && reference && (input.group === 'outfit' || (input.group === 'expression' && input.variantId !== 'neutral')))
+    const measurement = comparable
+      ? measureCharacterAssetAlignment(reference!.inspection, asset!.inspection, 32, transform)
+      : null
+    const currentBounds = asset?.inspection.visibleBounds ? transformCharacterBounds(asset.inspection.visibleBounds, transform) : undefined
+    const overflow = currentBounds ? {
+      left: Math.max(0, -currentBounds.x),
+      top: Math.max(0, -currentBounds.y),
+      right: Math.max(0, currentBounds.x + currentBounds.width - CHARACTER_RIG.canvas.width),
+      bottom: Math.max(0, currentBounds.y + currentBounds.height - CHARACTER_RIG.canvas.height),
+    } : undefined
+    const placementLayers = resolveCharacterDraftReferenceLayers(draft, { group: input.group, id: input.variantId })
+    const placementUsesEditSource = Boolean(reference && placementLayers.length === 1 && placementLayers[0]!.blob === reference.blob)
+    const placement = characterAssetPlacement(input.group, input.layer)
+    const lineage = input.group === 'body' ? 'establish-canonical'
+      : input.group === 'expression' && input.variantId !== 'neutral' ? 'edit-approved-neutral-head'
+        : input.group === 'expression' ? 'edit-canonical-body'
+          : input.group === 'outfit' ? 'edit-canonical-body'
+            : 'place-against-current-composite'
+    const reviewDestination = input.group === 'expression' ? 'character-expressions'
+      : input.group === 'outfit' ? 'character-outfits'
+        : input.group === 'prop' ? 'character-props' : 'character-expressions'
+    const suggestedTransform = measurement?.status === 'misaligned' ? measurement.suggestedTransform : undefined
+    const transformSupported = suggestedTransform && suggestedTransform.scale >= 0.25 && suggestedTransform.scale <= 4 && Math.abs(suggestedTransform.x) <= 512 && Math.abs(suggestedTransform.y) <= 768
+    const nextActions = !asset || !variant || !isCharacterDraftAssetCurrent(draft, variant, input.layer) ? [{
+      tool: 'submit_character_asset_candidate', required: true, reason: 'Submit the final exact-canvas RGBA target layer.', input: { group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
+    }] : input.group === 'expression' && measurement?.status === 'misaligned' && transformSupported ? [{
+      tool: 'set_character_variant_transform', required: true, reason: 'Apply the suggested absolute transform, then inspect the rendered alignment again.',
+      input: { group: input.group, variantId: input.variantId, expectedUpdatedAt: draft.updatedAt, ...suggestedTransform },
+    }] : input.group === 'expression' && measurement?.status === 'misaligned' ? [{
+      tool: 'submit_character_asset_candidate', required: true, reason: 'The whole-head geometry drift is too large for the safe transform range; regenerate from the approved neutral head.', input: { group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
+    }] : [{
+      tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, and Align before user Review.', input: { destination: reviewDestination },
+    }, {
+      tool: 'navigate_companion', required: false, reason: 'After the visual preflight is ready, open the complete Character Review.', input: { destination: 'character-review' },
+    }]
+    return {
+      input: { group: input.group, variantId: input.variantId, layer: input.layer },
+      expectedUpdatedAt: draft.updatedAt,
+      current: asset ? {
+        filled: true,
+        current: Boolean(variant && isCharacterDraftAssetCurrent(draft, variant, input.layer)),
+        filename: asset.filename,
+        sha256: asset.inspection.sha256,
+        transform,
+      } : { filled: false, current: false, transform },
+      required: REQUIRED_CHARACTER_TARGETS.some((target) => target.group === input.group && target.variantId === input.variantId && target.layer === input.layer),
+      placement: { slot: placement.slot, slotOrder: CHARACTER_RIG.slots.find(({ id }) => id === placement.slot)!.order, layerOrder: placement.order },
+      generationRecipe: {
+        lineage,
+        method: input.group === 'prop' ? 'reference-guided-generation' : 'reference-image-edit',
+        editSource: reference ? {
+          filename: reference.filename,
+          sha256: reference.inspection.sha256,
+          visibleBounds: reference.inspection.visibleBounds,
+          dataUrl: await readDataUrl(reference.blob),
+        } : null,
+        placementReference: placementLayers.length ? {
+          layerCount: placementLayers.length,
+          ...(placementUsesEditSource ? { useEditSource: true } : { dataUrl: await renderCharacterCompositeDataUrl(placementLayers) }),
+        } : null,
+        preserveCanvasCoordinates: true,
+        output: { generateAt: { width: 1024, height: 1536 }, finalizeAt: { ...CHARACTER_RIG.canvas }, rgba: true, realAlpha: true, layerOnly: true },
+      },
+      alignment: {
+        mode: input.group === 'expression' ? 'whole-head-bounds'
+          : input.group === 'outfit' ? 'pose-frame'
+            : input.group === 'prop' ? 'composite-review'
+              : 'establish-frame',
+        transform,
+        referenceBounds: comparable ? reference?.inspection.visibleBounds : undefined,
+        candidateBounds: currentBounds,
+        overflow,
+        measurement,
+        reviewDestination: WORKSPACE_DESTINATIONS[reviewDestination],
+      },
+      nextActions,
+    }
+  }
+
+  async function inspectCharacterContract(rawInput: unknown) {
       const draft = await openCharacterDraft()
       const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
+      const target = await characterTarget(draft, rawInput)
       return {
         status: 'ok',
         data: {
@@ -451,26 +652,33 @@ export function createApplication(document: Document) {
             group: variant.group,
             id: variant.id,
             label: variant.label,
-            layers: CHARACTER_CREATION_GROUPS.find(({ group }) => group === variant.group)!.layers.map((layer) => ({ layer, filled: Boolean(variant.layers[layer]) })),
+            layers: CHARACTER_CREATION_GROUPS.find(({ group }) => group === variant.group)!.layers.map((layer) => ({
+              layer,
+              filled: Boolean(variant.layers[layer]),
+              current: isCharacterDraftAssetCurrent(draft, variant, layer),
+            })),
           })),
-          draft: { name: draft.name, selected: draft.selected },
+          draft: { name: draft.name, selected: draft.selected, updatedAt: draft.updatedAt },
+          registrationFrame: characterRegistrationFrame(draft),
           canonicalReference: canonical ? {
             filename: canonical.filename,
             sha256: canonical.inspection.sha256,
-            dataUrl: await readDataUrl(canonical.blob),
+            ...(target ? {} : { dataUrl: await readDataUrl(canonical.blob) }),
           } : null,
           productionBrief: [
-            'The first body/base/body candidate becomes the canonical character. Generate every later variant from that canonical reference, never from another generated variant.',
+            'The first body/base/body candidate establishes the canonical character and registration frame.',
+            'Generate neutral whole-head from the canonical body. Generate every later expression by editing the approved neutral whole-head so its silhouette, hair, facial hair, and canvas coordinates stay fixed.',
+            'Generate outfits by editing the canonical body while preserving pose, body center, head position, and foot line. Generate props against the returned current composite.',
+            'Generate at 1024×1536 and deterministically downsample 50% to the exact 512×768 canvas. Never crop, reframe, or recenter.',
             'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
             'Submit only final RGBA PNG layers. The website validates but never repairs candidate images.',
             'Expression layers replace the whole aligned head, including the same fixed hairstyle and facial hair. Hair and facial hair are not customizable slots.',
             'Expressions are variants of one whole-head slot. The canonical set is neutral, happy, sad, angry, surprised, and sleepy; additional expression variants are allowed.',
             'Outfits are full-body variants. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. A prop may be positioned anywhere, including on the head or in a hand.',
           ],
+          target,
         },
-        nextActions: REQUIRED_CHARACTER_TARGETS
-          .filter((target) => !draft.variants.find(({ group, id }) => group === target.group && id === target.variantId)?.layers[target.layer])
-          .map((target) => ({ tool: 'submit_character_asset_candidate', required: true, reason: `Fill ${target.group}/${target.variantId}/${target.layer}.` })),
+        nextActions: target?.nextActions ?? characterNextActions(draft),
       }
   }
 
@@ -480,6 +688,7 @@ export function createApplication(document: Document) {
         variantId: string
         label: string
         layer: CharacterVariantLayer
+        expectedUpdatedAt: number
         filename: string
         dataUrl: string
       }
@@ -496,16 +705,65 @@ export function createApplication(document: Document) {
       const bytes = new Uint8Array(binary.length)
       for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
       const current = await openCharacterDraft()
+      if (current.updatedAt !== input.expectedUpdatedAt) throw new Error(`Character Draft changed; expected ${input.expectedUpdatedAt}, current ${current.updatedAt}`)
       const canonical = current.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
       if (!(target.group === 'body' && target.variantId === 'base' && target.layer === 'body') && !canonical) throw new Error('Submit body/base/body before derived character assets')
-      const draft = await application.saveCharacterAsset(current, target, new Blob([bytes], { type: 'image/png' }), filename, 'agent')
+      const blob = new Blob([bytes], { type: 'image/png' })
+      const inspection = await inspectCharacterImage(blob)
+      const draft = await saveCharacterDraftAsset(characterDrafts, async () => inspection, current, target, blob, filename, 'agent')
+      const savedVariant = draft.variants.find(({ group, id }) => group === target.group && id === target.variantId)!
+      const specification = await characterTarget(draft, target)
       document.defaultView?.dispatchEvent(new Event('character-draft-updated'))
       return {
         status: 'ok',
-        data: { target, filename, byteLength: bytes.byteLength },
-        nextActions: REQUIRED_CHARACTER_TARGETS
-          .filter((required) => !draft.variants.find(({ group, id }) => group === required.group && id === required.variantId)?.layers[required.layer])
-          .map((required) => ({ tool: 'submit_character_asset_candidate', required: true, reason: `Fill ${required.group}/${required.variantId}/${required.layer}.` })),
+        data: {
+          target: { ...target, label: savedVariant.label },
+          filename,
+          byteLength: bytes.byteLength,
+          inspection: {
+            width: inspection.width,
+            height: inspection.height,
+            genuineRgba: inspection.genuineRgba,
+            hasTransparentPixels: inspection.hasTransparentPixels,
+            visibleBounds: inspection.visibleBounds,
+            visiblePixelCount: inspection.visiblePixelCount,
+          },
+          alignment: specification?.alignment,
+        },
+        nextActions: specification?.nextActions ?? characterNextActions(draft),
+      }
+  }
+
+  async function setCharacterTransform(rawInput: unknown) {
+      const input = rawInput as {
+        group: CharacterVariantGroup
+        variantId: string
+        expectedUpdatedAt: number
+        x: number
+        y: number
+        scale: number
+      }
+      const current = await openCharacterDraft()
+      const before = current.variants.find(({ group, id }) => group === input.group && id === input.variantId)?.transform ?? { x: 0, y: 0, scale: 1 }
+      const draft = await setCharacterVariantTransform(characterDrafts, input.group, input.variantId, input.expectedUpdatedAt, {
+        x: input.x,
+        y: input.y,
+        scale: input.scale,
+      })
+      const variant = draft.variants.find(({ group, id }) => group === input.group && id === input.variantId)!
+      const firstLayer = CHARACTER_CREATION_GROUPS.find(({ group }) => group === input.group)!.layers.find((layer) => variant.layers[layer])!
+      const specification = await characterTarget(draft, { group: input.group, variantId: input.variantId, layer: firstLayer })
+      document.defaultView?.dispatchEvent(new Event('character-draft-updated'))
+      return {
+        status: 'ok',
+        data: {
+          target: { group: input.group, variantId: input.variantId },
+          before,
+          after: variant.transform,
+          updatedAt: draft.updatedAt,
+          alignment: specification?.alignment,
+        },
+        nextActions: specification?.nextActions ?? characterNextActions(draft),
       }
   }
 
@@ -560,7 +818,14 @@ export function createApplication(document: Document) {
   })
   const invokePlayTrigger = async (trigger: string, input: unknown) => {
     const bundle = await bundles.getActive()
-    if (!bundle?.record.metadata) return incompatiblePlayResult(null)
+    if (!bundle?.record.metadata) return trigger === 'inspect-companion' ? {
+      ok: true as const,
+      data: {
+        status: 'ok',
+        data: { activeCompanion: null },
+        nextActions: [{ tool: 'inspect_workspace', required: true, reason: 'Inspect authoring state and allowed destinations.' }],
+      },
+    } : incompatiblePlayResult(null)
     if (bundle.record.identity.backboneVersion !== FIXED_BACKBONE_VERSION) {
       return incompatiblePlayResult(bundle.record.identity.backboneVersion)
     }

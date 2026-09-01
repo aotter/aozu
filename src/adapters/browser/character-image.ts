@@ -1,4 +1,4 @@
-import type { CharacterAssetInspection } from '../../core/domain/character.ts'
+import { CHARACTER_RIG, type CharacterAssetInspection, type ResolvedCharacterLayer } from '../../core/domain/character.ts'
 
 const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
 
@@ -17,10 +17,24 @@ export async function inspectCharacterImage(blob: Blob): Promise<CharacterAssetI
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
   let transparent = false
   let visible = false
+  let visiblePixelCount = 0
+  let minX = canvas.width
+  let minY = canvas.height
+  let maxX = -1
+  let maxY = -1
   for (let index = 3; index < pixels.length; index += 4) {
     if (pixels[index] < 255) transparent = true
-    if (pixels[index] > 0) visible = true
-    if (transparent && visible) break
+    if (pixels[index] > 0) {
+      visible = true
+      visiblePixelCount++
+      const pixel = (index - 3) / 4
+      const x = pixel % canvas.width
+      const y = Math.floor(pixel / canvas.width)
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
+    }
   }
   return {
     width: canvas.width,
@@ -28,7 +42,28 @@ export async function inspectCharacterImage(blob: Blob): Promise<CharacterAssetI
     hasTransparentPixels: transparent,
     hasVisiblePixels: visible,
     genuineRgba: png && bytes[25] === 6,
+    ...(visible ? { visibleBounds: { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 } } : {}),
+    visiblePixelCount,
     size: blob.size,
     sha256: hex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))),
   }
+}
+
+export async function renderCharacterCompositeDataUrl(
+  layers: ReadonlyArray<ResolvedCharacterLayer & { blob: Blob }>,
+) {
+  const canvas = document.createElement('canvas')
+  canvas.width = CHARACTER_RIG.canvas.width
+  canvas.height = CHARACTER_RIG.canvas.height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Canvas is unavailable')
+  for (const { blob, transform } of layers) {
+    const bitmap = await createImageBitmap(blob)
+    context.save()
+    context.setTransform(transform.scale, 0, 0, transform.scale, transform.x, transform.y)
+    context.drawImage(bitmap, 0, 0)
+    context.restore()
+    bitmap.close()
+  }
+  return canvas.toDataURL('image/png')
 }

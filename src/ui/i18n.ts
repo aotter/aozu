@@ -12,6 +12,7 @@ const en = {
     loading: 'Loading local data…',
     error: 'Local data could not be loaded. Refresh and try again.',
   },
+  draft: { name: 'Companion name' },
   start: {
     title: 'Create your companion',
     description: 'Continue a saved Companion or start a new one. Confirmed data is saved locally.',
@@ -100,6 +101,18 @@ const en = {
     categorySwitcher: 'Appearance categories',
     backToVariants: 'Back to variants',
     none: 'None',
+    alignment: {
+      label: 'Alignment preview',
+      composite: 'Composite',
+      overlay: 'Overlay',
+      diagnostic: 'Align',
+    },
+    transform: {
+      label: 'Variant transform',
+      x: 'Horizontal offset',
+      y: 'Vertical offset',
+      scale: 'Scale',
+    },
     categories: {
       expressions: 'Expressions',
       outfits: 'Outfits',

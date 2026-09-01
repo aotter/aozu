@@ -66,10 +66,12 @@ The initial profile uses the proof-of-concept `512 × 768` canvas. That size is
 not a platform-wide constant: another profile may declare another canvas and
 slot order.
 
-Initial rendering uses exact-canvas RGBA layers with no runtime scaling,
-repositioning, bone rigging, or attachment-anchor system. A layer is compatible
-only when its dimensions and slot match the selected profile. A later ADR may
-add another rendering model without changing the first profile.
+Initial rendering uses exact-canvas RGBA layers. A non-body appearance may
+carry one bounded absolute translation and uniform scale shared by all of its
+layers; the canonical body is locked. This is an authoring safety net, not a
+general rig: there is no rotation, warping, bone animation, or attachment
+solver. A layer remains compatible only when its source dimensions and slot
+match the selected profile.
 
 Rig version 2 inserts `expression-head` between `character-skin` and
 `item-front`. An expression is a full-canvas transparent layer containing the
@@ -143,6 +145,20 @@ variants, not a closed expression vocabulary. Users and agents may add, name,
 and populate more variants through the same contract. Draft schema changes are
 versioned and migrated in IndexedDB; candidate staging compiles the draft into
 the Character Pack appearances and qualified assets defined above.
+
+The canonical body and approved neutral whole-head inspections project a small
+registration frame: alpha bounds, centers, and foot line. The projection reuses
+persisted inspection data rather than storing duplicate geometry that can go
+stale. Later expressions edit the approved neutral whole-head; outfits edit the
+canonical body; props use the current composite with the edited prop removed as
+their placement reference. These clean references are transient and never enter
+pack assets or ZIP exports.
+
+Agents may stage a candidate and visually preflight the real compositor through
+composite, onion-skin, and target-aware alignment views before asking for user
+approval. React and WebMCP use the same revision-safe absolute transform
+application command. Local deformation, perspective errors, identity drift,
+or bad alpha require regeneration; the website still does not repair pixels.
 
 ### Sources and activation
 
@@ -229,5 +245,5 @@ the self-contained export and offline recovery contract.
 - Assets are not assumed to mix across rig profiles or profile versions.
 - Cross-pack compositions remain deterministic because all references are
   qualified and all selected assets are embedded in the resolved bundle.
-- Bone animation, arbitrary transforms, automatic recoloring, and cross-profile
+- Bone animation, rotation or warping, automatic recoloring, and cross-profile
   conversion remain outside the initial renderer.
