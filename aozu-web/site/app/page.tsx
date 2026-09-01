@@ -82,6 +82,10 @@ function PartnerArt({ partner, className = '', decorative = false }: { partner: 
   return <img className={`partner-art ${className}`} src={partner.image} alt={decorative ? '' : partner.displayName} />;
 }
 
+function PartnerHeadshot({ partner }: { partner: Partner }) {
+  return <span className={`partner-headshot partner-headshot-${partner.kind}`} style={{ backgroundImage: `url(${partner.image})` }} role="img" aria-label={`${partner.displayName}的大頭照`} />;
+}
+
 function WardrobeSprite({ item, className = '' }: { item: WardrobeItem; className?: string }) {
   const [x, y, width, height] = item.crop;
   return <span className={`wardrobe-sprite ${className}`} style={{ aspectRatio: `${width} / ${height}` }}><img src={item.image} alt="" style={{ width: `${(1024 / width) * 100}%`, height: `${(1536 / height) * 100}%`, left: `${-(x / width) * 100}%`, top: `${-(y / height) * 100}%` }} /></span>;
@@ -769,7 +773,7 @@ export default function Home() {
           </section>}
 
           <div className="companion-profile">
-            <span className="rarity">UR</span><div><strong>{activePartner.displayName}</strong><small>{activePartner.role} ・ 羈絆 76</small></div><b>Lv.12</b><i><span style={{ width: '76%' }} /></i>
+            <PartnerHeadshot partner={activePartner} /><div><strong>{activePartner.displayName}</strong><small>{activePartner.role} ・ 羈絆 76</small></div><b>Lv.12</b><i><span style={{ width: '76%' }} /></i>
           </div>
 
           <nav className="game-dock" aria-label="夥伴管理">

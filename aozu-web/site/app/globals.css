@@ -117,8 +117,9 @@ button:disabled { cursor: wait; opacity: .55; }
 .placement-editor button { background: white; border: 0; border-radius: 11px; color: #302a25; font-size: 16px; font-weight: 950; min-height: 44px; padding: 0 10px; }
 .placement-editor .save-placement { background: var(--partner-accent); color: white; min-width: 78px; }
 
-.companion-profile { align-items: center; backdrop-filter: blur(16px); background: rgba(27,23,20,.76); border: 1px solid rgba(255,216,62,.38); border-radius: 18px; bottom: 84px; color: white; display: grid; gap: 2px 10px; grid-template-columns: 34px 1fr auto; left: 20px; padding: 10px 13px; position: absolute; width: min(360px,42%); z-index: 5; }
-.rarity { align-items: center; background: var(--red); border-radius: 10px; display: flex; font-size: 16px; font-weight: 900; grid-row: span 2; height: 34px; justify-content: center; }
+.companion-profile { align-items: center; backdrop-filter: blur(16px); background: rgba(27,23,20,.76); border: 1px solid rgba(255,216,62,.38); border-radius: 18px; bottom: 84px; color: white; display: grid; gap: 2px 10px; grid-template-columns: 44px 1fr auto; left: 20px; padding: 10px 13px; position: absolute; width: min(360px,42%); z-index: 5; }
+.partner-headshot { background-color: color-mix(in srgb,var(--partner-accent) 28%,#201b18); background-position: center 10%; background-repeat: no-repeat; background-size: 205% auto; border: 2px solid color-mix(in srgb,var(--partner-accent) 58%,white); border-radius: 13px; box-shadow: 0 4px 12px rgba(0,0,0,.28); display: block; grid-row: span 2; height: 44px; overflow: hidden; width: 44px; }
+.partner-headshot-human { background-position: center 1%; background-size: 400% auto; }
 .companion-profile div { display: flex; flex-direction: column; }
 .companion-profile strong { font-family: Georgia,"Noto Serif TC",serif; font-size: 16px; }
 .companion-profile small { color: #d2c8bd; font-size: 9px; }
