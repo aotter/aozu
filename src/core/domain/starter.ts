@@ -12,12 +12,15 @@ export interface ExperienceSeed {
   brief: string
 }
 
+export const sameExperienceSeed = (left: ExperienceSeed, right: ExperienceSeed) =>
+  left.kind === right.kind && left.directionId === right.directionId && left.completionMode === right.completionMode &&
+  left.brief === right.brief && left.loopIds.length === right.loopIds.length && left.loopIds.every((id, index) => id === right.loopIds[index])
+
 export interface DirectionDefinition {
   id: string
   name: string
   summary: string
   seed: ExperienceSeed
-  characterStateId: string
   sceneCompositionId: string
 }
 
@@ -29,6 +32,8 @@ export interface PlaybookSkeleton {
 
 export interface CharacterStateDefinition {
   id: string
+  name: string
+  summary: string
   packId: string
   packVersion: number
   composition: CharacterPack['defaultComposition']
@@ -74,12 +79,17 @@ export interface ValidatedStarterPackage extends LoadedStarterPackage {
   sceneInspections: ReadonlyMap<string, SceneAssetInspection>
 }
 
+export type StarterCharacterSelection = null | { starterId: string; starterVersion: number; stateId: string }
+export type StarterStorySelection = null | { starterId: string; starterVersion: number; directionId: string }
+
 export interface ExperienceCandidatePreviewSnapshot {
-  source: 'starter'
+  source: 'experience'
   bundleId: string
   name: string
-  starter: { id: string; version: number; name: string }
-  direction: { id: string; name: string }
+  story: null | {
+    starter: { id: string; version: number; name: string }
+    direction: { id: string; name: string }
+  }
   seed: ExperienceSeed
   stageCount: number
   initialTitle: string
@@ -93,11 +103,12 @@ export interface ExperienceDraft {
   id: string
   schemaVersion: 1
   revision: number
-  starter: { id: string; version: number; name: string; manifestSha256: string }
-  direction: DirectionDefinition
-  seed: ExperienceSeed
-  characterStateId: string
-  sceneCompositionId: string
+  story: null | {
+    starter: { id: string; version: number; name: string; manifestSha256: string }
+    direction: DirectionDefinition
+    seed: ExperienceSeed
+    sceneCompositionId: string
+  }
   createdAt: number
   updatedAt: number
   lastSubmission?: {
@@ -174,6 +185,8 @@ export function parseStarterPackage(value: unknown): StarterPackage {
   for (const item of array(starter.characterStates, 'Starter character states')) {
     const state = object(item, 'Starter character state')
     string(state.id, 'character state ID')
+    string(state.name, 'character state name')
+    string(state.summary, 'character state summary')
     string(state.packId, 'character state pack ID')
     integer(state.packVersion, 'character state pack version')
     array(state.composition, 'character state composition')
@@ -190,7 +203,6 @@ export function parseStarterPackage(value: unknown): StarterPackage {
     string(direction.id, 'Direction ID')
     string(direction.name, 'Direction name')
     string(direction.summary, 'Direction summary')
-    string(direction.characterStateId, 'Direction character state')
     string(direction.sceneCompositionId, 'Direction scene composition')
     const seed = object(direction.seed, 'Experience Seed')
     string(seed.directionId, 'Experience Seed direction')
@@ -260,7 +272,6 @@ export async function validateLoadedStarterPackage(
   ])
   if (usedBlobs.size !== files.size || [...files].some(([id]) => !usedBlobs.has(id))) throw new Error('Starter package contains an unused asset')
 
-  const characterStates = new Set(starter.characterStates.map(({ id }) => id))
   const sceneCompositions = new Set(starter.scenePack.compositions.map(({ id }) => id))
   unique(starter.directions.map(({ id }) => id), 'Direction ID')
   for (const direction of starter.directions) {
@@ -271,7 +282,7 @@ export async function validateLoadedStarterPackage(
       (seed.completionMode !== 'finite' && seed.completionMode !== 'continuous') ||
       !seed.loopIds.length || seed.loopIds.some((id) => !PROGRESS_LOOP_IDS.includes(id)) ||
       new Set(seed.loopIds).size !== seed.loopIds.length ||
-      !characterStates.has(direction.characterStateId) || !sceneCompositions.has(direction.sceneCompositionId)
+      !sceneCompositions.has(direction.sceneCompositionId)
     ) throw new Error(`Invalid Direction: ${direction.id}`)
   }
 
@@ -301,15 +312,22 @@ export function createExperienceDraftData(
   return {
     schemaVersion: 1,
     revision: 0,
-    starter: {
-      id: loaded.starter.id,
-      version: loaded.starter.version,
-      name: loaded.starter.name,
-      manifestSha256: loaded.manifestSha256,
+    story: {
+      starter: {
+        id: loaded.starter.id,
+        version: loaded.starter.version,
+        name: loaded.starter.name,
+        manifestSha256: loaded.manifestSha256,
+      },
+      direction: structuredClone(direction),
+      seed: structuredClone(direction.seed),
+      sceneCompositionId: direction.sceneCompositionId,
     },
-    direction: structuredClone(direction),
-    seed: structuredClone(direction.seed),
-    characterStateId: direction.characterStateId,
-    sceneCompositionId: direction.sceneCompositionId,
   }
 }
+
+export const createBlankExperienceDraftData = (): NewExperienceDraft => ({
+  schemaVersion: 1,
+  revision: 0,
+  story: null,
+})

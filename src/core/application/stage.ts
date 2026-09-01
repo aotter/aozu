@@ -56,7 +56,8 @@ export function projectStage(run: Entry, stage: Entry): StageProjection {
     : []
   const scene = stageData.scene === undefined ? undefined : record(stageData.scene, 'scene')
   const compositionId = typeof scene?.compositionId === 'string' ? scene.compositionId : undefined
-  if (scene && !compositionId && typeof scene.backgroundAssetId !== 'string') throw new Error('Invalid scene composition')
+  const characterStateId = typeof scene?.characterStateId === 'string' ? scene.characterStateId : undefined
+  if (scene && !compositionId && !characterStateId && typeof scene.backgroundAssetId !== 'string') throw new Error('Invalid scene reference')
   return {
     stageId: stage.id,
     revision: runData.revision as number,
@@ -64,11 +65,11 @@ export function projectStage(run: Entry, stage: Entry): StageProjection {
     agentFallback: stageData.agentFallback === true,
     title: string(stageData.title, 'stage title'),
     narrative: string(stageData.narrative, 'stage narrative'),
-    ...(compositionId
+    ...(compositionId || characterStateId
       ? {
           scene: {
-            compositionId,
-            ...(typeof scene?.characterStateId === 'string' ? { characterStateId: scene.characterStateId } : {}),
+            ...(compositionId ? { compositionId } : {}),
+            ...(characterStateId ? { characterStateId } : {}),
           },
         }
       : {}),

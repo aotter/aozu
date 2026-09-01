@@ -27,6 +27,10 @@ assert.equal(projectStage(run, stage).actions[0]?.id, 'go')
 assert.equal(projectStage({ ...run, data: { ...run.data, metrics: { xp: 3 } } }, stage).progress[0]?.value, 3)
 assert.equal(projectStage(run, { ...stage, data: { ...stage.data, progress: [{ id: 'legacy', label: 'Legacy', value: 'halfway' }] } }).progress[0]?.value, 'halfway')
 assert.equal(projectStage(run, stage).scene?.compositionId, 'scene:first')
+assert.deepEqual(
+  projectStage(run, { ...stage, data: { ...stage.data, scene: { characterStateId: 'character:only' } } }).scene,
+  { characterStateId: 'character:only' },
+)
 assert.equal(projectStage(run, { ...stage, data: { ...stage.data, scene: { backgroundAssetId: 'legacy-background' } } }).scene, undefined)
 let storedRun = run
 const entries = {

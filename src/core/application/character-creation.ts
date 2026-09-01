@@ -66,17 +66,15 @@ export const createCharacterDraft = (packId = `character-${crypto.randomUUID()}`
 
 export const isCharacterDraftPopulated = (draft: CharacterDraft) => draft.variants.some(({ layers }) => Object.keys(layers).length > 0)
 
-const starterSelection = (loaded: ValidatedStarterPackage, directionId: string) => {
-  const direction = loaded.starter.directions.find(({ id }) => id === directionId)
-  if (!direction) throw new Error(`Direction not found: ${directionId}`)
-  const state = loaded.starter.characterStates.find(({ id }) => id === direction.characterStateId)
-  if (!state) throw new Error(`Character state not found: ${direction.characterStateId}`)
+const starterCharacter = (loaded: ValidatedStarterPackage, stateId: string) => {
+  const state = loaded.starter.characterStates.find(({ id }) => id === stateId)
+  if (!state) throw new Error(`Character state not found: ${stateId}`)
   const blobs = new Map(loaded.assets.map(({ id, blob }) => [id, blob]))
   return { state, blobs }
 }
 
-export function resolveStarterCharacterLayers(loaded: ValidatedStarterPackage, directionId: string) {
-  const { state, blobs } = starterSelection(loaded, directionId)
+export function resolveStarterCharacterLayers(loaded: ValidatedStarterPackage, stateId: string) {
+  const { state, blobs } = starterCharacter(loaded, stateId)
   return resolveCharacterComposition(loaded.starter.characterPack, state.composition).map((layer) => {
     const blob = blobs.get(layer.blobId)
     if (!blob) throw new Error(`Starter character asset is missing: ${layer.blobId}`)
@@ -84,8 +82,8 @@ export function resolveStarterCharacterLayers(loaded: ValidatedStarterPackage, d
   })
 }
 
-export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage, directionId: string): CharacterDraft {
-  const { state, blobs } = starterSelection(loaded, directionId)
+export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage, stateId: string): CharacterDraft {
+  const { state, blobs } = starterCharacter(loaded, stateId)
   const pack = loaded.starter.characterPack
   const appearances = new Map(pack.appearances.map((appearance) => [appearance.id, appearance]))
   const assets = new Map(pack.assets.map((asset) => [asset.id, asset]))
@@ -334,29 +332,39 @@ export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
   return pack
 }
 
+export function buildCharacterDraftResources(draft: CharacterDraft) {
+  const pack = buildCharacterPack(draft)
+  const state = {
+    id: `character:${pack.id}`,
+    packId: pack.id,
+    packVersion: pack.version,
+    composition: structuredClone(pack.defaultComposition),
+  }
+  const assets = draft.variants.flatMap((variant) => Object.entries(variant.layers).map(([layer, asset]) => ({
+    id: assetKey(variant, layer as CharacterVariantLayer),
+    blob: asset!.blob,
+  })))
+  return { pack, state, assets, layers: resolveCharacterDraftLayers(draft) }
+}
+
 export async function reviewCharacterDraft(
   inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
   draft: CharacterDraft,
 ): Promise<StagedCandidatePreview> {
-  const pack = buildCharacterPack(draft)
-  const blobs = new Map<string, Blob>()
-  for (const variant of draft.variants) {
-    for (const [layer, asset] of Object.entries(variant.layers)) {
-      blobs.set(assetKey(variant, layer as CharacterVariantLayer), asset!.blob)
-    }
-  }
+  const { pack, assets, layers } = buildCharacterDraftResources(draft)
+  const blobs = new Map(assets.map(({ id, blob }) => [id, blob]))
   const storedInspections = new Map<string, CharacterAssetInspection>()
   for (const asset of pack.assets) {
     const blob = blobs.get(asset.blobId)
     if (!blob) throw new Error(`Character asset read-back failed: ${asset.id}`)
     storedInspections.set(asset.blobId, await inspect(blob))
   }
-  const layers = validateCharacterPack(pack, storedInspections)
+  validateCharacterPack(pack, storedInspections)
   return {
     source: 'character',
     name: draft.name.trim(),
     appearanceCount: pack.appearances.length,
-    layers: layers.map((layer) => ({ ...layer, blob: blobs.get(layer.blobId)! })),
+    layers,
   }
 }
 

@@ -261,9 +261,10 @@ export async function stagePortableBundle(blob: Blob): Promise<StagedCandidatePr
   for (const stage of entries.filter(({ collection, status }) => collection === 'stages' && status === 'published')) {
     const scene = stage.data.scene as { compositionId?: unknown; characterStateId?: unknown; backgroundAssetId?: unknown } | undefined
     if (scene && typeof scene.compositionId !== 'string' && typeof scene.backgroundAssetId === 'string') continue
-    if (scene && (typeof scene.compositionId !== 'string' || !publishedSceneCompositions.has(scene.compositionId))) {
+    if (scene && typeof scene.compositionId !== 'string' && typeof scene.characterStateId !== 'string') {
       throw new Error(`Stage scene is missing: ${stage.id}`)
     }
+    if (scene && typeof scene.compositionId === 'string' && !publishedSceneCompositions.has(scene.compositionId)) throw new Error(`Stage scene is missing: ${stage.id}`)
     if (scene && typeof scene.characterStateId === 'string' && !publishedCharacterStates.has(scene.characterStateId)) throw new Error(`Stage character state is missing: ${stage.id}`)
   }
   const bundles = createIndexedDbBundleRepository()

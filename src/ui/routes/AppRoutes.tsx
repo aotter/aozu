@@ -112,7 +112,7 @@ export function AppRoutes({ application }: { application: Application }) {
     />} />
     <Route path="/starter" element={<StarterDraftPage
       loadStarters={application.listStarters}
-      selectStarter={application.selectStarter}
+      startCreation={application.startCreation}
       onSelected={() => navigate('/character/expressions', { replace: true, state: { returnTo: '/start' } })}
     />} />
     <Route path="/character" element={characterDraftPage} />

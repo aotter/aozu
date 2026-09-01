@@ -18,7 +18,7 @@ export interface StageProjection {
   title: string
   narrative: string
   scene?: {
-    compositionId: string
+    compositionId?: string
     characterStateId?: string
   }
   actions: Array<{ id: string; label: string }>

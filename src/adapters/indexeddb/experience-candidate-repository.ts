@@ -11,14 +11,16 @@ import {
 } from './database.ts'
 
 export class ExperienceSubmissionConflict extends Error {
-  readonly code: 'draft_not_found' | 'stale_revision'
+  readonly code: 'draft_not_found' | 'stale_revision' | 'character_draft_changed'
   readonly currentRevision?: number
 
   constructor(
-    code: 'draft_not_found' | 'stale_revision',
+    code: 'draft_not_found' | 'stale_revision' | 'character_draft_changed',
     currentRevision?: number,
   ) {
-    super(code === 'draft_not_found' ? 'Experience Draft not found' : 'Experience Draft revision is stale')
+    super(code === 'draft_not_found'
+      ? 'Experience Draft not found'
+      : code === 'character_draft_changed' ? 'Character Draft changed after inspection' : 'Experience Draft revision is stale')
     this.name = 'ExperienceSubmissionConflict'
     this.code = code
     this.currentRevision = currentRevision
