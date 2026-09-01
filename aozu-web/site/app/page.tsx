@@ -82,8 +82,8 @@ function PartnerArt({ partner, className = '', decorative = false }: { partner: 
   return <img className={`partner-art ${className}`} src={partner.image} alt={decorative ? '' : partner.displayName} />;
 }
 
-function PartnerHeadshot({ partner }: { partner: Partner }) {
-  return <span className={`partner-headshot partner-headshot-${partner.kind}`} style={{ backgroundImage: `url(${partner.image})` }} role="img" aria-label={`${partner.displayName}的大頭照`} />;
+function PartnerHeadshot({ partner, className = '', decorative = false }: { partner: Partner; className?: string; decorative?: boolean }) {
+  return <span className={`partner-portrait ${className}`} style={{ backgroundImage: `url(${partner.portrait})` }} role={decorative ? undefined : 'img'} aria-label={decorative ? undefined : `${partner.displayName}的大頭照`} aria-hidden={decorative || undefined} />;
 }
 
 function WardrobeSprite({ item, className = '' }: { item: WardrobeItem; className?: string }) {
@@ -721,7 +721,7 @@ export default function Home() {
               <span className="switcher-title">夥伴卡</span>
               {AOZU_PARTNERS.map((partner) => (
                 <button key={partner.id} className={partner.id === activePartner.id ? 'partner-card is-active' : 'partner-card'} type="button" disabled={!runtime || busy} onClick={() => switchPartner(partner)} aria-pressed={partner.id === activePartner.id} aria-label={`切換成${partner.displayName}`}>
-                  <PartnerArt partner={partner} decorative /><span>{partner.displayName}</span><i style={{ background: partner.accent }} />
+                  <PartnerHeadshot partner={partner} decorative /><span>{partner.displayName}</span><i style={{ background: partner.accent }} />
                 </button>
               ))}
             </div>
@@ -735,11 +735,11 @@ export default function Home() {
             <button type="button" disabled={!runtime || busy} onClick={activeModule.id === 'travel' ? openTravelChat : () => runAction(activeModule.id, `${activeModule.label}已寫進共同記憶`)}>{busy ? '處理中…' : activeModule.id === 'travel' ? '開始對話' : activeModule.action}</button>
           </div>
 
-          {!dialogueOpen && <button className="chat-launcher" type="button" onClick={() => { setDialogueIntent('module'); setRoomMessage(activeGuide.intro); setDialogueOpen(true); }} aria-label={`跟${activePartner.displayName}對話`}><span><PartnerArt partner={activePartner} decorative /></span><b>跟我說話</b></button>}
+          {!dialogueOpen && <button className="chat-launcher" type="button" onClick={() => { setDialogueIntent('module'); setRoomMessage(activeGuide.intro); setDialogueOpen(true); }} aria-label={`跟${activePartner.displayName}對話`}><span><PartnerHeadshot partner={activePartner} decorative /></span><b>跟我說話</b></button>}
           {dialogueOpen && <form className="room-chat" onSubmit={submitRoomChat}>
             <button className="room-chat-close" type="button" onClick={() => setDialogueOpen(false)} aria-label="收起對話">×</button>
             <span className="room-call-status"><i />與{activePartner.displayName}通話中</span>
-            <div className="room-chat-message"><span className="room-chat-avatar"><PartnerArt partner={activePartner} decorative /></span><p><strong>{activePartner.displayName}</strong>{roomMessage || (dialogueIntent === 'writing' ? '把想一起寫的內容貼給我。' : activeGuide.intro)}</p></div>
+            <div className="room-chat-message"><span className="room-chat-avatar"><PartnerHeadshot partner={activePartner} decorative /></span><p><strong>{activePartner.displayName}</strong>{roomMessage || (dialogueIntent === 'writing' ? '把想一起寫的內容貼給我。' : activeGuide.intro)}</p></div>
             {roomUserMessage && <small className="room-user-echo">你說：{roomUserMessage}</small>}
             <div className="room-chat-composer"><input value={roomInput} maxLength={dialogueIntent === 'writing' ? 1000 : 120} onChange={(event) => setRoomInput(event.target.value)} placeholder={dialogueIntent === 'writing' ? '貼上段落、角色設定或下一句靈感' : pendingPlace && activeModule.id === 'travel' ? '貼上位置或附近地標' : activeGuide.placeholder} /><button type="submit" disabled={!runtime || busy || !roomInput.trim()} aria-label={`送出給${activePartner.displayName}`}>送出</button></div>
           </form>}
@@ -774,7 +774,7 @@ export default function Home() {
           </section>}
 
           <div className="companion-profile">
-            <PartnerHeadshot partner={activePartner} /><div><strong>{activePartner.displayName}</strong><small>{activePartner.role} ・ 羈絆 76</small></div><b>Lv.12</b><i><span style={{ width: '76%' }} /></i>
+            <PartnerHeadshot partner={activePartner} className="profile-headshot" /><div><strong>{activePartner.displayName}</strong><small>{activePartner.role} ・ 羈絆 76</small></div><b>Lv.12</b><i><span style={{ width: '76%' }} /></i>
           </div>
 
           <nav className="game-dock" aria-label="夥伴管理">
@@ -784,7 +784,7 @@ export default function Home() {
           {mobileToolsOpen && <section className="mobile-tools-drawer" aria-label="夥伴工具">
             <div className="mobile-partner-carousel">
               <button className="mobile-partner-arrow is-left" type="button" aria-label="向左瀏覽夥伴" onClick={() => mobilePartnerListRef.current?.scrollBy({ left: -190, behavior: 'smooth' })}>‹</button>
-              <div ref={mobilePartnerListRef} className="mobile-partner-strip">{AOZU_PARTNERS.map((partner) => <button key={partner.id} className={partner.id === activePartner.id ? 'is-active' : ''} type="button" disabled={!runtime || busy} onClick={() => switchPartner(partner)}><PartnerArt partner={partner} decorative /><span>{partner.displayName}</span></button>)}</div>
+              <div ref={mobilePartnerListRef} className="mobile-partner-strip">{AOZU_PARTNERS.map((partner) => <button key={partner.id} className={partner.id === activePartner.id ? 'is-active' : ''} type="button" disabled={!runtime || busy} onClick={() => switchPartner(partner)}><PartnerHeadshot partner={partner} decorative /><span>{partner.displayName}</span></button>)}</div>
               <button className="mobile-partner-arrow is-right" type="button" aria-label="向右瀏覽夥伴" onClick={() => mobilePartnerListRef.current?.scrollBy({ left: 190, behavior: 'smooth' })}>›</button>
             </div>
             <nav className="mobile-life-strip" aria-label="生活任務">{lifeControls.map((control) => <button key={control.id} type="button" onClick={() => selectLifeControl(control)}><b style={{ background: control.tone }}>{control.mark}</b>{control.label}</button>)}</nav>
@@ -827,8 +827,8 @@ export default function Home() {
             {activeModuleId === 'travel' ? <section className="travel-chat" aria-label="旅行規劃對話">
               <div className="travel-chat-head"><span><i />夥伴通話中</span><button type="button" onClick={() => setPanel('journal')}>打開旅行手札</button></div>
               <div className="travel-chat-log" aria-live="polite">
-                <article className="from-partner"><b><PartnerArt partner={activePartner} decorative /></b><p><strong>{activePartner.displayName}</strong>把想去的景點或想吃的店告訴我，我會再問位置，排進三日行程並替我們累積能力點數。</p></article>
-                {travelChat.map((message) => <article key={message.id} className={message.from === 'partner' ? 'from-partner' : 'from-user'}>{message.from === 'partner' && <b><PartnerArt partner={activePartner} decorative /></b>}<p>{message.text}</p></article>)}
+                <article className="from-partner"><b><PartnerHeadshot partner={activePartner} decorative /></b><p><strong>{activePartner.displayName}</strong>把想去的景點或想吃的店告訴我，我會再問位置，排進三日行程並替我們累積能力點數。</p></article>
+                {travelChat.map((message) => <article key={message.id} className={message.from === 'partner' ? 'from-partner' : 'from-user'}>{message.from === 'partner' && <b><PartnerHeadshot partner={activePartner} decorative /></b>}<p>{message.text}</p></article>)}
               </div>
               <div className="travel-skill-strip"><span>探索 <b>{travelJournal.points.exploration}</b></span><span>品味 <b>{travelJournal.points.taste}</b></span><span>規劃 <b>{travelJournal.points.planning}</b></span><span>羈絆 <b>{travelJournal.points.bond}</b></span></div>
               {!pendingPlace && <div className="travel-chat-options">
