@@ -25,6 +25,7 @@ assert.deepEqual((explorerDefinition?.data.definition as { stateSchema?: { requi
 assert.equal(AOZU_WARDROBE_ITEMS.length, 20)
 assert.ok(AOZU_WARDROBE_SLOTS.every(({ id }) => AOZU_WARDROBE_ITEMS.filter(({ slot }) => slot === id).length === 5))
 assert.ok(AOZU_WARDROBE_ITEMS.every(({ crop }) => crop.length === 4))
+assert.ok(AOZU_WARDROBE_ITEMS.every(({ crop: [x, y, width, height] }) => x >= 0 && y >= 0 && x + width <= 1024 && y + height <= 1536))
 assert.deepEqual(travelJournal?.data.state, DEFAULT_TRAVEL_JOURNAL)
 assert.equal(DEFAULT_TRAVEL_JOURNAL.equippedAccessoryId, 'none')
 assert.equal(AOZU_TRAVEL_ACCESSORIES.length, 3)

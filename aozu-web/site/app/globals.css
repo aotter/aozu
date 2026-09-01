@@ -79,13 +79,17 @@ button:disabled { cursor: wait; opacity: .55; }
 .paper-doll.partner-human { bottom: 68px; height: 88%; width: 72%; }
 .paper-doll > .partner-art { height: 100%; inset: 0; object-fit: contain; object-position: center bottom; position: absolute; width: 100%; z-index: 1; }
 .paper-doll > .human-portrait { animation: human-room-idle 4.2s ease-in-out infinite; filter: drop-shadow(0 16px 12px rgba(29,25,24,.38)); inset: auto; bottom: 0; left: 50%; transform: translateX(-50%); }
+.paper-doll-canvas { filter: drop-shadow(0 16px 12px rgba(29,25,24,.34)); height: 100%; inset: 0; object-fit: contain; pointer-events: none; position: absolute; width: 100%; z-index: 2; }
+.paper-doll.partner-human .paper-doll-canvas { animation: canvas-room-idle 4.2s ease-in-out infinite; }
 .wardrobe-sprite { display: block; overflow: hidden; pointer-events: none; position: relative; width: 100%; }
 .wardrobe-sprite img { max-width: none; pointer-events: none; position: absolute; }
 .doll-item { animation: equip-pop 280ms ease-out; left: calc(var(--slot-x) + var(--item-x,0%)); position: absolute; top: calc(var(--slot-y) + var(--item-y,0%)); transform: translate(-50%,-50%) scale(var(--item-scale,1)); transform-origin: center; width: var(--slot-size); z-index: 3; }
 .doll-item.slot-wardrobe-back { z-index: 0; }
 .doll-item.slot-wardrobe-hand { z-index: 4; }
+.doll-drag-handle.slot-wardrobe-back { z-index: 3; }
 .paper-doll.is-editing .doll-item { cursor: grab; pointer-events: auto; touch-action: none; }
-.paper-doll.is-editing .doll-item.is-selected { filter: drop-shadow(0 0 3px white) drop-shadow(0 0 8px var(--partner-accent)); }
+.paper-doll.is-editing .doll-drag-handle::after { border: 2px dashed rgba(255,255,255,.68); border-radius: 18px; content: ''; inset: 0; opacity: .35; position: absolute; }
+.paper-doll.is-editing .doll-item.is-selected::after { border-color: #ffe16d; box-shadow: 0 0 0 5px rgba(255,225,109,.16),0 0 18px var(--partner-accent); opacity: 1; }
 .paper-doll.is-editing .doll-item:active { cursor: grabbing; }
 .snap-target { align-items: center; color: white; display: flex; flex-direction: column; font-size: 9px; font-weight: 900; gap: 3px; left: var(--slot-x); pointer-events: none; position: absolute; top: var(--slot-y); transform: translate(-50%,-50%); z-index: 7; }
 .snap-target i { animation: magnet-ring 1.5s ease-in-out infinite; border: 2px dashed rgba(255,255,255,.72); border-radius: 50%; box-shadow: 0 0 0 4px rgba(255,255,255,.11); display: block; height: 54px; width: 54px; }
@@ -99,6 +103,7 @@ button:disabled { cursor: wait; opacity: .55; }
 .travel-charm.charm-memory-camera { background: linear-gradient(145deg,#fff0f3,#c7506a); color: white; }
 @keyframes equip-pop { 0% { filter: brightness(1.8); opacity: 0; } 100% { filter: brightness(1); opacity: 1; } }
 @keyframes human-room-idle { 0%,100% { transform: translateX(-50%) translateY(0) scale(1); } 50% { transform: translateX(-50%) translateY(-4px) scale(1.006); } }
+@keyframes canvas-room-idle { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-4px) scale(1.006); } }
 @keyframes charm-float { 0%,100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-7px) rotate(3deg); } }
 
 .placement-editor { align-items: center; backdrop-filter: blur(16px); background: rgba(28,24,21,.9); border: 1px solid rgba(255,255,255,.24); border-radius: 17px; color: white; display: grid; gap: 6px; grid-template-columns: minmax(130px,1fr) auto auto; padding: 9px; position: absolute; right: 18px; top: 118px; width: min(390px,47%); z-index: 8; }

@@ -87,6 +87,79 @@ function WardrobeSprite({ item, className = '' }: { item: WardrobeItem; classNam
   return <span className={`wardrobe-sprite ${className}`} style={{ aspectRatio: `${width} / ${height}` }}><img src={item.image} alt="" style={{ width: `${(1024 / width) * 100}%`, height: `${(1536 / height) * 100}%`, left: `${-(x / width) * 100}%`, top: `${-(y / height) * 100}%` }} /></span>;
 }
 
+const wardrobeFits: Record<string, { x: number; y: number; size: number }> = {
+  'explorer-bandana': { x: 50, y: 25, size: 34 }, 'coffee-scarf': { x: 50, y: 36, size: 28 }, 'focus-headphones': { x: 50, y: 23, size: 36 }, 'night-moon': { x: 61, y: 18, size: 14 }, 'voyage-cap': { x: 50, y: 18, size: 34 },
+  'explorer-vest': { x: 50, y: 58, size: 48 }, 'coffee-apron': { x: 50, y: 60, size: 44 }, 'focus-jacket': { x: 50, y: 57, size: 52 }, 'night-cape': { x: 52, y: 58, size: 50 }, 'voyage-jacket': { x: 50, y: 57, size: 52 },
+  'explorer-binoculars': { x: 60, y: 61, size: 30 }, 'coffee-dripper': { x: 70, y: 61, size: 24 }, 'focus-tablet': { x: 68, y: 58, size: 28 }, 'night-satchel': { x: 67, y: 61, size: 30 }, 'voyage-tag': { x: 68, y: 62, size: 20 },
+  'explorer-compass': { x: 24, y: 50, size: 18 }, 'coffee-cup': { x: 25, y: 50, size: 16 }, 'focus-stylus': { x: 25, y: 48, size: 10 }, 'night-lantern': { x: 25, y: 53, size: 16 }, 'voyage-passport': { x: 25, y: 49, size: 14 },
+};
+
+const dollImageCache = new Map<string, Promise<HTMLImageElement>>();
+const loadDollImage = (source: string) => {
+  if (!dollImageCache.has(source)) dollImageCache.set(source, new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = source;
+  }));
+  return dollImageCache.get(source)!;
+};
+
+const wardrobeFitFor = (item: WardrobeItem, partner: Partner) => {
+  const fit = wardrobeFits[item.id] ?? AOZU_WARDROBE_SLOTS.find(({ id }) => id === item.slot)!;
+  return partner.kind === 'human' ? { x: 50 + (fit.x - 50) * 0.68, y: fit.y * 0.84, size: fit.size * 0.72 } : fit;
+};
+
+function PaperDollCanvas({ partner, layers }: { partner: Partner; layers: { item: WardrobeItem; placement: Placement }[] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const render = async () => {
+      const canvas = canvasRef.current;
+      const context = canvas?.getContext('2d');
+      if (!canvas || !context) return;
+      const sources = [...new Set([partner.image, ...layers.map(({ item }) => item.image)])];
+      const images = new Map((await Promise.all(sources.map(async (source) => [source, await loadDollImage(source)] as const))));
+      if (cancelled) return;
+      const base = images.get(partner.image)!;
+      const drawBase = () => context.drawImage(base, 0, 0, canvas.width, canvas.height);
+      const drawLayer = ({ item, placement }: (typeof layers)[number]) => {
+        const image = images.get(item.image)!;
+        const [sourceX, sourceY, sourceWidth, sourceHeight] = item.crop;
+        const fit = wardrobeFitFor(item, partner);
+        const width = canvas.width * (fit.size / 100) * placement.scale;
+        const height = width * sourceHeight / sourceWidth;
+        const centerX = canvas.width * ((fit.x + placement.x) / 100);
+        const centerY = canvas.height * ((fit.y + placement.y) / 100);
+        context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, centerX - width / 2, centerY - height / 2, width, height);
+      };
+
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      layers.filter(({ item }) => item.slot === 'wardrobe-back').forEach(drawLayer);
+      drawBase();
+      layers.filter(({ item }) => item.slot !== 'wardrobe-back').forEach(drawLayer);
+
+      context.save();
+      context.beginPath();
+      if (partner.kind === 'human') {
+        context.ellipse(canvas.width * .5, canvas.height * .17, canvas.width * .12, canvas.height * .11, 0, 0, Math.PI * 2);
+      } else {
+        context.ellipse(canvas.width * .5, canvas.height * .3, canvas.width * .19, canvas.height * .15, 0, 0, Math.PI * 2);
+        context.ellipse(canvas.width * .27, canvas.height * .49, canvas.width * .1, canvas.height * .09, 0, 0, Math.PI * 2);
+        context.ellipse(canvas.width * .66, canvas.height * .55, canvas.width * .09, canvas.height * .09, 0, 0, Math.PI * 2);
+      }
+      context.clip();
+      drawBase();
+      context.restore();
+    };
+    void render();
+    return () => { cancelled = true; };
+  }, [layers, partner]);
+
+  return <canvas ref={canvasRef} className="paper-doll-canvas" width="1024" height="1536" aria-label={`${partner.displayName}目前的完整穿搭`} />;
+}
+
 export default function Home() {
   const [runtime, setRuntime] = useState<AozuStartup | null>(null);
   const [runtimeError, setRuntimeError] = useState('');
@@ -182,7 +255,7 @@ export default function Home() {
 
   const activeModule = modules.find(({ id }) => id === activeModuleId) ?? modules[3];
   const activePartner = AOZU_PARTNERS.find(({ name }) => name === runtime?.companion.name) ?? AOZU_PARTNERS[0];
-  const wardrobeEnabled = activePartner.id === 'otter';
+  const wardrobeEnabled = true;
   const storedWardrobeItems = wardrobeEnabled ? AOZU_WARDROBE_ITEMS.filter(({ id }) => runtime?.loadout.equippedDefinitionIds.includes(`wardrobe-${id}`)) : [];
   const hasLegacyStarterWardrobe = storedWardrobeItems.length === legacyStarterWardrobe.length && legacyStarterWardrobe.every((id) => storedWardrobeItems.some((item) => item.id === id));
   const equippedWardrobeItems = hasLegacyStarterWardrobe ? [] : storedWardrobeItems;
@@ -667,19 +740,15 @@ export default function Home() {
           </form>}
 
           <div ref={paperDollRef} className={`paper-doll partner-${activePartner.kind} ${panel === 'wardrobe' && wardrobeEnabled ? 'is-editing' : ''}`} aria-label={`${activePartner.displayName}，${equippedWardrobeLabel}${activeTravelAccessoryName ? `，${activeTravelAccessoryName}` : ''}`}>
-            <PartnerArt partner={activePartner} className="doll-base" />
+            <PartnerArt partner={activePartner} className="doll-base doll-fallback" />
+            <PaperDollCanvas partner={activePartner} layers={equippedWardrobeItems.map((item) => ({ item, placement: placementFor(item) }))} />
             <button className="mobile-pet-dialogue-hitbox" type="button" onClick={openPetDialogue} disabled={!runtime} aria-label={`點${activePartner.displayName}開始對話`} />
             {panel === 'wardrobe' && wardrobeEnabled && AOZU_WARDROBE_SLOTS.map((slot) => <span key={slot.id} className={`snap-target snap-${slot.id} ${magnetSlot === slot.id ? 'is-magnetic' : ''}`} style={{ '--slot-x': `${slot.x}%`, '--slot-y': `${slot.y}%` } as CSSProperties}><i />{slot.label}</span>)}
             {equippedWardrobeItems.map((item) => {
-              const slot = AOZU_WARDROBE_SLOTS.find(({ id }) => id === item.slot)!;
+              const fit = wardrobeFitFor(item, activePartner);
               const itemPlacement = placementFor(item);
-              return <span key={item.id} className={`doll-item slot-${item.slot} ${selectedWardrobeItem.id === item.id ? 'is-selected' : ''}`} style={{ '--slot-x': `${slot.x}%`, '--slot-y': `${slot.y}%`, '--slot-size': `${slot.size}%`, '--item-x': `${itemPlacement.x}%`, '--item-y': `${itemPlacement.y}%`, '--item-scale': itemPlacement.scale } as CSSProperties} onPointerDown={(event) => beginWardrobeLayerDrag(item, event)} onPointerMove={moveWardrobeLayer} onPointerUp={finishWardrobeLayerDrag} onPointerCancel={finishWardrobeLayerDrag}>
-                <WardrobeSprite item={item} />
-              </span>;
+              return <span key={item.id} className={`doll-item doll-drag-handle slot-${item.slot} ${selectedWardrobeItem.id === item.id ? 'is-selected' : ''}`} style={{ '--slot-x': `${fit.x}%`, '--slot-y': `${fit.y}%`, '--slot-size': `${fit.size}%`, '--item-x': `${itemPlacement.x}%`, '--item-y': `${itemPlacement.y}%`, '--item-scale': itemPlacement.scale, aspectRatio: `${item.crop[2]} / ${item.crop[3]}` } as CSSProperties} onPointerDown={(event) => beginWardrobeLayerDrag(item, event)} onPointerMove={moveWardrobeLayer} onPointerUp={finishWardrobeLayerDrag} onPointerCancel={finishWardrobeLayerDrag} aria-label={`拖曳${item.label}`} />;
             })}
-            {activeTravelAccessory && <span className={`travel-charm charm-${activeTravelAccessory.id}`} aria-label={activeTravelAccessoryName}>
-              <i>{activeTravelAccessory.icon}</i><small>{activeTravelAccessoryName}</small>
-            </span>}
           </div>
 
           {panel === 'wardrobe' && wardrobeEnabled && equippedWardrobeItems.some(({ id }) => id === selectedWardrobeItem.id) && <div className="placement-editor" aria-label="物件位置控制器">
