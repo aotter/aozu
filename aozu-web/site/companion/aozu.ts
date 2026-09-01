@@ -7,8 +7,8 @@ export const AOZU_PARTNERS = [
   { id: 'whale', kind: 'mascot', name: 'AOZU · 夜航鯨', displayName: '夜航鯨', role: '旅程導航員', image: '/assets/mascot-whale-v1.png', accent: '#5961a8', personality: '安定、可靠、富有想像力', quote: '把遠方拆成下一個能完成的步驟。', capabilities: ['旅行書整理', '行程規劃', '共同筆記'] },
   { id: 'weasel', kind: 'mascot', name: 'AOZU · 琥珀鼬', displayName: '琥珀鼬', role: '居家理財家', image: '/assets/mascot-weasel-v1.png', accent: '#d98441', personality: '細心、務實、整理高手', quote: '整理好房間和帳目，心也會變輕。', capabilities: ['記帳分類', '房間規劃', '目標存款'] },
   { id: 'mikan', kind: 'human', name: 'AOZU · 電獺少女・蜜柑', displayName: '蜜柑', role: '暖陽外景主持', image: '/assets/aotter-girl-mikan-hd-v2.png', accent: '#e6963a', personality: '開朗、好奇、行動派', quote: '出發吧，我們把今天過成一段值得收藏的故事。', capabilities: ['城市探索', '穿搭日誌', '運動挑戰'] },
-  { id: 'space', kind: 'human', name: 'AOZU · 電獺少女・Spac1', displayName: 'Spac1', role: '星系生活策展人', image: '/assets/aotter-girl-space-hd-v2.png', accent: '#70a8bd', personality: '溫柔、靈敏、想像力豐富', quote: '把想法交給我，我們一起找到最閃亮的路線。', capabilities: ['共同筆記', '語言學習', '旅行靈感'] },
-  { id: 'xixi', kind: 'human', name: 'AOZU · 電獺少女・嘻嘻', displayName: '嘻嘻', role: '元氣行動教練', image: '/assets/aotter-girl-xixi-hd-v2.png', accent: '#5d9fd0', personality: '爽朗、自信、感染力十足', quote: '笑一下，下一個任務我們就一起動起來！', capabilities: ['健身挑戰', '穿搭日誌', '日常應援'] },
+  { id: 'space', kind: 'human', name: 'AOZU · 電獺少女・Spac1', displayName: 'Spac1', role: '星系生活策展人', image: '/assets/aotter-girl-space-hd-v3.png', accent: '#70a8bd', personality: '溫柔、靈敏、想像力豐富', quote: '把想法交給我，我們一起找到最閃亮的路線。', capabilities: ['共同筆記', '語言學習', '旅行靈感'] },
+  { id: 'xixi', kind: 'human', name: 'AOZU · 電獺少女・嘻嘻', displayName: '嘻嘻', role: '元氣行動教練', image: '/assets/aotter-girl-xixi-hd-v3.png', accent: '#5d9fd0', personality: '爽朗、自信、感染力十足', quote: '笑一下，下一個任務我們就一起動起來！', capabilities: ['健身挑戰', '穿搭日誌', '日常應援'] },
 ] as const
 
 export const AOZU_WARDROBE_SLOTS = [
