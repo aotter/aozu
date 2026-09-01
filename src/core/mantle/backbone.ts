@@ -589,9 +589,10 @@ const ALL_BACKBONE_SOURCES = [
         variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
         label: { type: 'string', minLength: 1, maxLength: 80 },
         layer: { enum: ['body', 'head', 'back', 'front'] },
+        expectedUpdatedAt: { type: 'integer', minimum: 0 },
         filename: { type: 'string', minLength: 1, maxLength: 200 },
         dataUrl: { type: 'string', pattern: '^data:image/png;base64,', maxLength: 7_100_000 },
-      }, ['group', 'variantId', 'label', 'layer', 'filename', 'dataUrl']),
+      }, ['group', 'variantId', 'label', 'layer', 'expectedUpdatedAt', 'filename', 'dataUrl']),
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.submit-character-asset-candidate' },
     }),
@@ -601,6 +602,30 @@ const ALL_BACKBONE_SOURCES = [
     envelope('Trigger', 'submit-character-asset-candidate', {
       source: { kind: 'mcp', surface: 'public' },
       target: { procedure: 'submit-character-asset-candidate' },
+    }),
+  ),
+  source(
+    'authoring/set-character-variant-transform.yaml',
+    envelope('Procedure', 'set-character-variant-transform', {
+      title: 'Set Character Variant Transform',
+      description: 'Safety net for an otherwise valid staged character variant whose full-canvas pixels need translation or uniform scale. Use absolute values returned or derived from inspect_character_contract; never accumulate directional nudges. Front and back prop layers share this transform. The canonical body is locked.',
+      input: objectSchema({
+        group: { enum: ['expression', 'outfit', 'prop'] },
+        variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
+        expectedUpdatedAt: { type: 'integer', minimum: 0 },
+        x: { type: 'number', minimum: -512, maximum: 512 },
+        y: { type: 'number', minimum: -768, maximum: 768 },
+        scale: { type: 'number', minimum: 0.25, maximum: 4 },
+      }, ['group', 'variantId', 'expectedUpdatedAt', 'x', 'y', 'scale']),
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.set-character-variant-transform' },
+    }),
+  ),
+  source(
+    'authoring/set-character-variant-transform-mcp.yaml',
+    envelope('Trigger', 'set-character-variant-transform', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'set-character-variant-transform' },
     }),
   ),
   source(

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 
-import { buildCharacterPack, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, measureCharacterAssetAlignment, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, measureCharacterAssetAlignment, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 import type { CharacterPackLibraryRecord } from '../src/core/application/ports.ts'
 
-const inspection = { width: 512, height: 768, hasTransparentPixels: true, hasVisiblePixels: true, genuineRgba: true, size: 10, sha256: 'a'.repeat(64) }
+const inspection = { width: 512, height: 768, hasTransparentPixels: true, hasVisiblePixels: true, genuineRgba: true, visibleBounds: { x: 40, y: 20, width: 430, height: 720 }, visiblePixelCount: 100, size: 10, sha256: 'a'.repeat(64) }
 const asset: CharacterDraftAsset = { blob: new Blob(['sprite'], { type: 'image/png' }), filename: 'sprite.png', source: 'user', inspection, canonicalSha256: inspection.sha256 }
 const draft = createCharacterDraft('test-character')
 draft.name = 'Test Character'
@@ -20,6 +20,7 @@ put('prop', 'prop-1', 'back')
 put('prop', 'prop-1', 'front')
 draft.variants.push({ group: 'prop', id: 'prop-2', label: 'Prop 2', layers: { back: asset, front: asset } })
 draft.selected = { expression: 'happy', outfit: 'outfit-1', props: ['prop-1', 'prop-2'] }
+draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.transform = { x: 2, y: -3, scale: 1.01 }
 
 const pack = buildCharacterPack(draft)
 assert.deepEqual(pack.defaultComposition.map(({ appearanceId }) => appearanceId), ['outfit-outfit-1', 'expression-happy', 'prop-prop-1', 'prop-prop-2'])
@@ -28,6 +29,8 @@ assert.deepEqual(
   ['item-back', 'item-back', 'character-skin', 'expression-head', 'item-front', 'item-front'],
 )
 assert.deepEqual(resolveCharacterDraftLayers(draft).map(({ layerOrder }) => layerOrder), [1, 2, 1, 1, 1, 2])
+assert.deepEqual(resolveCharacterDraftLayers(draft).find(({ slot }) => slot === 'expression-head')?.transform, { x: 2, y: -3, scale: 1.01 })
+assert.deepEqual(characterRegistrationFrame(draft).footLine, 739)
 const preview = await reviewCharacterDraft(async () => inspection, draft)
 assert.equal(preview.source, 'character')
 assert.equal('bundleId' in preview, false)
@@ -150,4 +153,14 @@ assert.equal(measureCharacterAssetAlignment(
   { ...inspection, visibleBounds: { x: 60, y: 10, width: 390, height: 350 } },
   { ...inspection, visibleBounds: { x: 120, y: 80, width: 300, height: 250 } },
 ).status, 'misaligned')
+const staleUpdatedAt = savedDraft.updatedAt
+const transformed = await setCharacterVariantTransform(
+  drafts,
+  'expression',
+  'neutral',
+  staleUpdatedAt,
+  { x: 3, y: -2, scale: 1.02 },
+)
+assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'neutral')?.transform, { x: 3, y: -2, scale: 1.02 })
+await assert.rejects(() => setCharacterVariantTransform(drafts, 'expression', 'neutral', staleUpdatedAt, { x: 0, y: 0, scale: 1 }), /changed/)
 console.log('character creation: ok')

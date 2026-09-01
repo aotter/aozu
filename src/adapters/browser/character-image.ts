@@ -1,4 +1,4 @@
-import type { CharacterAssetInspection } from '../../core/domain/character.ts'
+import { CHARACTER_RIG, type CharacterAssetInspection, type ResolvedCharacterLayer } from '../../core/domain/character.ts'
 
 const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
 
@@ -47,4 +47,23 @@ export async function inspectCharacterImage(blob: Blob): Promise<CharacterAssetI
     size: blob.size,
     sha256: hex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))),
   }
+}
+
+export async function renderCharacterCompositeDataUrl(
+  layers: ReadonlyArray<ResolvedCharacterLayer & { blob: Blob }>,
+) {
+  const canvas = document.createElement('canvas')
+  canvas.width = CHARACTER_RIG.canvas.width
+  canvas.height = CHARACTER_RIG.canvas.height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Canvas is unavailable')
+  for (const { blob, transform } of layers) {
+    const bitmap = await createImageBitmap(blob)
+    context.save()
+    context.setTransform(transform.scale, 0, 0, transform.scale, transform.x, transform.y)
+    context.drawImage(bitmap, 0, 0)
+    context.restore()
+    bitmap.close()
+  }
+  return canvas.toDataURL('image/png')
 }

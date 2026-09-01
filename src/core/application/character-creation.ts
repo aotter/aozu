@@ -4,7 +4,9 @@ import {
   CHARACTER_RIG,
   CHARACTER_VARIANT_GROUPS,
   CHARACTER_VARIANT_LAYERS,
+  IDENTITY_CHARACTER_TRANSFORM,
   resolveCharacterComposition,
+  validateCharacterVariantTransform,
   validateCharacterPack,
   type AppearanceRef,
   type CharacterAssetTarget,
@@ -16,6 +18,7 @@ import {
   type ResolvedCharacterLayer,
   type CharacterVariantGroup,
   type CharacterVariantLayer,
+  type CharacterVariantTransform,
 } from '../domain/character.ts'
 import type { ValidatedStarterPackage } from '../domain/starter.ts'
 import type { StagedCandidatePreview } from './candidate.ts'
@@ -67,6 +70,35 @@ export const createCharacterDraft = (packId = `character-${crypto.randomUUID()}`
 })
 
 export const isCharacterDraftPopulated = (draft: CharacterDraft) => draft.variants.some(({ layers }) => Object.keys(layers).length > 0)
+
+const boundsCenter = ({ x, y, width, height }: NonNullable<CharacterAssetInspection['visibleBounds']>) => ({
+  x: x + width / 2,
+  y: y + height / 2,
+})
+
+export function characterRegistrationFrame(draft: CharacterDraft) {
+  const bodyBounds = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body?.inspection.visibleBounds
+  const neutral = draft.variants.find(({ group, id }) => group === 'expression' && id === 'neutral')
+  const rawHeadBounds = neutral && isCharacterDraftAssetCurrent(draft, neutral, 'head') ? neutral.layers.head?.inspection.visibleBounds : undefined
+  const headBounds = rawHeadBounds ? transformCharacterBounds(rawHeadBounds, neutral?.transform) : undefined
+  return {
+    canvas: { ...CHARACTER_RIG.canvas },
+    ...(bodyBounds ? { bodyBounds: { ...bodyBounds }, bodyCenter: boundsCenter(bodyBounds), footLine: bodyBounds.y + bodyBounds.height - 1 } : {}),
+    ...(headBounds ? { headBounds: { ...headBounds }, faceCenter: boundsCenter(headBounds), anchors: { head: boundsCenter(headBounds) } } : {}),
+  }
+}
+
+export function transformCharacterBounds(
+  bounds: NonNullable<CharacterAssetInspection['visibleBounds']>,
+  transform: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM,
+) {
+  return {
+    x: transform.x + bounds.x * transform.scale,
+    y: transform.y + bounds.y * transform.scale,
+    width: bounds.width * transform.scale,
+    height: bounds.height * transform.scale,
+  }
+}
 
 const starterCharacter = (loaded: ValidatedStarterPackage, stateId: string) => {
   const state = loaded.starter.characterStates.find(({ id }) => id === stateId)
@@ -223,23 +255,61 @@ export function measureCharacterAssetAlignment(
   reference: CharacterAssetInspection | null,
   candidate: CharacterAssetInspection,
   tolerance = 32,
+  transform: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM,
 ) {
   if (!reference?.visibleBounds || !candidate.visibleBounds) return { status: 'unverified' as const, reason: 'No comparable alpha bounds are available' }
   const expected = reference.visibleBounds
-  const actual = candidate.visibleBounds
+  const actual = transformCharacterBounds(candidate.visibleBounds, transform)
   const delta = {
     left: actual.x - expected.x,
     top: actual.y - expected.y,
     right: actual.x + actual.width - expected.x - expected.width,
     bottom: actual.y + actual.height - expected.y - expected.height,
   }
+  const suggestedScale = Math.min(expected.width / candidate.visibleBounds.width, expected.height / candidate.visibleBounds.height)
   return {
     status: Object.values(delta).every((value) => Math.abs(value) <= tolerance) ? 'aligned' as const : 'misaligned' as const,
     expected,
     actual,
     delta,
     tolerance,
+    suggestedTransform: {
+      scale: suggestedScale,
+      x: expected.x - candidate.visibleBounds.x * suggestedScale,
+      y: expected.y - candidate.visibleBounds.y * suggestedScale,
+    },
   }
+}
+
+export async function setCharacterVariantTransform(
+  drafts: CharacterDraftRepository,
+  group: CharacterVariantGroup,
+  variantId: string,
+  expectedUpdatedAt: number,
+  transform: CharacterVariantTransform,
+) {
+  const stored = await drafts.get()
+  if (!stored) throw new Error('Character Draft not found')
+  const draft = migrateCharacterDraft(stored)
+  if (draft.updatedAt !== expectedUpdatedAt) throw new Error(`Character Draft changed; expected ${expectedUpdatedAt}, current ${draft.updatedAt}`)
+  if (group === 'body') throw new Error('The canonical body registration is locked')
+  validateCharacterVariantTransform(transform)
+  const variant = draft.variants.find(({ group: candidateGroup, id }) => candidateGroup === group && id === variantId)
+  if (!variant || !Object.values(variant.layers).some(Boolean)) throw new Error('Character variant is empty or missing')
+  const remainsVisible = Object.values(variant.layers).some((asset) => {
+    if (!asset?.inspection.visibleBounds) return false
+    const bounds = transformCharacterBounds(asset.inspection.visibleBounds, transform)
+    return bounds.x + bounds.width > 0 && bounds.y + bounds.height > 0 && bounds.x < CHARACTER_RIG.canvas.width && bounds.y < CHARACTER_RIG.canvas.height
+  })
+  if (!remainsVisible) throw new Error('Character transform moves every layer outside the canvas')
+  const next = {
+    ...draft,
+    approvedAt: undefined,
+    variants: draft.variants.map((candidate) => candidate === variant ? { ...candidate, transform: { ...transform } } : candidate),
+    updatedAt: Math.max(Date.now(), draft.updatedAt + 1),
+  }
+  await drafts.put(next)
+  return next
 }
 
 export async function saveCharacterDraftAsset(
@@ -269,7 +339,7 @@ export async function saveCharacterDraftAsset(
   const existing = draft.variants.find((variant) => variant.group === target.group && variant.id === target.variantId)
   const variants = existing
     ? draft.variants.map((variant) => variant === existing
-      ? { ...variant, label: target.label.trim(), layers: { ...variant.layers, [target.layer]: asset } }
+      ? { ...variant, label: target.label.trim(), layers: { ...variant.layers, [target.layer]: asset }, transform: undefined }
       : variant)
     : [...draft.variants, { group: target.group, id: target.variantId, label: target.label.trim(), layers: { [target.layer]: asset } }]
   const nextVariants = !derived && previousCanonical && previousCanonical !== inspection.sha256
@@ -329,13 +399,23 @@ const currentLayerEntries = (draft: CharacterDraft, variant: CharacterDraftVaria
   (Object.entries(variant.layers) as Array<[CharacterVariantLayer, CharacterDraftAsset | undefined]>)
     .filter(([layer, asset]) => asset && isCharacterDraftAssetCurrent(draft, variant, layer)) as Array<[CharacterVariantLayer, CharacterDraftAsset]>
 
-const selectedVariants = (draft: CharacterDraft) => {
-  const outfit = draft.selected.outfit && hasCurrentCharacterLayer(draft, 'outfit', draft.selected.outfit, 'body')
-    ? findVariant(draft, 'outfit', draft.selected.outfit) : undefined
-  const expression = hasCurrentCharacterLayer(draft, 'expression', draft.selected.expression, 'head')
-    ? findVariant(draft, 'expression', draft.selected.expression)
-    : hasCurrentCharacterLayer(draft, 'expression', 'neutral', 'head') ? findVariant(draft, 'expression', 'neutral') : undefined
-  const props = [...new Set(draft.selected.props)].map((id) => findVariant(draft, 'prop', id))
+const selectedVariants = (
+  draft: CharacterDraft,
+  preview?: Pick<CharacterDraftVariant, 'group' | 'id'>,
+  exclude?: Pick<CharacterDraftVariant, 'group' | 'id'>,
+) => {
+  const outfitId = preview?.group === 'outfit' ? preview.id : draft.selected.outfit
+  const outfit = !(exclude?.group === 'outfit' && exclude.id === outfitId) && outfitId && hasCurrentCharacterLayer(draft, 'outfit', outfitId, 'body')
+    ? findVariant(draft, 'outfit', outfitId) : undefined
+  const expressionId = preview?.group === 'expression' ? preview.id : draft.selected.expression
+  const expression = exclude?.group === 'expression' && exclude.id === expressionId ? undefined
+    : hasCurrentCharacterLayer(draft, 'expression', expressionId, 'head')
+      ? findVariant(draft, 'expression', expressionId)
+      : hasCurrentCharacterLayer(draft, 'expression', 'neutral', 'head') ? findVariant(draft, 'expression', 'neutral') : undefined
+  const propIds = preview?.group === 'prop' ? [...draft.selected.props, preview.id] : draft.selected.props
+  const props = [...new Set(propIds)]
+    .filter((id) => exclude?.group !== 'prop' || exclude.id !== id)
+    .map((id) => findVariant(draft, 'prop', id))
   return [outfit ?? findVariant(draft, 'body', 'base'), expression, ...props]
     .filter((variant): variant is CharacterDraftVariant => Boolean(variant && currentLayerEntries(draft, variant).length))
 }
@@ -346,10 +426,14 @@ export const characterAssetPlacement = (group: CharacterVariantGroup, layer: Cha
   return { slot: layer === 'back' ? 'item-back' : 'item-front', order: propOrder }
 }
 
-export function resolveCharacterDraftLayers(draft: CharacterDraft): Array<ResolvedCharacterLayer & { blob: Blob }> {
+const resolveDraftLayers = (
+  draft: CharacterDraft,
+  preview?: Pick<CharacterDraftVariant, 'group' | 'id'>,
+  exclude?: Pick<CharacterDraftVariant, 'group' | 'id'>,
+): Array<ResolvedCharacterLayer & { blob: Blob }> => {
   const slotOrders = new Map<string, number>(CHARACTER_RIG.slots.map(({ id, order }) => [id, order]))
   const propOrders = new Map(draft.variants.filter(({ group }) => group === 'prop').map(({ id }, index) => [id, index + 1]))
-  return selectedVariants(draft).flatMap((variant) => currentLayerEntries(draft, variant).map(([layer, asset]) => {
+  return selectedVariants(draft, preview, exclude).flatMap((variant) => currentLayerEntries(draft, variant).map(([layer, asset]) => {
     const placement = characterAssetPlacement(variant.group, layer, propOrders.get(variant.id))
     return {
       id: assetKey(variant, layer as CharacterVariantLayer),
@@ -357,9 +441,28 @@ export function resolveCharacterDraftLayers(draft: CharacterDraft): Array<Resolv
       slot: placement.slot,
       slotOrder: slotOrders.get(placement.slot)!,
       layerOrder: placement.order,
+      transform: variant.transform ? { ...variant.transform } : { ...IDENTITY_CHARACTER_TRANSFORM },
       blob: asset.blob,
     }
   })).sort((left, right) => left.slotOrder - right.slotOrder || left.layerOrder - right.layerOrder || left.id.localeCompare(right.id))
+}
+
+export const resolveCharacterDraftLayers = (
+  draft: CharacterDraft,
+  preview?: Pick<CharacterDraftVariant, 'group' | 'id'>,
+) => resolveDraftLayers(draft, preview)
+
+export function resolveCharacterDraftReferenceLayers(
+  draft: CharacterDraft,
+  target: Pick<CharacterDraftVariant, 'group' | 'id'>,
+) {
+  if (target.group === 'body') return []
+  if (target.group === 'expression') {
+    return target.id === 'neutral'
+      ? resolveDraftLayers({ ...draft, selected: { ...draft.selected, expression: 'neutral' } }, undefined, target)
+      : resolveDraftLayers(draft, { group: 'expression', id: 'neutral' }, target)
+  }
+  return resolveDraftLayers(draft, undefined, target)
 }
 
 export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
@@ -368,9 +471,11 @@ export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
   const keys = new Set<string>()
   const propOrders = new Map(draft.variants.filter(({ group }) => group === 'prop').map(({ id }, index) => [id, index + 1]))
   for (const variant of draft.variants) {
+    if (variant.transform) validateCharacterVariantTransform(variant.transform)
     if (
       !CHARACTER_VARIANT_GROUPS.includes(variant.group) || !variantIdPattern.test(variant.id) ||
       keys.has(variantKey(variant)) || !variant.label.trim() || variant.label.length > 80 ||
+      (variant.group === 'body' && variant.transform !== undefined) ||
       Object.keys(variant.layers).some((layer) => !(CHARACTER_VARIANT_LAYERS[variant.group] as readonly string[]).includes(layer))
     ) throw new Error('Invalid character variant')
     keys.add(variantKey(variant))
@@ -394,6 +499,7 @@ export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
         return {
           asset: { packId: draft.packId, packVersion: 1, assetId: assetKey(variant, layer) },
           ...placement,
+          ...(variant.transform ? { transform: { ...variant.transform } } : {}),
         }
       })
       return layers.length ? [{ id: variantKey(variant), layers }] : []

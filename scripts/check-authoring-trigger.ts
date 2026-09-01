@@ -23,6 +23,7 @@ const repository = {
 }
 let submittedInput: unknown
 let characterInput: unknown
+let transformInput: unknown
 const runtime = await bootMantleRuntime({
   plan: compileAuthoringBackbone(),
   storage: {
@@ -39,6 +40,10 @@ const runtime = await bootMantleRuntime({
     'companion.inspect-character-contract': async () => ({ status: 'ok', data: {} }),
     'companion.submit-character-asset-candidate': async (input) => {
       characterInput = input
+      return { status: 'ok', data: {} }
+    },
+    'companion.set-character-variant-transform': async (input) => {
+      transformInput = input
       return { status: 'ok', data: {} }
     },
     'companion.submit-experience-candidate': async (input) => {
@@ -98,6 +103,7 @@ assert.equal((await runtime.invokeTrigger({ trigger: 'inspect-experience-contrac
 assert.equal((await runtime.invokeTrigger({ trigger: 'inspect-character-contract', input: {}, ctx: context })).ok, true)
 const character = {
   group: 'body', variantId: 'base', label: 'Base', layer: 'body',
+  expectedUpdatedAt: 1,
   filename: 'base.png', dataUrl: 'data:image/png;base64,AAAA',
 }
 assert.equal((await runtime.invokeTrigger({ trigger: 'submit-character-asset-candidate', input: character, ctx: context })).ok, true)
@@ -107,4 +113,7 @@ assert.equal((await runtime.invokeTrigger({
   trigger: 'submit-character-asset-candidate', input: { ...character, group: 'hat' }, ctx: context,
 })).ok, false)
 assert.equal(characterInput, undefined)
+const transform = { group: 'expression', variantId: 'happy', expectedUpdatedAt: 1, x: 2, y: -3, scale: 1.01 }
+assert.equal((await runtime.invokeTrigger({ trigger: 'set-character-variant-transform', input: transform, ctx: context })).ok, true)
+assert.deepEqual(transformInput, transform)
 console.log('authoring triggers: ok')

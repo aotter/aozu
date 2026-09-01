@@ -31,6 +31,7 @@ assert.deepEqual([...registered.keys()].sort(), [
   'inspect_workspace',
   'navigate_companion',
   'resolve_companion_turn',
+  'set_character_variant_transform',
   'submit_character_asset_candidate',
   'submit_companion_action',
   'submit_experience_candidate',
