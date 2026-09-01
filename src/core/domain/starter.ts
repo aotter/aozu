@@ -103,6 +103,11 @@ export interface ExperienceDraft {
   id: string
   schemaVersion: 1
   revision: number
+  character?: null | {
+    packId: string
+    packVersion: number
+    composition: CharacterPack['defaultComposition']
+  }
   story: null | {
     starter: { id: string; version: number; name: string; manifestSha256: string }
     direction: DirectionDefinition
@@ -312,6 +317,7 @@ export function createExperienceDraftData(
   return {
     schemaVersion: 1,
     revision: 0,
+    character: null,
     story: {
       starter: {
         id: loaded.starter.id,
@@ -329,5 +335,6 @@ export function createExperienceDraftData(
 export const createBlankExperienceDraftData = (): NewExperienceDraft => ({
   schemaVersion: 1,
   revision: 0,
+  character: null,
   story: null,
 })

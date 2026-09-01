@@ -119,9 +119,25 @@ const storySelectionSchema: JsonSchema = {
   ],
 }
 
+const appearanceRefSchema = objectSchema({
+  packId: { type: 'string', minLength: 1 },
+  packVersion: { type: 'integer', minimum: 1 },
+  appearanceId: { type: 'string', minLength: 1 },
+}, ['packId', 'packVersion', 'appearanceId'])
+
 const experienceDraftProperties = {
   schemaVersion: { const: 1 },
   revision: { type: "integer", minimum: 0 },
+  character: {
+    oneOf: [
+      { type: 'null' },
+      objectSchema({
+        packId: { type: 'string', minLength: 1 },
+        packVersion: { type: 'integer', minimum: 1 },
+        composition: { type: 'array', minItems: 1, items: appearanceRefSchema },
+      }, ['packId', 'packVersion', 'composition']),
+    ],
+  },
   story: storySelectionSchema,
   lastSubmission: objectSchema(
     {
@@ -136,6 +152,7 @@ const experienceDraftRequired = ["schemaVersion", "revision", "story"]
 const experienceDraftCreateProperties = {
   schemaVersion: experienceDraftProperties.schemaVersion,
   revision: experienceDraftProperties.revision,
+  character: experienceDraftProperties.character,
   story: experienceDraftProperties.story,
 }
 
@@ -429,7 +446,7 @@ const ALL_BACKBONE_SOURCES = [
     "authoring/select-experience-draft.yaml",
     envelope("Procedure", "select-experience-draft", {
       title: 'Select Experience Draft',
-      description: 'Persist the selected Story starting point, or Blank, as the current Experience Draft. Character selection is stored independently in the Character Draft.',
+      description: 'Persist the selected Story starting point, or Blank, as the current Experience Draft. Character artwork normally comes from the editable Character Draft and may explicitly reference an installed local Character Pack.',
       input: objectSchema(experienceDraftCreateProperties, experienceDraftRequired),
       output: { type: "object" },
       handler: { kind: "builtin", op: "create", schema: "experience-drafts" },
@@ -446,7 +463,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-experience-contract.yaml',
     envelope('Procedure', 'inspect-experience-contract', {
       title: 'Inspect Experience Contract',
-      description: 'Required first step for authoring an experience. Returns the exact Experience Draft and Character Draft revisions, optional Story seed, current character references, optional Story scene resources, Playbook skeleton, vocabulary, and limits. For Blank Story, author a suitable seed and complete Playbook. No runnable Companion exists until a complete candidate is validated and the user approves it.',
+      description: 'Required first step for authoring an experience. Returns the exact Experience Draft revision, selected character resources, optional Story seed and scene resources, Playbook skeleton, vocabulary, and limits. For Blank Story, author a suitable seed and complete Playbook. No runnable Companion exists until a complete candidate is validated and the user approves it.',
       input: emptyReadOnlyInput,
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.inspect-experience-contract' },
@@ -463,7 +480,7 @@ const ALL_BACKBONE_SOURCES = [
     "authoring/submit-experience-candidate.yaml",
     envelope('Procedure', 'submit-experience-candidate', {
       title: 'Submit Experience Candidate',
-      description: 'Submit one complete declarative Playbook for the exact inspected Experience and Character Draft revisions. Selected Story assets, fixed manifests, handlers, and application code cannot be replaced. Invalid or stale submissions return diagnostics without staging. A valid candidate remains inactive until explicit user review and approval.',
+      description: 'Submit one complete declarative Playbook for the exact inspected Experience revision and selected character resources. Selected Story assets, fixed manifests, handlers, and application code cannot be replaced. Invalid or stale submissions return diagnostics without staging. A valid candidate remains inactive until explicit user review and approval.',
       input: {
         ...objectSchema({
           draftId: { type: "string", minLength: 1 },

@@ -1,7 +1,8 @@
 import { EntryDataValidator, firstZodIssueAsJsonPointer, jsonSchemaToZod } from '@aotter/mantle-spec'
+import type { EntryReader, EntryRepository } from '@aotter/mantle-runtime'
 
 import { compileBundle, type BundleRecord } from '../bundle.ts'
-import type { AppearanceRef, CharacterDraft } from '../domain/character.ts'
+import type { AppearanceRef } from '../domain/character.ts'
 import type { ItemDefinition } from '../domain/items.ts'
 import {
   normalizePhrase,
@@ -67,6 +68,43 @@ export interface AuthoredExperienceCandidate {
   preview: ExperienceCandidatePreviewSnapshot
 }
 
+export type CharacterCandidateResources = ReturnType<typeof buildCharacterDraftResources>
+
+export async function selectExperienceCharacter(
+  entries: EntryReader & EntryRepository,
+  input: {
+    draftId: string
+    expectedRevision: number
+    packId: string
+    packVersion: number
+    composition: AppearanceRef[]
+    now?: number
+  },
+) {
+  const entry = await entries.readById(input.draftId)
+  if (!entry || entry.collection !== 'experience-drafts' || entry.status !== 'published') throw new Error('Experience Draft not found')
+  if (entry.data.revision !== input.expectedRevision) throw new Error('Experience Draft revision is stale')
+  if (!input.composition.length || input.composition.some(({ packId, packVersion }) =>
+    packId !== input.packId || packVersion !== input.packVersion,
+  )) throw new Error('Installed Character Pack composition is invalid')
+  const { lastSubmission: _lastSubmission, ...data } = structuredClone(entry.data)
+  return entries.update({
+    id: entry.id,
+    collection: entry.collection,
+    expectedVersion: entry.version,
+    data: {
+      ...data,
+      revision: input.expectedRevision + 1,
+      character: {
+        packId: input.packId,
+        packVersion: input.packVersion,
+        composition: structuredClone(input.composition),
+      },
+    },
+    now: input.now ?? Date.now(),
+  })
+}
+
 const manifestFiles = Object.fromEntries(FIXED_BACKBONE_SOURCES.map(({ sourceId, text }) => [sourceId, text]))
 const idPattern = /^[a-z0-9][a-z0-9:_-]{0,99}$/
 const itemIdPattern = /^[a-z0-9][a-z0-9_-]{0,80}$/
@@ -128,7 +166,7 @@ const possibleRuleSources = (condition: Condition, allStages: ReadonlySet<string
 const validateExperience = (
   draft: ExperienceDraft,
   storyResources: ValidatedStarterPackage | null,
-  character: ReturnType<typeof buildCharacterDraftResources>,
+  character: CharacterCandidateResources,
   input: ExperienceCandidateInput,
 ) => {
   const stages = new Map(input.stages.map((stage) => [stage.id, stage]))
@@ -141,7 +179,7 @@ const validateExperience = (
   const initial = stages.get(input.initialStageId)!
   if (!initial.scene || initial.scene.characterStateId !== character.state.id || initial.scene.compositionId !== draft.story?.sceneCompositionId) fail(
     'initial_scene_mismatch', `candidate.stages.${initial.id}.scene`,
-    'Initial stage must use the current Character Draft and the selected Story scene, if any',
+    'Initial stage must use the selected character and Story scene, if any',
   )
   if (draft.story && !sameExperienceSeed(input.seed, draft.story.seed)) fail('seed_mismatch', 'candidate.seed', 'Candidate seed must match the selected Story')
 
@@ -185,7 +223,7 @@ const validateExperience = (
       (stage.scene.compositionId && !sceneCompositions.has(stage.scene.compositionId)) ||
       (stage.scene.characterStateId && stage.scene.characterStateId !== character.state.id)
     )) {
-      fail('unknown_visual_reference', `candidate.stages.${stageId}.scene`, 'Stage visuals must use the current Character Draft and selected Story resources')
+      fail('unknown_visual_reference', `candidate.stages.${stageId}.scene`, 'Stage visuals must use the selected character and Story resources')
     }
     stage.actions.forEach((action, index) => {
       if (preparedActionIds.has(action.id)) fail('duplicate_action', `candidate.stages.${stageId}.actions[${index}].id`, 'Action IDs must be globally unique')
@@ -283,7 +321,7 @@ export function assembleExperienceCandidate(
   bundleId: string,
   draft: ExperienceDraft,
   storyResources: ValidatedStarterPackage | null,
-  characterDraft: CharacterDraft,
+  character: CharacterCandidateResources,
   value: unknown,
   createdAt = Date.now(),
 ): AuthoredExperienceCandidate {
@@ -294,7 +332,6 @@ export function assembleExperienceCandidate(
     draft.story.starter.manifestSha256 !== storyResources.manifestSha256
   ) : storyResources) fail('starter_mismatch', 'draft.story', 'Validated Story resources do not match the draft')
   const input = parseInput(value)
-  const character = buildCharacterDraftResources(characterDraft)
   validateExperience(draft, storyResources, character, input)
   const plan = compileBundle(manifestFiles)
   const runId = `run:${bundleId}`
