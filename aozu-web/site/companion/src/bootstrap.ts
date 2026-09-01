@@ -231,6 +231,7 @@ export function createApplication(document: Document) {
         bundleId, ...input,
       })
       document.defaultView?.dispatchEvent(new Event('companion-updated'))
+      document.defaultView?.dispatchEvent(new CustomEvent('aozu-ui-command', { detail: { command: 'open-dialogue', message: input.dialogue } }))
       return { status: 'ok', data: { stage }, nextActions: [{ tool: 'inspect_companion', required: true }] }
     },
   })

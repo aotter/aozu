@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
 
 import { AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, AOZU_WARDROBE_ITEMS, AOZU_WARDROBE_SLOTS, DEFAULT_TRAVEL_JOURNAL, ensureAozuCompanions, type AozuStartup, type AozuWardrobeSlotId, type TravelJournalState } from '../companion/aozu.ts';
+import type { AdventureMode } from '../companion/adventure.ts';
 import { createApplication, type Application } from '../companion/src/bootstrap.ts';
+import { AdventureGame } from './adventure-game.tsx';
 
 const modules = [
   { id: 'meals', category: '食', icon: '食', label: '飲控', value: '2 / 3 餐', note: '晚餐補一份蔬菜', action: '記錄一餐', quest: '不用算得很精準，記下晚餐和今天的飽足感就好。', reward: '規律 +1 ・ 羈絆 +2', color: '#f1b64c' },
@@ -19,6 +21,7 @@ const panels = [
   { id: 'journal', icon: '札', label: '手札' },
   { id: 'cards', icon: '卡', label: '卡片' },
   { id: 'memories', icon: '憶', label: '記憶' },
+  { id: 'adventure', icon: '遊', label: '冒險' },
 ] as const;
 
 type PanelId = (typeof panels)[number]['id'];
@@ -90,7 +93,9 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [dataStatus, setDataStatus] = useState('');
-  const [introOpen, setIntroOpen] = useState(true);
+  const [dialogueOpen, setDialogueOpen] = useState(false);
+  const [dialogueIntent, setDialogueIntent] = useState<'module' | 'writing'>('module');
+  const [adventureMode, setAdventureMode] = useState<AdventureMode | null>(null);
   const [placementDraft, setPlacementDraft] = useState<Record<string, Placement>>({});
   const [selectedWardrobeItemId, setSelectedWardrobeItemId] = useState('explorer-vest');
   const [magnetSlot, setMagnetSlot] = useState<AozuWardrobeSlotId | null>(null);
@@ -110,6 +115,8 @@ export default function Home() {
   const closetDragRef = useRef<{ pointerId: number; item: WardrobeItem; startX: number; startY: number; moved: boolean; snapping: boolean } | null>(null);
   const suppressWardrobeClickRef = useRef(false);
   const resizeRef = useRef<{ pointerId: number; startX: number; startWidth: number; totalWidth: number } | null>(null);
+  const toolPullRef = useRef<{ pointerId: number; startY: number; moved: boolean } | null>(null);
+  const suppressToolClickRef = useRef(false);
   const paperDollRef = useRef<HTMLDivElement>(null);
   const partnerListRef = useRef<HTMLDivElement>(null);
   const travelInputRef = useRef<HTMLInputElement>(null);
@@ -134,6 +141,41 @@ export default function Home() {
       mounted = false;
       window.removeEventListener('companion-updated', sync);
     };
+  }, []);
+
+  useEffect(() => {
+    const onUiCommand = (event: Event) => {
+      const detail = (event as CustomEvent<{ command?: string; activity?: string; message?: string }>).detail ?? {};
+      if (detail.command === 'open-dialogue') {
+        setDialogueOpen(true);
+        if (detail.message) setRoomMessage(detail.message);
+        return;
+      }
+      if (detail.command !== 'start-activity') return;
+      if (detail.activity === 'room-shooter' || detail.activity === 'forest-runner') {
+        setAdventureMode(detail.activity === 'room-shooter' ? 'room' : 'forest');
+        setDialogueOpen(false);
+        setMobileConsoleOpen(false);
+        setMobileToolsOpen(false);
+        return;
+      }
+      if (detail.activity === 'writing') {
+        setDialogueIntent('writing');
+        setRoomMessage(detail.message || '把想一起寫的段落、角色設定或靈感貼給我，我會陪你接著寫並保存在這台裝置。');
+      } else {
+        const nextModule = modules.find(({ id }) => id === detail.activity);
+        if (nextModule) {
+          setDialogueIntent('module');
+          setActiveModuleId(nextModule.id);
+          setRoomMessage(detail.message || conversationGuides[nextModule.id].intro);
+        }
+      }
+      setDialogueOpen(true);
+      setMobileConsoleOpen(false);
+      setMobileToolsOpen(false);
+    };
+    window.addEventListener('aozu-ui-command', onUiCommand);
+    return () => window.removeEventListener('aozu-ui-command', onUiCommand);
   }, []);
 
   const activeModule = modules.find(({ id }) => id === activeModuleId) ?? modules[3];
@@ -184,7 +226,8 @@ export default function Home() {
       const { application } = await bootAozu();
       await application.activateCompanion(saved.bundleId);
       await refresh(application);
-      setIntroOpen(true);
+      setDialogueOpen(false);
+      setAdventureMode(null);
       setPendingPlace(null);
       setTravelChat([]);
       setTravelInput('');
@@ -315,28 +358,58 @@ export default function Home() {
   const openTravelChat = () => {
     setPanel('quests');
     setActiveModuleId('travel');
-    setIntroOpen(false);
+    setDialogueIntent('module');
+    setDialogueOpen(true);
     setRoomMessage(conversationGuides.travel.intro);
     setMobileConsoleOpen(false);
-    window.setTimeout(() => travelInputRef.current?.focus(), 0);
   };
 
   const selectLifeControl = (control: (typeof lifeControls)[number]) => {
-    setIntroOpen(false);
     setPanel(control.panel);
     setMobileToolsOpen(false);
     setMobileConsoleOpen(control.panel === 'wardrobe');
     if (!control.module) return;
+    setDialogueIntent('module');
+    setDialogueOpen(true);
+    setMobileConsoleOpen(false);
     setActiveModuleId(control.module);
     setRoomMessage(conversationGuides[control.module].intro);
-    if (control.module === 'travel') window.setTimeout(() => travelInputRef.current?.focus(), 0);
   };
 
   const openPanel = (nextPanel: PanelId) => {
-    setIntroOpen(false);
     setPanel(nextPanel);
+    setDialogueOpen(false);
     setMobileToolsOpen(false);
     setMobileConsoleOpen(true);
+  };
+
+  const beginToolPull = (event: ReactPointerEvent<HTMLElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    toolPullRef.current = { pointerId: event.pointerId, startY: event.clientY, moved: false };
+  };
+
+  const moveToolPull = (event: ReactPointerEvent<HTMLElement>) => {
+    const pull = toolPullRef.current;
+    if (!pull || pull.pointerId !== event.pointerId) return;
+    const distance = event.clientY - pull.startY;
+    if (Math.abs(distance) < 26) return;
+    pull.moved = true;
+    suppressToolClickRef.current = true;
+    setMobileToolsOpen(distance < 0);
+  };
+
+  const finishToolPull = (event: ReactPointerEvent<HTMLElement>) => {
+    if (toolPullRef.current?.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    toolPullRef.current = null;
+  };
+
+  const toggleTools = () => {
+    if (suppressToolClickRef.current) {
+      suppressToolClickRef.current = false;
+      return;
+    }
+    setMobileToolsOpen((open) => !open);
   };
 
   const beginConsoleResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -412,7 +485,20 @@ export default function Home() {
     event.preventDefault();
     const value = roomInput.trim();
     if (!value || busy) return;
-    setIntroOpen(false);
+    if (dialogueIntent === 'writing') {
+      const key = 'aozu:shared-writing';
+      let notes: { text: string; partner: string; createdAt: number }[] = [];
+      try {
+        const saved = JSON.parse(localStorage.getItem(key) ?? '[]');
+        notes = Array.isArray(saved) ? saved : [];
+      } catch { notes = []; }
+      notes.push({ text: value, partner: activePartner.displayName, createdAt: Date.now() });
+      localStorage.setItem(key, JSON.stringify(notes.slice(-100)));
+      setRoomUserMessage(value);
+      setRoomInput('');
+      setRoomMessage(`這段我收進共同文字了。我們已經一起留下 ${notes.length} 段內容；你可以再貼一段，我會繼續陪你寫。`);
+      return;
+    }
     if (activeModule.id === 'travel') {
       await sendTravelMessage(value);
       return;
@@ -493,8 +579,9 @@ export default function Home() {
 
       <main className="game-world" style={{ '--console-width': `${consoleWidth}%` } as CSSProperties}>
         <section className="companion-room" aria-label={`${activePartner.displayName}的夥伴房間`}>
-          <picture className="room-background"><source media="(max-width: 700px)" srcSet="/assets/mascot-club-room-v1.webp" /><img src="/assets/aotter-girl-room-v1.webp" alt="暖光夥伴房間" /></picture>
+          <picture className="room-background"><img src="/assets/mascot-club-room-v1.webp" alt="暖光夥伴房間" /></picture>
           <div className="room-light" />
+          {adventureMode && <AdventureGame key={adventureMode} mode={adventureMode} partner={activePartner} onClose={() => setAdventureMode(null)} />}
 
           <div className="partner-switcher-shell">
             <button className="partner-slider-arrow is-left" type="button" aria-label="向左瀏覽夥伴" onClick={() => partnerListRef.current?.scrollBy({ left: -220, behavior: 'smooth' })}>‹</button>
@@ -516,16 +603,12 @@ export default function Home() {
             <button type="button" disabled={!runtime || busy} onClick={activeModule.id === 'travel' ? openTravelChat : () => runAction(activeModule.id, `${activeModule.label}已寫進共同記憶`)}>{busy ? '處理中…' : activeModule.id === 'travel' ? '開始對話' : activeModule.action}</button>
           </div>
 
-          {introOpen ? <section className="character-arrival" aria-label={`${activePartner.displayName}角色介紹`}>
-            <span>COMPANION ARRIVAL</span>
-            <h2>我進來了，我是{activePartner.displayName}</h2>
-            <p>{activePartner.role}｜{activePartner.personality}<br />{activePartner.quote}</p>
-            <div>{activePartner.capabilities.map((capability) => <small key={capability}>{capability}</small>)}</div>
-            <button type="button" onClick={() => { setIntroOpen(false); setRoomMessage(activeGuide.intro); }}>開始一起生活</button>
-          </section> : <form className="room-chat" onSubmit={submitRoomChat}>
-            <div className="room-chat-message"><span className="room-chat-avatar"><PartnerArt partner={activePartner} decorative /></span><p><strong>{activePartner.displayName}</strong>{roomMessage || activeGuide.intro}</p></div>
+          {!dialogueOpen && <button className="chat-launcher" type="button" onClick={() => { setDialogueIntent('module'); setRoomMessage(activeGuide.intro); setDialogueOpen(true); }} aria-label={`跟${activePartner.displayName}對話`}><span><PartnerArt partner={activePartner} decorative /></span><b>跟我說話</b></button>}
+          {dialogueOpen && <form className="room-chat" onSubmit={submitRoomChat}>
+            <button className="room-chat-close" type="button" onClick={() => setDialogueOpen(false)} aria-label="收起對話">×</button>
+            <div className="room-chat-message"><span className="room-chat-avatar"><PartnerArt partner={activePartner} decorative /></span><p><strong>{activePartner.displayName}</strong>{roomMessage || (dialogueIntent === 'writing' ? '把想一起寫的內容貼給我。' : activeGuide.intro)}</p></div>
             {roomUserMessage && <small className="room-user-echo">你說：{roomUserMessage}</small>}
-            <div className="room-chat-composer"><input value={roomInput} maxLength={120} onChange={(event) => setRoomInput(event.target.value)} placeholder={pendingPlace && activeModule.id === 'travel' ? '貼上位置或附近地標' : activeGuide.placeholder} /><button type="submit" disabled={!runtime || busy || !roomInput.trim()} aria-label={`送出給${activePartner.displayName}`}>送出</button></div>
+            <div className="room-chat-composer"><input value={roomInput} maxLength={dialogueIntent === 'writing' ? 1000 : 120} onChange={(event) => setRoomInput(event.target.value)} placeholder={dialogueIntent === 'writing' ? '貼上段落、角色設定或下一句靈感' : pendingPlace && activeModule.id === 'travel' ? '貼上位置或附近地標' : activeGuide.placeholder} /><button type="submit" disabled={!runtime || busy || !roomInput.trim()} aria-label={`送出給${activePartner.displayName}`}>送出</button></div>
           </form>}
 
           <div ref={paperDollRef} className={`paper-doll partner-${activePartner.kind} ${panel === 'wardrobe' && wardrobeEnabled ? 'is-editing' : ''}`} aria-label={`${activePartner.displayName}，${equippedWardrobeLabel}${activeTravelAccessoryName ? `，${activeTravelAccessoryName}` : ''}`}>
@@ -557,8 +640,9 @@ export default function Home() {
           <nav className="game-dock" aria-label="夥伴管理">
             {panels.map((item) => <button key={item.id} className={panel === item.id ? 'is-active' : ''} type="button" onClick={() => openPanel(item.id)}><span>{item.icon}</span>{item.label}</button>)}
           </nav>
-          <button className="mobile-tools-toggle" type="button" aria-expanded={mobileToolsOpen} onClick={() => setMobileToolsOpen((open) => !open)}>{mobileToolsOpen ? '收起夥伴工具' : '展開夥伴工具'}</button>
-          {mobileToolsOpen && <section className="mobile-tools-drawer" aria-label="夥伴工具">
+          <button className="mobile-tools-toggle" type="button" aria-expanded={mobileToolsOpen} onClick={toggleTools} onPointerDown={beginToolPull} onPointerMove={moveToolPull} onPointerUp={finishToolPull} onPointerCancel={finishToolPull}>{mobileToolsOpen ? '向下拖曳收起夥伴工具' : '點按或向上拖曳展開工具'}</button>
+          {mobileToolsOpen && <section className="mobile-tools-drawer" aria-label="夥伴工具" onPointerDown={beginToolPull} onPointerMove={moveToolPull} onPointerUp={finishToolPull} onPointerCancel={finishToolPull}>
+            <button className="mobile-drawer-handle" type="button" onClick={() => setMobileToolsOpen(false)} aria-label="收起夥伴工具"><span /></button>
             <div className="mobile-partner-strip">{AOZU_PARTNERS.map((partner) => <button key={partner.id} className={partner.id === activePartner.id ? 'is-active' : ''} type="button" disabled={!runtime || busy} onClick={() => switchPartner(partner)}><PartnerArt partner={partner} decorative /><span>{partner.displayName}</span></button>)}</div>
             <nav className="mobile-life-strip" aria-label="生活任務">{lifeControls.map((control) => <button key={control.id} type="button" onClick={() => selectLifeControl(control)}><b style={{ background: control.tone }}>{control.mark}</b>{control.label}</button>)}</nav>
             <nav className="mobile-panel-strip" aria-label="夥伴管理">{panels.map((item) => <button key={item.id} type="button" onClick={() => openPanel(item.id)}><b>{item.icon}</b>{item.label}</button>)}</nav>
@@ -568,7 +652,7 @@ export default function Home() {
         </section>
 
         <button
-          className="console-resizer"
+          className={`console-resizer ${mobileConsoleOpen ? 'is-visible' : ''}`}
           type="button"
           role="separator"
           aria-label="調整聊天控制欄寬度"
@@ -689,6 +773,15 @@ export default function Home() {
             <div className="memory-log"><article><span>旅</span><div><strong>台南旅行書</strong><p>一起決定第二天採步行為主，晚餐預算保留給小吃。</p><small>今天 ・ 旅行</small></div></article><article><span>食</span><div><strong>不追求完美的晚餐</strong><p>記得蔬菜和飽足感，比精算每一口更重要。</p><small>昨天 ・ 飲控</small></div></article><article><span>住</span><div><strong>旅行基金 72%</strong><p>本週咖啡支出已整理，沒有動用旅行基金。</p><small>8 月 29 日 ・ 記帳</small></div></article></div>
             <div className="webmcp-core"><span className="connection-dot" /><div><strong>{runtime?.webmcpAvailable ? 'WebMCP 已連線' : 'WebMCP Core Ready'}</strong><p>支援夥伴狀態檢查、任務提交、角色資產候選與回應寫入。</p></div><b>r{runtime?.stage.revision ?? 0}</b></div>
             <div className="portable-memory"><div><strong>攜帶這位夥伴的記憶</strong><small>ZIP 匯入前會驗證結構、雜湊與資產</small></div><div><button type="button" disabled={!runtime} onClick={exportCompanion}>匯出記憶</button><label>匯入記憶<input className="visually-hidden" type="file" accept=".zip,application/zip" disabled={!runtime} onChange={importCompanion} /></label></div>{dataStatus && <p role="status">{dataStatus}</p>}</div>
+          </>}
+
+          {panel === 'adventure' && <>
+            <div className="console-heading"><div><span>AOZU ADVENTURE</span><h1>和{activePartner.displayName}出發</h1></div><b>本機計分</b></div>
+            <p className="adventure-console-intro">冒險由夥伴或 WebMCP 發起。選一個場景後，會回到以角色為中心的全畫面遊戲。</p>
+            <div className="adventure-chooser">
+              <button type="button" onClick={() => { setAdventureMode('room'); setMobileConsoleOpen(false); }}><span className="room-preview">●</span><strong>黑炭精靈大作戰</strong><p>房間裡的黑炭精靈會越長越多，點擊牠們讓{activePartner.displayName}發射橡皮筋。</p><b>點擊／觸控射擊</b></button>
+              <button type="button" onClick={() => { setAdventureMode('forest'); setMobileConsoleOpen(false); }}><span className="forest-preview" /><strong>風之森林淨路行動</strong><p>跳過風吹來的垃圾，成功避開就能累積分數並保存在這台裝置。</p><b>空白鍵／觸控跳躍</b></button>
+            </div>
           </>}
 
           {runtimeError && <div className="runtime-error" role="alert">{runtimeError}</div>}

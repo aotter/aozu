@@ -1,5 +1,8 @@
 import type { AgentCapability } from '../../core/application/ports.ts'
 import { CHARACTER_VARIANT_GROUPS, type CharacterAssetTarget, type CharacterVariantGroup, type CharacterVariantLayer } from '../../core/domain/character.ts'
+import { ADVENTURE_SCORE_KEY, parseAdventureScores } from '../../../adventure.ts'
+
+export const AOZU_ACTIVITIES = ['meals', 'money', 'steps', 'travel', 'fitness', 'writing', 'room-shooter', 'forest-runner'] as const
 
 type ModelContext = {
   registerTool(tool: {
@@ -30,7 +33,57 @@ export function registerCompanionTools(document: Document, useCases: {
   const modelContext = (document as WebMcpDocument).modelContext
   if (!modelContext) return null
   const controller = new AbortController()
+  const sendUiCommand = (detail: Record<string, unknown>) => {
+    document.defaultView?.dispatchEvent(new CustomEvent('aozu-ui-command', { detail }))
+  }
   void Promise.all([
+    modelContext.registerTool({
+      name: 'open_aozu_dialogue',
+      title: 'Open AOZU Companion Dialogue',
+      description: 'Open the normally collapsed AOZU dialogue in the website so the user can continue an interaction with the active companion. Use this whenever browser guidance, pasted information, writing, travel planning, or another user reply is needed.',
+      inputSchema: {
+        type: 'object',
+        properties: { message: { type: 'string', minLength: 1, maxLength: 800 } },
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      async execute(input) {
+        sendUiCommand({ command: 'open-dialogue', message: typeof input.message === 'string' ? input.message : '' })
+        return { status: 'ok', data: { dialogue: 'open' } }
+      },
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'start_aozu_activity',
+      title: 'Start AOZU Activity',
+      description: 'Guide the active companion into a life task, shared writing, travel planning, or one of the playable room and forest adventures. The website opens the needed dialogue or game view for the user.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          activity: { type: 'string', enum: AOZU_ACTIVITIES },
+          message: { type: 'string', maxLength: 800 },
+        },
+        required: ['activity'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      async execute(input) {
+        const activity = String(input.activity)
+        if (!AOZU_ACTIVITIES.includes(activity as (typeof AOZU_ACTIVITIES)[number])) throw new Error('Unknown AOZU activity')
+        sendUiCommand({ command: 'start-activity', activity, message: typeof input.message === 'string' ? input.message : '' })
+        return { status: 'ok', data: { activity } }
+      },
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'inspect_aozu_adventure_scores',
+      title: 'Inspect AOZU Adventure Scores',
+      description: 'Read the locally stored best scores for the room rubber-band shooter and forest jump adventure.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true },
+      async execute() {
+        const storage = document.defaultView?.localStorage
+        return { status: 'ok', data: parseAdventureScores(storage?.getItem(ADVENTURE_SCORE_KEY) ?? null) }
+      },
+    }, { signal: controller.signal }),
     modelContext.registerTool({
       name: 'inspect_character_contract',
       title: 'Inspect Character Contract',
