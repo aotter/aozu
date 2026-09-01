@@ -10,7 +10,7 @@ import { AppMenu } from '@/ui/AppMenu'
 import { CandidateReviewPage } from '@/ui/pages/CandidateReviewPage'
 import { CharacterDraftPage } from '@/ui/pages/CharacterDraftPage'
 import { CompanionPage } from '@/ui/pages/CompanionPage'
-import { CreationHandoffPage } from '@/ui/pages/CreationHandoffPage'
+import { CompanionCreationPage } from '@/ui/pages/CompanionCreationPage'
 import { StarterDraftPage } from '@/ui/pages/StarterDraftPage'
 import { StartPage } from '@/ui/pages/StartPage'
 import { StatusPage } from '@/ui/pages/StatusPage'
@@ -125,7 +125,14 @@ export function AppRoutes({ application }: { application: Application }) {
     />} />
     <Route path="/character" element={characterDraftPage} />
     <Route path="/character/:step" element={characterDraftPage} />
-    <Route path="/create" element={<CreationHandoffPage loadDraft={application.openExperienceDraft} loadPacks={application.listCharacterPacks} />} />
+    <Route path="/create" element={<CompanionCreationPage
+      loadSummary={application.inspectCreation}
+      onCreate={async () => {
+        await application.createCompanion()
+        await refresh()
+        navigate('/companion', { replace: true })
+      }}
+    />} />
     <Route path="/review" element={review ? <CandidateReviewPage
       preview={review}
       onApprove={async () => {

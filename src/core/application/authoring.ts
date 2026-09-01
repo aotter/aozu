@@ -139,6 +139,39 @@ const parseInput = (value: unknown): ExperienceCandidateInput => {
   }
 }
 
+export function createLocalExperienceCandidateInput(
+  draft: ExperienceDraft,
+  storyResources: ValidatedStarterPackage | null,
+  character: { name: string; stateId: string },
+): ExperienceCandidateInput {
+  const direction = draft.story && storyResources?.starter.directions.find(({ id }) => id === draft.story?.direction.id)
+  if (draft.story && !direction) fail('starter_mismatch', 'draft.story', 'Selected Story Playbook is unavailable')
+  const input = parseInput(direction ? {
+    ...direction.playbook,
+    name: character.name,
+    seed: draft.story!.seed,
+  } : {
+    name: character.name,
+    seed: { kind: 'story', directionId: 'blank', loopIds: ['bond'], completionMode: 'continuous', brief: 'No story selected.' },
+    initialStageId: 'companion',
+    metrics: {},
+    flags: {},
+    itemDefinitions: [],
+    stages: [{ id: 'companion', title: character.name, narrative: 'No story or tasks selected.', agentFallback: true, actions: [], progress: [] }],
+    rules: [],
+  })
+  return {
+    ...input,
+    stages: input.stages.map((stage) => ({
+      ...stage,
+      scene: {
+        ...(draft.story ? { compositionId: draft.story.sceneCompositionId } : {}),
+        characterStateId: character.stateId,
+      },
+    })),
+  }
+}
+
 const appearanceKey = (reference: AppearanceRef) => `${reference.packId}@${reference.packVersion}:${reference.appearanceId}`
 
 const visitCondition = (condition: Condition, visitor: (condition: Exclude<Condition, { all: Condition[] } | { any: Condition[] } | { not: Condition }>) => void) => {

@@ -1,6 +1,8 @@
 import { resolveCharacterComposition, validateCharacterPack, type CharacterAssetInspection, type CharacterPack, type ResolvedCharacterLayer } from './character.ts'
 import { resolveSceneComposition, validateSceneAsset, type ResolvedSceneLayer, type SceneAsset, type SceneAssetInspection, type SceneComposition } from './scene.ts'
-import { PROGRESS_LOOP_IDS, type ProgressLoopId } from './playbook.ts'
+import { jsonSchemaToZod } from '@aotter/mantle-spec'
+
+import { EXPERIENCE_CANDIDATE_SCHEMA, PROGRESS_LOOP_IDS, type ProgressLoopId } from './playbook.ts'
 
 export const EXPERIENCE_CONTRACT_VERSION = 2
 
@@ -22,7 +24,10 @@ export interface DirectionDefinition {
   summary: string
   seed: ExperienceSeed
   sceneCompositionId: string
+  playbook: Record<string, unknown>
 }
+
+export type SelectedDirection = Omit<DirectionDefinition, 'playbook'>
 
 export interface PlaybookSkeleton {
   requiredStageIds: string[]
@@ -110,7 +115,7 @@ export interface ExperienceDraft {
   }
   story: null | {
     starter: { id: string; version: number; name: string; manifestSha256: string }
-    direction: DirectionDefinition
+    direction: SelectedDirection
     seed: ExperienceSeed
     sceneCompositionId: string
   }
@@ -164,6 +169,8 @@ const sha256 = async (value: string) => Array.from(
   (byte) => byte.toString(16).padStart(2, '0'),
 ).join('')
 
+const playbookValidator = jsonSchemaToZod(EXPERIENCE_CANDIDATE_SCHEMA)
+
 export function parseStarterPackage(value: unknown): StarterPackage {
   const starter = object(value, 'Starter package')
   if (starter.schemaVersion !== 1) throw new Error('Unsupported Starter package schema')
@@ -209,6 +216,7 @@ export function parseStarterPackage(value: unknown): StarterPackage {
     string(direction.name, 'Direction name')
     string(direction.summary, 'Direction summary')
     string(direction.sceneCompositionId, 'Direction scene composition')
+    object(direction.playbook, 'Direction Playbook')
     const seed = object(direction.seed, 'Experience Seed')
     string(seed.directionId, 'Experience Seed direction')
     string(seed.brief, 'Experience Seed brief')
@@ -289,6 +297,9 @@ export async function validateLoadedStarterPackage(
       new Set(seed.loopIds).size !== seed.loopIds.length ||
       !sceneCompositions.has(direction.sceneCompositionId)
     ) throw new Error(`Invalid Direction: ${direction.id}`)
+    if (!playbookValidator.safeParse({ ...direction.playbook, name: direction.name, seed }).success) {
+      throw new Error(`Invalid Direction Playbook: ${direction.id}`)
+    }
   }
 
   unique(starter.skeleton.requiredStageIds, 'required stage ID')
@@ -314,6 +325,7 @@ export function createExperienceDraftData(
 ): NewExperienceDraft {
   const direction = loaded.starter.directions.find((candidate) => candidate.id === directionId)
   if (!direction) throw new Error(`Direction not found: ${directionId}`)
+  const { playbook: _playbook, ...selectedDirection } = direction
   return {
     schemaVersion: 1,
     revision: 0,
@@ -325,7 +337,7 @@ export function createExperienceDraftData(
         name: loaded.starter.name,
         manifestSha256: loaded.manifestSha256,
       },
-      direction: structuredClone(direction),
+      direction: structuredClone(selectedDirection),
       seed: structuredClone(direction.seed),
       sceneCompositionId: direction.sceneCompositionId,
     },

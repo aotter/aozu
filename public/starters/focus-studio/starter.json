@@ -3,7 +3,7 @@
   "id": "focus-studio",
   "version": 3,
   "name": "Focus Studio",
-  "description": "A calm visual foundation for an agent-authored study companion.",
+  "description": "A calm study companion with a ready-to-play focus loop.",
   "compatibility": {
     "contractVersion": 2,
     "backboneVersion": "6"
@@ -160,9 +160,54 @@
           "mastery"
         ],
         "completionMode": "continuous",
-        "brief": "Author a supportive daily study experience with clear local actions, measurable focus progress, and an explicit agent fallback only where open-ended coaching is useful."
+        "brief": "A supportive daily study experience with clear local actions, measurable focus progress, and optional open-ended coaching."
       },
-      "sceneCompositionId": "scene:focus-studio"
+      "sceneCompositionId": "scene:focus-studio",
+      "playbook": {
+        "initialStageId": "study-session",
+        "metrics": {
+          "focus": 0
+        },
+        "flags": {},
+        "itemDefinitions": [],
+        "stages": [
+          {
+            "id": "study-session",
+            "title": "Daily Study",
+            "narrative": "Choose one small task, focus, then mark the session complete.",
+            "agentFallback": true,
+            "actions": [
+              {
+                "id": "complete-focus-session",
+                "label": "Complete a focus session",
+                "phrases": [
+                  "complete a focus session",
+                  "finished studying"
+                ],
+                "effects": [
+                  {
+                    "type": "addMetric",
+                    "metricId": "focus",
+                    "amount": 1
+                  }
+                ]
+              }
+            ],
+            "progress": [
+              {
+                "id": "focus",
+                "label": "Focus",
+                "source": {
+                  "fact": "metric",
+                  "id": "focus"
+                },
+                "max": 5
+              }
+            ]
+          }
+        ],
+        "rules": []
+      }
     }
   ],
   "skeleton": {
@@ -175,7 +220,7 @@
     "instructions": [
       "Use study-session as the initial stage and bind it to the selected character state and scene composition.",
       "Give every reachable non-terminal stage at least one unconditional local action or an explicit agent fallback.",
-      "Use the focus metric to make the rhythm and mastery recipe visible; author all labels, narratives, phrases, effects, and rules rather than relying on hidden defaults."
+      "Use the focus metric to keep the rhythm and mastery recipe visible when customizing the default Playbook."
     ]
   }
 }
