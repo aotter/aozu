@@ -559,7 +559,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-character-contract.yaml',
     envelope('Procedure', 'inspect-character-contract', {
       title: 'Inspect Character Contract',
-      description: 'Required before generating or changing character art. Optionally name one target to receive its exact reference layer, alpha bounds, z-order, canonical freshness, and alignment mode. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
+      description: 'Required before generating or changing character art. Optionally name one target to receive its exact reference layer, alpha-mask diagnostics, z-order, canonical freshness, and alignment mode. Outfits are complete dressed character-skin replacements, not clothing-only overlays. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
       input: {
         ...objectSchema({
           group: { enum: CHARACTER_VARIANT_GROUPS },
@@ -583,7 +583,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/submit-character-asset-candidate.yaml',
     envelope('Procedure', 'submit-character-asset-candidate', {
       title: 'Submit Character Asset Candidate',
-      description: 'Fill one layer of a character variant with a final PNG candidate. Inspect the contract first. A variant belongs to body, expression, outfit, or prop. Props are independent, multi-select, full-canvas overlays placed anywhere relative to the canonical character and may contain front and back layers. Send a data:image/png;base64 URL only after producing an exact 512×768 RGBA image with real transparency. Whole-head expressions include the complete aligned head, hairstyle, and facial hair. This stages a draft candidate only and never approves or activates it.',
+      description: 'Fill one layer of a character variant with a final PNG candidate. Inspect the contract first. Outfits must contain the complete dressed character because they replace character-skin; clothing-only images are rejected. Whole-head expressions include the complete aligned head, hairstyle, and facial hair. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. Send an exact 512×768 RGBA data:image/png;base64 URL with real transparency. Alpha-mask preflight rejects structurally invalid candidates without mutating the draft. A valid candidate is staged only and is never approved or activated.',
       input: objectSchema({
         group: { enum: CHARACTER_VARIANT_GROUPS },
         variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },

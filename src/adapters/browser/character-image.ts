@@ -1,3 +1,4 @@
+import type { CharacterAlphaMask } from '../../core/application/character-alignment.ts'
 import { CHARACTER_RIG, type CharacterAssetInspection, type ResolvedCharacterLayer } from '../../core/domain/character.ts'
 
 const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
@@ -47,6 +48,21 @@ export async function inspectCharacterImage(blob: Blob): Promise<CharacterAssetI
     size: blob.size,
     sha256: hex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))),
   }
+}
+
+export async function readCharacterAlphaMask(blob: Blob): Promise<CharacterAlphaMask> {
+  const bitmap = await createImageBitmap(blob)
+  const canvas = document.createElement('canvas')
+  canvas.width = bitmap.width
+  canvas.height = bitmap.height
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) throw new Error('Canvas is unavailable')
+  context.drawImage(bitmap, 0, 0)
+  bitmap.close()
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+  const alpha = new Uint8Array(canvas.width * canvas.height)
+  for (let source = 3, target = 0; source < pixels.length; source += 4, target++) alpha[target] = pixels[source]!
+  return { width: canvas.width, height: canvas.height, alpha }
 }
 
 export async function renderCharacterCompositeDataUrl(

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 
-import { buildCharacterPack, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, measureCharacterAssetAlignment, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
+import { measureCharacterMaskAlignment, type CharacterAlphaMask } from '../src/core/application/character-alignment.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 import type { CharacterPackLibraryRecord } from '../src/core/application/ports.ts'
@@ -144,14 +145,27 @@ savedDraft = await saveCharacterDraftAsset(
 )
 assert.equal(hasCurrentCharacterLayer(savedDraft, 'expression', 'happy', 'head'), true)
 assert.equal(savedDraft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.label, 'New happy')
-assert.equal(measureCharacterAssetAlignment(
-  { ...inspection, visibleBounds: { x: 60, y: 10, width: 390, height: 350 } },
-  { ...inspection, visibleBounds: { x: 66, y: 14, width: 386, height: 348 } },
-).status, 'aligned')
-assert.equal(measureCharacterAssetAlignment(
-  { ...inspection, visibleBounds: { x: 60, y: 10, width: 390, height: 350 } },
-  { ...inspection, visibleBounds: { x: 120, y: 80, width: 300, height: 250 } },
-).status, 'misaligned')
+const characterMask = (...rectangles: Array<{ x: number; y: number; width: number; height: number }>): CharacterAlphaMask => {
+  const alpha = new Uint8Array(512 * 768)
+  for (const rectangle of rectangles) for (let y = rectangle.y; y < rectangle.y + rectangle.height; y++) {
+    alpha.fill(255, y * 512 + rectangle.x, y * 512 + rectangle.x + rectangle.width)
+  }
+  return { width: 512, height: 768, alpha }
+}
+const canonicalMask = characterMask(
+  { x: 100, y: 20, width: 312, height: 300 },
+  { x: 220, y: 320, width: 72, height: 20 },
+  { x: 120, y: 340, width: 272, height: 320 },
+  { x: 150, y: 660, width: 80, height: 70 },
+  { x: 282, y: 660, width: 80, height: 70 },
+)
+const wholeHeadMask = characterMask({ x: 100, y: 20, width: 312, height: 300 }, { x: 220, y: 320, width: 72, height: 20 })
+assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, canonicalMask).status, 'aligned')
+assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, characterMask({ x: 140, y: 340, width: 232, height: 250 })).status, 'invalid')
+assert.equal(measureCharacterMaskAlignment('expression', canonicalMask, wholeHeadMask).status, 'aligned')
+assert.equal(measureCharacterMaskAlignment('expression', canonicalMask, characterMask({ x: 190, y: 130, width: 132, height: 80 })).status, 'invalid')
+assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, canonicalMask, { x: 20, y: 20, scale: 1 }).status, 'misaligned')
+assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, characterMask({ x: 0, y: 0, width: 10, height: 10 })).diagnostics[0]?.code, 'ALPHA_TOUCHES_CANVAS_EDGE')
 const staleUpdatedAt = savedDraft.updatedAt
 const transformed = await setCharacterVariantTransform(
   drafts,

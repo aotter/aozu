@@ -253,36 +253,6 @@ export function validateCharacterAssetInspection(inspection: CharacterAssetInspe
   ) throw new Error('Asset must be a visible, transparent 512×768 RGBA PNG under 5 MiB')
 }
 
-export function measureCharacterAssetAlignment(
-  reference: CharacterAssetInspection | null,
-  candidate: CharacterAssetInspection,
-  tolerance = 32,
-  transform: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM,
-) {
-  if (!reference?.visibleBounds || !candidate.visibleBounds) return { status: 'unverified' as const, reason: 'No comparable alpha bounds are available' }
-  const expected = reference.visibleBounds
-  const actual = transformCharacterBounds(candidate.visibleBounds, transform)
-  const delta = {
-    left: actual.x - expected.x,
-    top: actual.y - expected.y,
-    right: actual.x + actual.width - expected.x - expected.width,
-    bottom: actual.y + actual.height - expected.y - expected.height,
-  }
-  const suggestedScale = Math.min(expected.width / candidate.visibleBounds.width, expected.height / candidate.visibleBounds.height)
-  return {
-    status: Object.values(delta).every((value) => Math.abs(value) <= tolerance) ? 'aligned' as const : 'misaligned' as const,
-    expected,
-    actual,
-    delta,
-    tolerance,
-    suggestedTransform: {
-      scale: suggestedScale,
-      x: expected.x - candidate.visibleBounds.x * suggestedScale,
-      y: expected.y - candidate.visibleBounds.y * suggestedScale,
-    },
-  }
-}
-
 export async function setCharacterVariantTransform(
   drafts: CharacterDraftRepository,
   group: CharacterVariantGroup,
