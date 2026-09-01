@@ -12,7 +12,7 @@ import { createIndexedDbPendingTurnRepository } from './adapters/indexeddb/pendi
 import { bindMantleWebMcpTools, createAgentCapability } from './adapters/webmcp/tools.ts'
 import { loadStarterCatalog } from './adapters/browser/starter-packages.ts'
 import { queueAgentTurn, resolveAgentTurn } from './core/application/agent-turn.ts'
-import { AUTHORING_NAMESPACE, assembleExperienceCandidate, ExperienceCandidateValidationError } from './core/application/authoring.ts'
+import { AUTHORING_NAMESPACE, assembleExperienceCandidate, ExperienceCandidateValidationError, selectExperienceCharacter } from './core/application/authoring.ts'
 import { approveCandidate as approveStagedCandidate, loadPendingCandidatePreview } from './core/application/candidate.ts'
 import { loadCompanionStartup } from './core/application/companion.ts'
 import { loadStage, submitAction as submitPreparedAction, submitInteraction } from './core/application/stage.ts'
@@ -32,6 +32,7 @@ import {
   isCharacterDraftPopulated,
   installCharacterDraft,
   listInstalledCharacterPacks,
+  loadInstalledCharacterPackResources,
   loadCharacterProjection,
   migrateCharacterDraft,
   saveCharacterDraftAsset,
@@ -64,6 +65,7 @@ const readDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
 const toExperienceDraft = (entry: Entry): ExperienceDraft => ({
   id: entry.id,
   ...(structuredClone(entry.data) as unknown as Omit<ExperienceDraft, 'id' | 'createdAt' | 'updatedAt'>),
+  character: (entry.data.character as ExperienceDraft['character']) ?? null,
   createdAt: entry.createdAt,
   updatedAt: entry.updatedAt,
 })
@@ -224,6 +226,21 @@ export function createApplication(document: Document) {
     },
     prepareCharacter: (draft: CharacterDraft) => reviewCharacterDraft(inspectCharacterImage, draft),
     listCharacterPacks: () => listInstalledCharacterPacks(characterPacks, inspectCharacterImage),
+    async selectCharacterPack(draftId: string, expectedRevision: number, packId: string, packVersion: number) {
+      const installed = await loadInstalledCharacterPackResources(characterPacks, inspectCharacterImage, {
+        packId,
+        packVersion,
+      })
+      const repository = createIndexedDbEntryRepository(AUTHORING_NAMESPACE)
+      const updated = await selectExperienceCharacter(repository, {
+        draftId,
+        expectedRevision,
+        packId: installed.pack.id,
+        packVersion: installed.pack.version,
+        composition: installed.state.composition,
+      })
+      return toExperienceDraft(updated)
+    },
     async approveCharacterDraft() {
       const draft = await characterDrafts.get()
       if (!draft) throw new Error('Character draft not found')
@@ -271,13 +288,15 @@ export function createApplication(document: Document) {
       const draft = await openExperienceDraft()
       if (!draft) throw new Error('Choose a character and story starting point before asking the agent to author an experience')
       const story = await loadDraftStory(draft)
-      const characterDraft = await openCharacterDraft()
-      const character = buildCharacterDraftResources(characterDraft)
+      const characterDraft = draft.character ? null : await openCharacterDraft()
+      const character = draft.character
+        ? await loadInstalledCharacterPackResources(characterPacks, inspectCharacterImage, draft.character)
+        : buildCharacterDraftResources(characterDraft!)
       return {
         status: 'ok',
         data: {
           contractVersion: 2,
-          draft: { id: draft.id, revision: draft.revision, characterUpdatedAt: characterDraft.updatedAt },
+          draft: { id: draft.id, revision: draft.revision, characterUpdatedAt: characterDraft?.updatedAt ?? 0 },
           story: draft.story,
           seed: draft.story?.seed ?? null,
           selectedVisuals: {
@@ -291,6 +310,11 @@ export function createApplication(document: Document) {
               appearanceId: id,
             })),
             characterStates: [character.state],
+            characterPack: character.pack,
+            characterAssets: await Promise.all(character.assets.map(async ({ id, blob }) => ({
+              id,
+              dataUrl: await readDataUrl(blob),
+            }))),
             sceneCompositions: story?.starter.scenePack.compositions.map(({ id }) => ({
               packId: story.starter.scenePack.id,
               packVersion: story.starter.scenePack.version,
@@ -323,13 +347,16 @@ export function createApplication(document: Document) {
           nextActions: [],
         }
       }
-      const storedCharacter = await characterDrafts.get()
-      if (!storedCharacter || storedCharacter.updatedAt !== input.expectedCharacterUpdatedAt) throw new ExperienceSubmissionConflict('character_draft_changed')
+      const storedCharacter = draft.character ? null : await characterDrafts.get()
+      if (!draft.character && (!storedCharacter || storedCharacter.updatedAt !== input.expectedCharacterUpdatedAt)) throw new ExperienceSubmissionConflict('character_draft_changed')
+      const character = draft.character
+        ? await loadInstalledCharacterPackResources(characterPacks, inspectCharacterImage, draft.character)
+        : buildCharacterDraftResources(migrateCharacterDraft(storedCharacter!))
       const candidate = assembleExperienceCandidate(
         `bundle:${crypto.randomUUID()}`,
         draft,
         await loadDraftStory(draft),
-        migrateCharacterDraft(storedCharacter),
+        character,
         input.candidate,
       )
       const result = await persistTriggeredExperienceCandidate(

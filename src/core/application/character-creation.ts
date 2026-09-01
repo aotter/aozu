@@ -414,6 +414,31 @@ export async function listInstalledCharacterPacks(
   return Promise.all((await library.list()).map((record) => validateLibraryRecord(inspect, record)))
 }
 
+export async function loadInstalledCharacterPackResources(
+  library: CharacterPackLibraryRepository,
+  inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
+  selection: { packId: string; packVersion: number; composition?: AppearanceRef[] },
+) {
+  const record = (await library.list()).find(({ pack }) =>
+    pack.id === selection.packId && pack.version === selection.packVersion,
+  )
+  if (!record) throw new Error(`Installed Character Pack not found: ${selection.packId}@${selection.packVersion}`)
+  const composition = selection.composition ?? record.composition
+  const selected = { ...record, composition: structuredClone(composition) }
+  const projection = await validateLibraryRecord(inspect, selected)
+  return {
+    pack: structuredClone(record.pack),
+    state: {
+      id: `character:${record.pack.id}:v${record.pack.version}`,
+      packId: record.pack.id,
+      packVersion: record.pack.version,
+      composition: structuredClone(composition),
+    },
+    assets: record.assets.map(({ id, blob }) => ({ id, blob })),
+    layers: projection.layers,
+  }
+}
+
 export async function loadCharacterProjection(
   entries: EntryReader,
   assetsFor: AssetRepositoryFactory,

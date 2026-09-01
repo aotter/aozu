@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { buildCharacterPack, createCharacterDraft, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, createCharacterDraft, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft } from '../src/core/application/character-creation.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 import type { CharacterPackLibraryRecord } from '../src/core/application/ports.ts'
@@ -48,6 +48,20 @@ secondDraft.packId = 'test-character-two'
 secondDraft.name = 'Test Character Two'
 await installCharacterDraft(library, async () => inspection, secondDraft)
 assert.equal((await listInstalledCharacterPacks(library, async () => inspection)).length, 2)
+const installedResources = await loadInstalledCharacterPackResources(library, async () => inspection, {
+  packId: pack.id,
+  packVersion: pack.version,
+})
+assert.equal(installedResources.state.id, `character:${pack.id}:v${pack.version}`)
+assert.equal(installedResources.assets.length, pack.assets.length)
+await assert.rejects(() => loadInstalledCharacterPackResources(library, async () => inspection, {
+  packId: 'missing', packVersion: 1,
+}), /not found/)
+await assert.rejects(() => loadInstalledCharacterPackResources(library, async () => inspection, {
+  packId: pack.id,
+  packVersion: pack.version,
+  composition: [{ packId: pack.id, packVersion: pack.version, appearanceId: 'missing' }],
+}), /Appearance not found/)
 const incomplete = createCharacterDraft('incomplete')
 incomplete.variants.find(({ group, id }) => group === 'body' && id === 'base')!.layers.body = asset
 assert.throws(() => buildCharacterPack(incomplete), /required/)

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { assembleExperienceCandidate, ExperienceCandidateValidationError, type ExperienceCandidateInput } from '../src/core/application/authoring.ts'
+import { assembleExperienceCandidate, ExperienceCandidateValidationError, selectExperienceCharacter, type ExperienceCandidateInput } from '../src/core/application/authoring.ts'
 import { approveCandidate, loadPendingCandidatePreview } from '../src/core/application/candidate.ts'
 import { validateBundle } from '../src/core/bundle.ts'
 import { buildCharacterDraftResources, createCharacterDraftFromStarter } from '../src/core/application/character-creation.ts'
@@ -25,7 +25,40 @@ const draft: ExperienceDraft = {
   updatedAt: 1,
 }
 const characterDraft = createCharacterDraftFromStarter(resources, 'character:focus-default')
-const characterStateId = buildCharacterDraftResources(characterDraft).state.id
+const characterResources = buildCharacterDraftResources(characterDraft)
+const characterStateId = characterResources.state.id
+let selectedDraftEntry = {
+  id: draft.id,
+  collection: 'experience-drafts',
+  status: 'published' as const,
+  version: 1,
+  data: { ...createExperienceDraftData(resources, 'mastery-journey'), lastSubmission: { idempotencyKey: 'old', bundleId: 'old' } } as Record<string, unknown>,
+  createdAt: 1,
+  updatedAt: 1,
+}
+const selectedEntry = await selectExperienceCharacter({
+  async readById() { return selectedDraftEntry },
+  async update(args: { data: Record<string, unknown> }) {
+    selectedDraftEntry = { ...selectedDraftEntry, version: selectedDraftEntry.version + 1, data: args.data }
+    return selectedDraftEntry
+  },
+} as never, {
+  draftId: draft.id,
+  expectedRevision: 0,
+  packId: characterResources.pack.id,
+  packVersion: characterResources.pack.version,
+  composition: characterResources.state.composition,
+  now: 2,
+})
+assert.equal(selectedEntry.data.revision, 1)
+assert.equal('lastSubmission' in selectedEntry.data, false)
+await assert.rejects(() => selectExperienceCharacter({ async readById() { return selectedDraftEntry } } as never, {
+  draftId: draft.id,
+  expectedRevision: 0,
+  packId: characterResources.pack.id,
+  packVersion: characterResources.pack.version,
+  composition: characterResources.state.composition,
+}), /stale/)
 const scene = { compositionId: 'scene:focus-studio', characterStateId }
 const input: ExperienceCandidateInput = {
   name: 'Mastery Journey',
@@ -61,10 +94,12 @@ const input: ExperienceCandidateInput = {
   ],
 }
 
-const candidate = assembleExperienceCandidate('bundle-mastery-journey', draft, resources, characterDraft, input, 1)
+const candidate = assembleExperienceCandidate('bundle-mastery-journey', draft, resources, characterResources, input, 1)
 assert.deepEqual(candidate.record.identity.contractVersion === 2 ? candidate.record.identity.loopIds : [], ['mastery', 'journey'])
 assert.equal(JSON.stringify(candidate.entries).includes('loopIds'), false)
 assert.equal(candidate.preview.source, 'experience')
+assert.equal(candidate.entries.find(({ collection }) => collection === 'character-packs')?.data.pack.id, characterResources.pack.id)
+assert.equal(characterResources.assets.every(({ id }) => candidate.assets.some((asset) => asset.id === id)), true)
 assert.equal(candidate.record.metadata?.starter?.manifestSha256, resources.manifestSha256)
 assert.equal(candidate.assets.length, 3)
 const storedCandidateEntries = new Map(candidate.entries.map(({ id, collection, data }) => [id, {
@@ -101,7 +136,7 @@ assert.equal(resumed?.source === 'experience' ? resumed.sceneLayers.length : 0, 
 const blankDraft: ExperienceDraft = {
   id: 'draft-blank', ...createBlankExperienceDraftData(), createdAt: 1, updatedAt: 1,
 }
-const blank = assembleExperienceCandidate('bundle-blank', blankDraft, null, characterDraft, {
+const blank = assembleExperienceCandidate('bundle-blank', blankDraft, null, characterResources, {
   name: 'Blank Story',
   seed: { kind: 'story', directionId: 'custom-story', loopIds: ['rhythm'], completionMode: 'continuous', brief: 'Create a small story.' },
   initialStageId: 'start', metrics: {}, flags: {}, itemDefinitions: [],
@@ -116,7 +151,7 @@ let activated = false
 await approveCandidate({ async activate() { activated = true; return {} as never } } as never, candidate.record.id, true)
 assert.equal(activated, true)
 assert.throws(
-  () => assembleExperienceCandidate('changed-starter', draft, { ...resources, manifestSha256: '0'.repeat(64) }, characterDraft, input, 1),
+  () => assembleExperienceCandidate('changed-starter', draft, { ...resources, manifestSha256: '0'.repeat(64) }, characterResources, input, 1),
   (error) => error instanceof ExperienceCandidateValidationError && error.diagnostics[0]?.code === 'starter_mismatch',
 )
 
@@ -158,7 +193,7 @@ await assert.rejects(
 )
 
 const expectDiagnostic = (changed: ExperienceCandidateInput, code: string) => assert.throws(
-  () => assembleExperienceCandidate(`bad-${code}`, draft, resources, characterDraft, changed, 1),
+  () => assembleExperienceCandidate(`bad-${code}`, draft, resources, characterResources, changed, 1),
   (error) => error instanceof ExperienceCandidateValidationError && error.diagnostics[0]?.code === code,
 )
 const invalidCandidates: Array<[string, (changed: ExperienceCandidateInput) => void]> = [
@@ -196,7 +231,7 @@ terminalOnly.stages = [{
 terminalOnly.initialStageId = 'study-session'
 terminalOnly.rules = []
 assert.throws(
-  () => assembleExperienceCandidate('bad-continuous', continuousDraft, resources, characterDraft, terminalOnly, 1),
+  () => assembleExperienceCandidate('bad-continuous', continuousDraft, resources, characterResources, terminalOnly, 1),
   (error) => error instanceof ExperienceCandidateValidationError && error.diagnostics[0]?.code === 'missing_continuing_route',
 )
 
