@@ -65,8 +65,10 @@ the selected draft; older drafts cannot be submitted after a newer selection.
 the prepared Mantle runtime and returns the exact revision, package resources,
 skeleton, closed condition/effect vocabulary, and validation limits.
 
-`submit_experience_candidate` delegates to the fixed
-`submit-experience-candidate` Mantle Trigger. The trusted Procedure handler:
+`submit_experience_candidate` is projected from the
+`submit-experience-candidate` Mantle Procedure and Trigger. Its structured
+candidate input is the manifest contract directly; the browser adapter does not
+serialize it into a second JSON-string contract. The trusted Procedure handler:
 
 1. loads the selected Mantle draft and the exact package version;
 2. treats a prior successful idempotency key as a replay;

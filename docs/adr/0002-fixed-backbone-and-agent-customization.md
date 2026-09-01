@@ -34,8 +34,10 @@ Companion owns the required Schemas, Views, Procedures, Triggers, handler
 references, lifecycle rules, revision fields, and idempotency fields. These
 parts are immutable to the agent.
 
-At minimum, the backbone exposes a `current-stage` View and a `submit-action`
-Procedure whose output conforms to `StageProjection` from ADR-0001.
+At minimum, the bundle/play backbone exposes a `current-stage` View and a
+`submit-companion-action` Procedure whose output conforms to `StageProjection`
+from ADR-0001. Authoring control-plane Procedures compile into a separate plan
+and never ship inside resolved bundles.
 
 ### Starter authoring input
 

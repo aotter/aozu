@@ -103,6 +103,13 @@ Native SQL Views and HTTP Triggers are outside the initial browser profile.
 WebMCP is an optional adapter capability: its absence does not block startup,
 bundle import, local persistence, or local Procedures and Views.
 
+Authoring and bundle/play capabilities compile into separate Runtime Plans.
+Every browser-exposed tool comes from one explicit public MCP Trigger targeting
+one Procedure. The browser adapter reads its name, title, description, schema,
+and read-only annotation from the compiled plan and delegates execution only to
+`MantleRuntime.invokeTrigger()`. It does not maintain a second tool catalog or
+dispatch directly to application use cases.
+
 ## Consequences
 
 - New progress shapes can be introduced through validated manifests and entries

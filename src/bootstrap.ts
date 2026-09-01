@@ -8,14 +8,20 @@ import { ExperienceSubmissionConflict, persistTriggeredExperienceCandidate } fro
 import { createIndexedDbEntryRepository, createIndexedDbMantleStorageAdapter } from './adapters/indexeddb/mantle-storage.ts'
 import { createIndexedDbActionRepository } from './adapters/indexeddb/action-repository.ts'
 import { createIndexedDbPendingTurnRepository } from './adapters/indexeddb/pending-turn-repository.ts'
-import { createAgentCapability, registerCompanionTools } from './adapters/webmcp/tools.ts'
+import { createAgentCapability, registerMantleWebMcpTools } from './adapters/webmcp/tools.ts'
 import { loadStarterCatalog } from './adapters/browser/starter-packages.ts'
 import { queueAgentTurn, resolveAgentTurn } from './core/application/agent-turn.ts'
 import { AUTHORING_NAMESPACE, assembleExperienceCandidate, ExperienceCandidateValidationError } from './core/application/authoring.ts'
 import { approveCandidate as approveStagedCandidate } from './core/application/candidate.ts'
 import { loadCompanionStartup } from './core/application/companion.ts'
-import { loadStage, submitInteraction } from './core/application/stage.ts'
-import { CHARACTER_RIG, type CharacterAssetTarget, type CharacterDraft } from './core/domain/character.ts'
+import { loadStage, submitAction as submitPreparedAction, submitInteraction } from './core/application/stage.ts'
+import {
+  CHARACTER_RIG,
+  type CharacterAssetTarget,
+  type CharacterDraft,
+  type CharacterVariantGroup,
+  type CharacterVariantLayer,
+} from './core/domain/character.ts'
 import {
   CHARACTER_CREATION_GROUPS,
   REQUIRED_CHARACTER_TARGETS,
@@ -33,7 +39,7 @@ import { loadSceneProjection } from './core/application/scene.ts'
 import { exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
 import { createExperienceDraftData, validateLoadedStarterPackage, type ExperienceDraft } from './core/domain/starter.ts'
 import { PLAYBOOK_LIMITS as EXPERIENCE_LIMITS } from './core/domain/playbook.ts'
-import { compileFixedBackbone, FIXED_BACKBONE_VERSION } from './core/mantle/backbone.ts'
+import { compileAuthoringBackbone, compileFixedBackbone, FIXED_BACKBONE_VERSION } from './core/mantle/backbone.ts'
 
 const readDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader()
@@ -89,8 +95,9 @@ export function createApplication(document: Document) {
     ) throw new Error('Starter package changed without a version change')
     return packaged
   }
+  const authoringPlan = compileAuthoringBackbone()
+  const playPlan = compileFixedBackbone()
   let authoringRuntime: Promise<MantleRuntime> | undefined
-  let boundAuthoringRuntime: MantleRuntime | undefined
 
   const authoringFailure = (code: string, path: string, message: string, value?: unknown, conflict = false) => new InvokeFailure(runtimeDiagnostic({
     code: conflict ? 'CONFLICT' : 'INPUT_VALIDATION_FAILED',
@@ -102,60 +109,14 @@ export function createApplication(document: Document) {
   }))
 
   const getAuthoringRuntime = () => authoringRuntime ??= bootMantleRuntime({
-    plan: compileFixedBackbone(),
+    plan: authoringPlan,
     storage: createIndexedDbMantleStorageAdapter(AUTHORING_NAMESPACE),
     handlers: {
-      'companion.submit-action': () => {
-        throw authoringFailure('unavailable', 'handler/companion.submit-action', 'Runtime actions require an active Companion namespace')
-      },
-      'companion.submit-experience-candidate': async (rawInput: unknown) => {
-        const input = rawInput as { draftId: string; expectedRevision: number; idempotencyKey: string; candidateJson: string }
-        try {
-          const entry = await boundAuthoringRuntime?.entries.readById(input.draftId)
-          if (!entry || entry.collection !== 'experience-drafts' || entry.status !== 'published') {
-            throw new ExperienceSubmissionConflict('draft_not_found')
-          }
-          const draft = toExperienceDraft(entry)
-          if (draft.lastSubmission?.idempotencyKey === input.idempotencyKey) {
-            return { bundleId: draft.lastSubmission.bundleId, revision: draft.revision, replayed: true }
-          }
-          const packaged = await loadDraftStarter(draft)
-          const resources = await validateLoadedStarterPackage(
-            { starter: structuredClone(packaged.starter), assets: structuredClone(packaged.assets) },
-            inspectCharacterImage,
-            inspectSceneImage,
-            FIXED_BACKBONE_VERSION,
-          )
-          let candidateInput: unknown
-          try {
-            candidateInput = JSON.parse(input.candidateJson)
-          } catch {
-            throw new ExperienceCandidateValidationError({ code: 'invalid_json', path: 'candidate', message: 'Candidate must be valid JSON' })
-          }
-          const candidate = assembleExperienceCandidate(`bundle:${crypto.randomUUID()}`, draft, resources, candidateInput)
-          const result = await persistTriggeredExperienceCandidate(
-            input.draftId,
-            input.expectedRevision,
-            input.idempotencyKey,
-            candidate,
-          )
-          if (!result.replayed) browser?.dispatchEvent(new browser.CustomEvent('experience-candidate-staged', { detail: candidate.preview }))
-          return result
-        } catch (error) {
-          if (error instanceof ExperienceCandidateValidationError) {
-            const diagnostic = error.diagnostics[0]!
-            throw authoringFailure(diagnostic.code, diagnostic.path, diagnostic.message)
-          }
-          if (error instanceof ExperienceSubmissionConflict) {
-            throw authoringFailure(error.code, 'experience-draft', error.message, error.currentRevision, true)
-          }
-          throw authoringFailure('invalid_starter', 'experience-draft.starter', error instanceof Error ? error.message : 'Starter validation failed')
-        }
-      },
+      'companion.inspect-experience-contract': inspectExperienceContract,
+      'companion.submit-experience-candidate': submitExperienceCandidate,
+      'companion.inspect-character-contract': inspectCharacterContract,
+      'companion.submit-character-asset-candidate': submitCharacterAssetCandidate,
     },
-  }).then((runtime) => {
-    boundAuthoringRuntime = runtime
-    return runtime
   })
 
   const openExperienceDraft = async () => {
@@ -272,8 +233,7 @@ export function createApplication(document: Document) {
     exportData: exportPortableBundle,
     prepareImport: stagePortableBundle,
   }
-  registerCompanionTools(document, {
-    async inspectExperience() {
+  async function inspectExperienceContract() {
       const draft = await openExperienceDraft()
       if (!draft) throw new Error('Select a Starter and Direction before asking the agent to author an experience')
       const packaged = await loadDraftStarter(draft)
@@ -311,38 +271,52 @@ export function createApplication(document: Document) {
         },
         nextActions: [{ tool: 'submit_experience_candidate', required: true, reason: 'Submit one complete declarative Playbook for this exact draft revision.' }],
       }
-    },
-    async submitExperience(input) {
-      const result = await (await getAuthoringRuntime()).invokeTrigger<{
-        bundleId: string
-        revision: number
-        replayed: boolean
-      }>({
-        trigger: 'submit-experience-candidate',
-        input: {
-          draftId: input.draftId,
-          expectedRevision: input.expectedRevision,
-          idempotencyKey: input.idempotencyKey,
-          candidateJson: JSON.stringify(input.candidate),
-        },
-        ctx: { user: null, staff: null, env: {} },
-      })
-      return result.ok
-        ? {
-            status: 'ok',
-            data: { ...result.data, awaitingUserReview: true },
-            nextActions: [],
-          }
-        : {
-            status: 'error',
-            diagnostics: [{
-              code: result.diagnostic.code,
-              path: result.diagnostic.path,
-              message: result.diagnostic.message ?? 'Experience candidate was rejected',
-            }],
-          }
-    },
-    async inspectCharacter() {
+  }
+
+  async function submitExperienceCandidate(rawInput: unknown) {
+    const input = rawInput as { draftId: string; expectedRevision: number; idempotencyKey: string; candidate: unknown }
+    try {
+      const entry = await createIndexedDbEntryRepository(AUTHORING_NAMESPACE).readById(input.draftId)
+      if (!entry || entry.collection !== 'experience-drafts' || entry.status !== 'published') {
+        throw new ExperienceSubmissionConflict('draft_not_found')
+      }
+      const draft = toExperienceDraft(entry)
+      if (draft.lastSubmission?.idempotencyKey === input.idempotencyKey) {
+        return {
+          status: 'ok',
+          data: { bundleId: draft.lastSubmission.bundleId, revision: draft.revision, replayed: true, awaitingUserReview: true },
+          nextActions: [],
+        }
+      }
+      const packaged = await loadDraftStarter(draft)
+      const resources = await validateLoadedStarterPackage(
+        { starter: structuredClone(packaged.starter), assets: structuredClone(packaged.assets) },
+        inspectCharacterImage,
+        inspectSceneImage,
+        FIXED_BACKBONE_VERSION,
+      )
+      const candidate = assembleExperienceCandidate(`bundle:${crypto.randomUUID()}`, draft, resources, input.candidate)
+      const result = await persistTriggeredExperienceCandidate(
+        input.draftId,
+        input.expectedRevision,
+        input.idempotencyKey,
+        candidate,
+      )
+      if (!result.replayed) browser?.dispatchEvent(new browser.CustomEvent('experience-candidate-staged', { detail: candidate.preview }))
+      return { status: 'ok', data: { ...result, awaitingUserReview: true }, nextActions: [] }
+    } catch (error) {
+      if (error instanceof ExperienceCandidateValidationError) {
+        const diagnostic = error.diagnostics[0]!
+        throw authoringFailure(diagnostic.code, diagnostic.path, diagnostic.message)
+      }
+      if (error instanceof ExperienceSubmissionConflict) {
+        throw authoringFailure(error.code, 'experience-draft', error.message, error.currentRevision, true)
+      }
+      throw authoringFailure('invalid_starter', 'experience-draft.starter', error instanceof Error ? error.message : 'Starter validation failed')
+    }
+  }
+
+  async function inspectCharacterContract() {
       const draft = await openCharacterDraft()
       const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
       return {
@@ -375,8 +349,24 @@ export function createApplication(document: Document) {
           .filter((target) => !draft.variants.find(({ group, id }) => group === target.group && id === target.variantId)?.layers[target.layer])
           .map((target) => ({ tool: 'submit_character_asset_candidate', required: true, reason: `Fill ${target.group}/${target.variantId}/${target.layer}.` })),
       }
-    },
-    async submitCharacterAsset({ target, filename, dataUrl }: { target: CharacterAssetTarget; filename: string; dataUrl: string }) {
+  }
+
+  async function submitCharacterAssetCandidate(rawInput: unknown) {
+      const input = rawInput as {
+        group: CharacterVariantGroup
+        variantId: string
+        label: string
+        layer: CharacterVariantLayer
+        filename: string
+        dataUrl: string
+      }
+      const target: CharacterAssetTarget = {
+        group: input.group,
+        variantId: input.variantId,
+        label: input.label,
+        layer: input.layer,
+      }
+      const { filename, dataUrl } = input
       const match = /^data:image\/png;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl)
       if (!match || dataUrl.length > 7_100_000) throw new Error('Expected a PNG data URL under 5 MiB')
       const binary = atob(match[1])
@@ -394,9 +384,9 @@ export function createApplication(document: Document) {
           .filter((required) => !draft.variants.find(({ group, id }) => group === required.group && id === required.variantId)?.layers[required.layer])
           .map((required) => ({ tool: 'submit_character_asset_candidate', required: true, reason: `Fill ${required.group}/${required.variantId}/${required.layer}.` })),
       }
-    },
-    async inspect() {
-      const { bundleId, runId, name } = await active()
+  }
+
+  async function inspectCompanion(bundleId: string, runId: string, name: string) {
       const entries = createIndexedDbEntryRepository(bundleId)
       const pending = (await entries.readPublished({ collection: 'pending-agent-turns' }))
         .filter(({ data }) => data.status === 'pending')
@@ -410,21 +400,71 @@ export function createApplication(document: Document) {
           pendingTurns: pending,
         },
       }
-    },
-    async submit({ actionId, expectedRevision, idempotencyKey }) {
-      const result = await application.submitAction(actionId, expectedRevision, idempotencyKey)
+  }
+
+  async function submitCompanionAction(bundleId: string, runId: string, contractVersion: 1 | 2, rawInput: unknown) {
+      const input = rawInput as { actionId: string; expectedRevision: number; idempotencyKey: string }
+      const result = await submitPreparedAction(createIndexedDbEntryRepository(bundleId), createIndexedDbActionRepository(), {
+        bundleId, runId, contractVersion, ...input,
+      })
       document.defaultView?.dispatchEvent(new Event('companion-updated'))
       return result
-    },
-    async resolve(input) {
-      const { bundleId, contractVersion } = await active()
+  }
+
+  async function resolveCompanionTurn(bundleId: string, contractVersion: 1 | 2, rawInput: unknown) {
+      const input = rawInput as { turnId: string; idempotencyKey: string; dialogue: string; effects: unknown }
       const stage = await resolveAgentTurn(createIndexedDbEntryRepository(bundleId), createIndexedDbActionRepository(), {
         bundleId, contractVersion, ...input,
       })
       document.defaultView?.dispatchEvent(new Event('companion-updated'))
       return { status: 'ok', data: { stage }, nextActions: [{ tool: 'inspect_companion', required: true }] }
-    },
+  }
+
+  let playRuntime: { key: string; value: Promise<MantleRuntime> } | undefined
+  const invokeContext = { user: null, staff: null, env: {} }
+  const incompatiblePlayResult = (actual: string | null) => ({
+    ok: false as const,
+    diagnostic: runtimeDiagnostic({
+      code: 'INPUT_VALIDATION_FAILED',
+      severity: 'error',
+      path: 'webmcp/play/backboneVersion',
+      value: actual,
+      expected: FIXED_BACKBONE_VERSION,
+      message: actual === null
+        ? 'No active Companion is available for play tools'
+        : `Active Companion backbone ${actual} is incompatible with WebMCP play tools; expected ${FIXED_BACKBONE_VERSION}`,
+    }),
   })
+  const invokePlayTrigger = async (trigger: string, input: unknown) => {
+    const bundle = await bundles.getActive()
+    if (!bundle?.record.metadata) return incompatiblePlayResult(null)
+    if (bundle.record.identity.backboneVersion !== FIXED_BACKBONE_VERSION) {
+      return incompatiblePlayResult(bundle.record.identity.backboneVersion)
+    }
+    const key = `${bundle.record.id}\0${bundle.record.semanticFingerprint}`
+    if (playRuntime?.key !== key) {
+      const { id: bundleId, identity, metadata } = bundle.record
+      playRuntime = {
+        key,
+        value: bootMantleRuntime({
+          plan: bundle.plan,
+          storage: createIndexedDbMantleStorageAdapter(bundleId),
+          handlers: {
+            'companion.inspect-companion': () => inspectCompanion(bundleId, metadata.runId, metadata.name),
+            'companion.submit-companion-action': (value) => submitCompanionAction(bundleId, metadata.runId, identity.contractVersion, value),
+            'companion.resolve-companion-turn': (value) => resolveCompanionTurn(bundleId, identity.contractVersion, value),
+          },
+        }),
+      }
+    }
+    return (await playRuntime.value).invokeTrigger({ trigger, input, ctx: invokeContext })
+  }
+
+  void Promise.all([
+    registerMantleWebMcpTools(document, authoringPlan, async (trigger, input) =>
+      (await getAuthoringRuntime()).invokeTrigger({ trigger, input, ctx: invokeContext })),
+    registerMantleWebMcpTools(document, playPlan, invokePlayTrigger),
+  ]).catch((error) => console.error('WebMCP registration failed', error))
   return application
 }
 

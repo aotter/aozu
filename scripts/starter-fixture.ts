@@ -35,7 +35,7 @@ export async function loadFocusStudioFixture() {
     id: file.blobId,
     blob: new Blob([await readFile(path.join(starterRoot, file.path))], { type: file.mediaType }),
   })))
-  return validateLoadedStarterPackage({ starter, assets }, inspectCharacterFixture, inspectSceneFixture, '5')
+  return validateLoadedStarterPackage({ starter, assets }, inspectCharacterFixture, inspectSceneFixture, '6')
 }
 
 export const publicFile = (pathname: string) => path.join(projectRoot, 'public', pathname.replace(/^\//, ''))
