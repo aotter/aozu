@@ -50,6 +50,7 @@ const conversationGuides: Record<ModuleId, { intro: string; placeholder: string;
 
 const defaultPlacement: Placement = { x: 0, y: 0, scale: 1 };
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value));
+const isMobileViewport = () => window.matchMedia('(max-width: 700px)').matches;
 const placementFrom = (state?: Record<string, unknown>): Placement => ({
   x: typeof state?.x === 'number' ? clamp(state.x, -35, 35) : 0,
   y: typeof state?.y === 'number' ? clamp(state.y, -35, 35) : 0,
@@ -359,9 +360,14 @@ export default function Home() {
     setPanel('quests');
     setActiveModuleId('travel');
     setDialogueIntent('module');
-    setDialogueOpen(true);
+    const mobile = isMobileViewport();
+    setDialogueOpen(!mobile);
     setRoomMessage(conversationGuides.travel.intro);
     setMobileConsoleOpen(false);
+    if (mobile) {
+      setToast(`點一下${activePartner.displayName}開始旅行通話`);
+      window.setTimeout(() => setToast(''), 1800);
+    }
   };
 
   const selectLifeControl = (control: (typeof lifeControls)[number]) => {
@@ -370,10 +376,22 @@ export default function Home() {
     setMobileConsoleOpen(control.panel === 'wardrobe');
     if (!control.module) return;
     setDialogueIntent('module');
-    setDialogueOpen(true);
+    const mobile = isMobileViewport();
+    setDialogueOpen(!mobile);
     setMobileConsoleOpen(false);
     setActiveModuleId(control.module);
     setRoomMessage(conversationGuides[control.module].intro);
+    if (mobile) {
+      setToast(`已切換${control.label}，點一下${activePartner.displayName}開始對話`);
+      window.setTimeout(() => setToast(''), 1800);
+    }
+  };
+
+  const openPetDialogue = () => {
+    setMobileToolsOpen(false);
+    setMobileConsoleOpen(false);
+    if (!roomMessage) setRoomMessage(dialogueIntent === 'writing' ? '把想一起寫的內容貼給我。' : activeGuide.intro);
+    setDialogueOpen(true);
   };
 
   const openPanel = (nextPanel: PanelId) => {
@@ -606,6 +624,7 @@ export default function Home() {
           {!dialogueOpen && <button className="chat-launcher" type="button" onClick={() => { setDialogueIntent('module'); setRoomMessage(activeGuide.intro); setDialogueOpen(true); }} aria-label={`跟${activePartner.displayName}對話`}><span><PartnerArt partner={activePartner} decorative /></span><b>跟我說話</b></button>}
           {dialogueOpen && <form className="room-chat" onSubmit={submitRoomChat}>
             <button className="room-chat-close" type="button" onClick={() => setDialogueOpen(false)} aria-label="收起對話">×</button>
+            <span className="room-call-status"><i />與{activePartner.displayName}通話中</span>
             <div className="room-chat-message"><span className="room-chat-avatar"><PartnerArt partner={activePartner} decorative /></span><p><strong>{activePartner.displayName}</strong>{roomMessage || (dialogueIntent === 'writing' ? '把想一起寫的內容貼給我。' : activeGuide.intro)}</p></div>
             {roomUserMessage && <small className="room-user-echo">你說：{roomUserMessage}</small>}
             <div className="room-chat-composer"><input value={roomInput} maxLength={dialogueIntent === 'writing' ? 1000 : 120} onChange={(event) => setRoomInput(event.target.value)} placeholder={dialogueIntent === 'writing' ? '貼上段落、角色設定或下一句靈感' : pendingPlace && activeModule.id === 'travel' ? '貼上位置或附近地標' : activeGuide.placeholder} /><button type="submit" disabled={!runtime || busy || !roomInput.trim()} aria-label={`送出給${activePartner.displayName}`}>送出</button></div>
@@ -613,6 +632,7 @@ export default function Home() {
 
           <div ref={paperDollRef} className={`paper-doll partner-${activePartner.kind} ${panel === 'wardrobe' && wardrobeEnabled ? 'is-editing' : ''}`} aria-label={`${activePartner.displayName}，${equippedWardrobeLabel}${activeTravelAccessoryName ? `，${activeTravelAccessoryName}` : ''}`}>
             <PartnerArt partner={activePartner} className="doll-base" />
+            <button className="mobile-pet-dialogue-hitbox" type="button" onClick={openPetDialogue} disabled={!runtime} aria-label={`點${activePartner.displayName}開始對話`} />
             {panel === 'wardrobe' && wardrobeEnabled && AOZU_WARDROBE_SLOTS.map((slot) => <span key={slot.id} className={`snap-target snap-${slot.id} ${magnetSlot === slot.id ? 'is-magnetic' : ''}`} style={{ '--slot-x': `${slot.x}%`, '--slot-y': `${slot.y}%` } as CSSProperties}><i />{slot.label}</span>)}
             {equippedWardrobeItems.map((item) => {
               const slot = AOZU_WARDROBE_SLOTS.find(({ id }) => id === item.slot)!;
