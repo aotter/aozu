@@ -10,6 +10,7 @@ import { AppMenu } from '@/ui/AppMenu'
 import { CandidateReviewPage } from '@/ui/pages/CandidateReviewPage'
 import { CharacterDraftPage } from '@/ui/pages/CharacterDraftPage'
 import { CompanionPage } from '@/ui/pages/CompanionPage'
+import { CreationHandoffPage } from '@/ui/pages/CreationHandoffPage'
 import { StarterDraftPage } from '@/ui/pages/StarterDraftPage'
 import { StartPage } from '@/ui/pages/StartPage'
 import { StatusPage } from '@/ui/pages/StatusPage'
@@ -65,11 +66,12 @@ export function AppRoutes({ application }: { application: Application }) {
   if (!startup) return <><AppHeader webmcpAvailable={false} /><StatusPage>{t('startup.loading')}</StatusPage></>
 
   const flowReturnTo = (location.state as { returnTo?: FlowReturnTo } | null)?.returnTo
+  const characterExit = flowReturnTo === '/companion' ? '/companion' : '/create'
   const closeFlow = () => navigate(flowReturnTo ?? '/start', { replace: true })
   const review = preview ?? startup.pendingReview ?? undefined
   const prepareReview = async (task: Promise<StagedCandidatePreview>) => {
     setPreview(await task)
-    navigate('/review')
+    navigate('/review', { state: location.state })
   }
   const characterDraftPage = <CharacterDraftPage
     openDraft={application.openCharacterDraft}
@@ -123,14 +125,15 @@ export function AppRoutes({ application }: { application: Application }) {
     />} />
     <Route path="/character" element={characterDraftPage} />
     <Route path="/character/:step" element={characterDraftPage} />
+    <Route path="/create" element={<CreationHandoffPage loadDraft={application.openExperienceDraft} loadPacks={application.listCharacterPacks} />} />
     <Route path="/review" element={review ? <CandidateReviewPage
       preview={review}
       onApprove={async () => {
-        if (review.source === 'character') await application.approveCharacterDraft()
+        if (review.source === 'character') await application.approveCharacterDraft(characterExit === '/create')
         else await application.approveCandidate(review.bundleId, true)
         setPreview(undefined)
         await refresh()
-        navigate(review.source === 'character' ? '/start' : '/companion', { replace: true })
+        navigate(review.source === 'character' ? characterExit : '/companion', { replace: true })
       }}
       onCancel={async () => {
         setPreview(undefined)

@@ -147,6 +147,18 @@ export function createApplication(document: Document) {
     return draft
   }
 
+  const selectCharacterPack = async (draftId: string, expectedRevision: number, packId: string, packVersion: number) => {
+    const installed = await loadInstalledCharacterPackResources(characterPacks, inspectCharacterImage, { packId, packVersion })
+    const updated = await selectExperienceCharacter(createIndexedDbEntryRepository(AUTHORING_NAMESPACE), {
+      draftId,
+      expectedRevision,
+      packId: installed.pack.id,
+      packVersion: installed.pack.version,
+      composition: installed.state.composition,
+    })
+    return toExperienceDraft(updated)
+  }
+
   const active = async () => {
     const bundle = await bundles.getActive()
     if (!bundle?.record.metadata) throw new Error('No active Companion')
@@ -226,25 +238,26 @@ export function createApplication(document: Document) {
     },
     prepareCharacter: (draft: CharacterDraft) => reviewCharacterDraft(inspectCharacterImage, draft),
     listCharacterPacks: () => listInstalledCharacterPacks(characterPacks, inspectCharacterImage),
-    async selectCharacterPack(draftId: string, expectedRevision: number, packId: string, packVersion: number) {
-      const installed = await loadInstalledCharacterPackResources(characterPacks, inspectCharacterImage, {
-        packId,
-        packVersion,
-      })
-      const repository = createIndexedDbEntryRepository(AUTHORING_NAMESPACE)
-      const updated = await selectExperienceCharacter(repository, {
-        draftId,
-        expectedRevision,
-        packId: installed.pack.id,
-        packVersion: installed.pack.version,
-        composition: installed.state.composition,
-      })
-      return toExperienceDraft(updated)
-    },
-    async approveCharacterDraft() {
-      const draft = await characterDrafts.get()
+    selectCharacterPack,
+    async approveCharacterDraft(selectForAuthoring = false) {
+      let draft = await characterDrafts.get()
       if (!draft) throw new Error('Character draft not found')
-      await installCharacterDraft(characterPacks, inspectCharacterImage, draft)
+      const pack = buildCharacterDraftResources(draft).pack
+      const existing = (await characterPacks.list()).find(({ pack: saved }) => saved.id === pack.id && saved.version === pack.version)
+      if (existing && (existing.name !== draft.name.trim() || JSON.stringify(existing.pack) !== JSON.stringify(pack))) {
+        draft = { ...draft, packId: `character-${crypto.randomUUID()}` }
+        await characterDrafts.put(draft)
+      }
+      let installed: { id: string; version: number }
+      if (existing && existing.pack.id === draft.packId) {
+        await loadInstalledCharacterPackResources(characterPacks, inspectCharacterImage, { packId: existing.pack.id, packVersion: existing.pack.version })
+        installed = { id: existing.pack.id, version: existing.pack.version }
+      } else installed = await installCharacterDraft(characterPacks, inspectCharacterImage, draft)
+      if (selectForAuthoring) {
+        const experience = await openExperienceDraft()
+        if (!experience) throw new Error('Experience Draft not found')
+        await selectCharacterPack(experience.id, experience.revision, installed.id, installed.version)
+      }
       const approved = { ...draft, approvedAt: Date.now(), updatedAt: Date.now() }
       await characterDrafts.put(approved)
       return approved
