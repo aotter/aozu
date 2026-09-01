@@ -17,6 +17,7 @@ import {
   type CharacterVariantGroup,
   type CharacterVariantLayer,
 } from '../domain/character.ts'
+import type { ValidatedStarterPackage } from '../domain/starter.ts'
 import type { StagedCandidatePreview } from './candidate.ts'
 import type {
   AssetRepositoryFactory,
@@ -62,6 +63,84 @@ export const createCharacterDraft = (packId = `character-${crypto.randomUUID()}`
   selected: { expression: 'neutral', props: [] },
   updatedAt: Date.now(),
 })
+
+export const isCharacterDraftPopulated = (draft: CharacterDraft) => draft.variants.some(({ layers }) => Object.keys(layers).length > 0)
+
+const starterSelection = (loaded: ValidatedStarterPackage, directionId: string) => {
+  const direction = loaded.starter.directions.find(({ id }) => id === directionId)
+  if (!direction) throw new Error(`Direction not found: ${directionId}`)
+  const state = loaded.starter.characterStates.find(({ id }) => id === direction.characterStateId)
+  if (!state) throw new Error(`Character state not found: ${direction.characterStateId}`)
+  const blobs = new Map(loaded.assets.map(({ id, blob }) => [id, blob]))
+  return { state, blobs }
+}
+
+export function resolveStarterCharacterLayers(loaded: ValidatedStarterPackage, directionId: string) {
+  const { state, blobs } = starterSelection(loaded, directionId)
+  return resolveCharacterComposition(loaded.starter.characterPack, state.composition).map((layer) => {
+    const blob = blobs.get(layer.blobId)
+    if (!blob) throw new Error(`Starter character asset is missing: ${layer.blobId}`)
+    return { ...layer, blob }
+  })
+}
+
+export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage, directionId: string): CharacterDraft {
+  const { state, blobs } = starterSelection(loaded, directionId)
+  const pack = loaded.starter.characterPack
+  const appearances = new Map(pack.appearances.map((appearance) => [appearance.id, appearance]))
+  const assets = new Map(pack.assets.map((asset) => [asset.id, asset]))
+  const files = new Map(loaded.starter.assetFiles.map((file) => [file.blobId, file]))
+  const draft = createCharacterDraft()
+  const propIds = new Map<string, string>()
+  const usedPropIds = new Set<string>()
+  const propId = (appearanceId: string) => {
+    const existing = propIds.get(appearanceId)
+    if (existing) return existing
+    const base = appearanceId.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+/, '').slice(0, 40) || 'prop'
+    let id = base
+    let suffix = 2
+    while (usedPropIds.has(id)) id = `${base.slice(0, 37)}-${suffix++}`
+    usedPropIds.add(id)
+    propIds.set(appearanceId, id)
+    return id
+  }
+  const put = (group: CharacterVariantGroup, id: string, label: string, layer: CharacterVariantLayer, assetId: string) => {
+    const definition = assets.get(assetId)
+    const blob = definition && blobs.get(definition.blobId)
+    const inspection = definition && loaded.characterInspections.get(definition.blobId)
+    const file = definition && files.get(definition.blobId)
+    if (!definition || !blob || !inspection || !file) throw new Error(`Starter character asset is missing: ${assetId}`)
+    let variant = draft.variants.find((candidate) => candidate.group === group && candidate.id === id)
+    if (!variant) {
+      variant = { group, id, label, layers: {} }
+      draft.variants.push(variant)
+    }
+    if (variant.layers[layer]) throw new Error(`Starter character layer cannot be edited: ${group}:${id}:${layer}`)
+    variant.layers[layer] = {
+      blob,
+      filename: file.path.split('/').at(-1) ?? file.path,
+      source: 'starter',
+      inspection,
+    }
+  }
+  for (const reference of state.composition) {
+    const appearance = appearances.get(reference.appearanceId)
+    if (!appearance) throw new Error(`Starter appearance not found: ${reference.appearanceId}`)
+    for (const layer of appearance.layers) {
+      if (layer.slot === 'character-skin') put('body', 'base', 'Base body', 'body', layer.asset.assetId)
+      else if (layer.slot === 'expression-head') put('expression', 'neutral', 'Neutral', 'head', layer.asset.assetId)
+      else if (layer.slot === 'item-back' || layer.slot === 'item-front') {
+        const id = propId(appearance.id)
+        put('prop', id, appearance.id, layer.slot === 'item-back' ? 'back' : 'front', layer.asset.assetId)
+      }
+    }
+  }
+  if (!isCharacterDraftPopulated(draft) || !draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body || !draft.variants.find(({ group, id }) => group === 'expression' && id === 'neutral')?.layers.head) {
+    throw new Error('Starter character is not editable with the current rig')
+  }
+  draft.selected.props = [...propIds.values()]
+  return draft
+}
 
 type LegacyRole = 'body-base' | 'head-neutral' | 'head-happy' | 'body-outfit' | 'prop-back' | 'prop-front'
 type CharacterDraftV2 = Omit<CharacterDraft, 'schemaVersion' | 'variants' | 'selected'> & {

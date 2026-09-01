@@ -13,10 +13,9 @@ const en = {
   },
   start: {
     title: 'Create your companion',
-    description: 'Choose how to begin. Confirmed data is saved locally.',
+    description: 'Continue a saved Companion or start a new one. Confirmed data is saved locally.',
     unavailable: 'Not available yet',
-    chooseStarter: 'Choose Starter',
-    createCharacter: 'Start creating',
+    chooseStarter: 'Start creating',
     saved: {
       title: 'Saved companions',
       current: 'Current companion',
@@ -27,13 +26,9 @@ const en = {
       deleteError: 'The companion could not be deleted.',
     },
     options: {
-      custom: {
-        title: 'Create a character',
-        description: 'Start with a character identity and description.',
-      },
       starter: {
-        title: 'Choose a Starter',
-        description: 'Select a static content package and Direction for your agent to complete.',
+        title: 'Create a new Companion',
+        description: 'Choose a character and purpose, then customize the complete experience.',
       },
       bundle: {
         title: 'Import a bundle',
@@ -42,16 +37,15 @@ const en = {
     },
   },
   starter: {
-    title: 'Choose a Starter',
-    description: 'Starters are immutable static content packages. Choosing one saves an Experience Draft; it does not create a runnable Companion.',
-    package: 'Starter package',
-    direction: 'Direction',
-    select: 'Save Experience Draft',
-    saving: 'Saving…',
-    cancel: 'Not now',
-    saved: 'Experience Draft saved',
-    agentReady: 'Your WebMCP agent can now inspect the contract and submit a complete Playbook candidate.',
-    noAgent: 'This draft will remain available, but this browser cannot complete its Playbook without WebMCP.',
+    title: 'Choose a starting point',
+    description: 'Pick what you want your Companion to help with. You can customize the character next.',
+    use: 'Use {{name}}',
+    choosing: 'Preparing…',
+    replaceCharacter: 'Replace your current character draft with {{name}}? Your current draft artwork will be removed.',
+    version: '{{name}} · v{{version}}',
+    ongoing: 'Ongoing',
+    finite: 'Finite',
+    error: 'This starting point could not be prepared. Try again.',
   },
   candidate: {
     title: 'Review before activation',

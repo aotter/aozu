@@ -37,7 +37,7 @@ export type CharacterVariantLayer = 'body' | 'head' | 'back' | 'front'
 export interface CharacterDraftAsset {
   blob: Blob
   filename: string
-  source: 'user' | 'agent'
+  source: 'user' | 'agent' | 'starter'
   inspection: CharacterAssetInspection
 }
 

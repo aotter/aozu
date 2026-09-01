@@ -5,14 +5,13 @@ import { Button } from '@/ui/components/ui/button'
 import { DataControls } from '@/ui/DataControls'
 import type { SavedCompanion } from '@/core/application/companion'
 
-const startOptions = ['custom', 'starter', 'bundle'] as const
+const startOptions = ['starter', 'bundle'] as const
 
-export function StartPage({ savedCompanions, onOpenCompanion, onDeleteCompanion, onChooseStarter, onCreateCharacter, prepareImport }: {
+export function StartPage({ savedCompanions, onOpenCompanion, onDeleteCompanion, onChooseStarter, prepareImport }: {
   savedCompanions: SavedCompanion[]
   onOpenCompanion(bundleId: string): Promise<void>
   onDeleteCompanion(bundleId: string): Promise<void>
   onChooseStarter(): void
-  onCreateCharacter(): void
   prepareImport(blob: Blob): Promise<void>
 }) {
   const { t } = useTranslation()
@@ -43,14 +42,11 @@ export function StartPage({ savedCompanions, onOpenCompanion, onDeleteCompanion,
         </div>
         {deleteError && <p role="alert" className="mt-2 text-sm text-destructive">{t('start.saved.deleteError')}</p>}
       </section>}
-      <div className="mt-8 grid gap-3 sm:grid-cols-3">
+      <div className="mt-8 grid gap-3 sm:grid-cols-2">
         {startOptions.map((option) => <section key={option} className="flex min-h-40 flex-col rounded-2xl border bg-background p-4 shadow-sm">
           <h2 className="font-heading font-medium">{t(`start.options.${option}.title`)}</h2>
           <p className="mt-2 text-sm leading-5 text-muted-foreground">{t(`start.options.${option}.description`)}</p>
-          {option === 'bundle' ? <div className="mt-auto"><DataControls prepareImport={prepareImport} /></div> : <Button
-            className="mt-auto"
-            onClick={option === 'starter' ? onChooseStarter : onCreateCharacter}
-          >{option === 'starter' ? t('start.chooseStarter') : t('start.createCharacter')}</Button>}
+          {option === 'bundle' ? <div className="mt-auto"><DataControls prepareImport={prepareImport} /></div> : <Button className="mt-auto" onClick={onChooseStarter}>{t('start.chooseStarter')}</Button>}
         </section>)}
       </div>
     </main>

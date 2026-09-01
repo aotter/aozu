@@ -70,6 +70,7 @@ export interface LoadedStarterPackage {
 
 export interface ValidatedStarterPackage extends LoadedStarterPackage {
   manifestSha256: string
+  characterInspections: ReadonlyMap<string, CharacterAssetInspection>
   sceneInspections: ReadonlyMap<string, SceneAssetInspection>
 }
 
@@ -286,6 +287,7 @@ export async function validateLoadedStarterPackage(
     starter,
     assets: structuredClone(loaded.assets),
     manifestSha256: await sha256(canonicalJson(starter)),
+    characterInspections,
     sceneInspections,
   }
 }

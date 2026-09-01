@@ -25,7 +25,9 @@ import {
 import {
   CHARACTER_CREATION_GROUPS,
   REQUIRED_CHARACTER_TARGETS,
+  createCharacterDraftFromStarter,
   createCharacterDraft,
+  isCharacterDraftPopulated,
   loadCharacterProjection,
   migrateCharacterDraft,
   saveCharacterDraftAsset,
@@ -171,15 +173,19 @@ export function createApplication(document: Document) {
     },
     listStarters: loadStarters,
     openExperienceDraft,
-    async selectStarter(starterId: string, starterVersion: number, directionId: string) {
+    async selectStarter(starterId: string, starterVersion: number, directionId: string, replaceCharacterDraft = false) {
       const loaded = (await loadStarters()).find(({ starter }) => starter.id === starterId && starter.version === starterVersion)
       if (!loaded) throw new Error(`Starter not found: ${starterId}@${starterVersion}`)
+      const currentCharacter = await characterDrafts.get()
+      if (currentCharacter && isCharacterDraftPopulated(migrateCharacterDraft(currentCharacter)) && !replaceCharacterDraft) return null
+      const character = createCharacterDraftFromStarter(loaded, directionId)
       const result = await (await getAuthoringRuntime()).invokeTrigger<Entry>({
         trigger: 'select-experience-draft',
         input: createExperienceDraftData(loaded, directionId),
         ctx: { user: null, staff: null, env: {} },
       })
       if (!result.ok) throw new Error(result.diagnostic.message ?? 'Experience Draft could not be saved')
+      await characterDrafts.put(character)
       await requestPersistentStorage(browser?.navigator.storage)
       return toExperienceDraft(result.data)
     },

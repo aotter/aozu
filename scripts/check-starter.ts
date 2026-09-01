@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 import { loadStarterCatalog } from '../src/adapters/browser/starter-packages.ts'
+import { buildCharacterPack, createCharacterDraftFromStarter, isCharacterDraftPopulated, resolveStarterCharacterLayers } from '../src/core/application/character-creation.ts'
+import { resolveStarterSceneLayers } from '../src/core/application/scene.ts'
 import { createExperienceDraftData } from '../src/core/domain/starter.ts'
 import { inspectCharacterFixture, inspectSceneFixture, publicFile } from './starter-fixture.ts'
 
@@ -28,4 +30,11 @@ assert.equal(draft.starter.id, 'focus-studio')
 assert.equal(draft.starter.manifestSha256, packages[0]!.manifestSha256)
 assert.equal('assets' in draft, false)
 assert.equal('stages' in draft, false)
+const character = createCharacterDraftFromStarter(packages[0]!, 'daily-study')
+assert.equal(isCharacterDraftPopulated(character), true)
+assert.equal(buildCharacterPack(character).defaultComposition.length, 2)
+assert.equal(character.variants.find(({ group, id }) => group === 'body' && id === 'base')!.layers.body!.source, 'starter')
+assert.equal(character.variants.find(({ group, id }) => group === 'expression' && id === 'neutral')!.layers.head!.source, 'starter')
+assert.deepEqual(resolveStarterCharacterLayers(packages[0]!, 'daily-study').map(({ slot }) => slot), ['character-skin', 'expression-head'])
+assert.deepEqual(resolveStarterSceneLayers(packages[0]!, 'daily-study').map(({ plane }) => plane), ['back'])
 console.log('starter packages: ok')
