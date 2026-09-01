@@ -1,7 +1,7 @@
 import type { Entry } from '@aotter/mantle-spec'
 import type { EntryReader, EntryRepository } from '@aotter/mantle-runtime'
 import type { BundleRecord, ValidatedBundle } from '../bundle.ts'
-import type { CharacterDraft } from '../domain/character.ts'
+import type { AppearanceRef, CharacterDraft, CharacterPack } from '../domain/character.ts'
 
 export type AgentCapability = {
   isAvailable(): boolean
@@ -77,4 +77,16 @@ export interface CharacterDraftRepository {
   get(): Promise<CharacterDraft | null>
   put(draft: CharacterDraft): Promise<void>
   clear(): Promise<void>
+}
+
+export interface CharacterPackLibraryRecord {
+  name: string
+  pack: CharacterPack
+  composition: AppearanceRef[]
+  assets: Array<{ id: string; blob: Blob }>
+}
+
+export interface CharacterPackLibraryRepository {
+  install(record: CharacterPackLibraryRecord, now?: number): Promise<void>
+  list(): Promise<CharacterPackLibraryRecord[]>
 }
