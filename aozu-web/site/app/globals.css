@@ -69,6 +69,22 @@ button:disabled { cursor: wait; opacity: .55; }
 .room-chat-message p { font-size: 16px; line-height: 1.5; margin: 0; }
 .room-chat-message strong { color: #ffde70; display: block; font-size: 16px; margin-bottom: 2px; }
 .room-user-echo { color: #d5cbc1; font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-proposal-card { background: linear-gradient(145deg,rgba(255,250,239,.97),rgba(239,228,207,.94)); border: 2px solid color-mix(in srgb,var(--partner-accent) 55%,white); border-radius: 16px; box-shadow: 0 12px 30px rgba(14,11,9,.24); color: #2d2824; display: grid; gap: 7px; max-height: 300px; overflow: auto; padding: 12px; }
+.agent-proposal-card > span { color: var(--partner-accent); font-size: 9px; font-weight: 950; letter-spacing: .13em; }
+.agent-proposal-card > strong { font-family: Georgia,"Noto Serif TC",serif; font-size: 19px; }
+.agent-proposal-card > p,.agent-proposal-card > small,.agent-proposal-card > em { font-size: 16px; line-height: 1.45; margin: 0; }
+.agent-proposal-card > em { color: #766b62; font-style: normal; }
+.agent-proposal-card ul { display: grid; gap: 5px; list-style: none; margin: 2px 0; max-height: 132px; overflow: auto; padding: 0; }
+.agent-proposal-card li { align-items: center; background: rgba(74,61,50,.08); border-radius: 10px; display: grid; gap: 1px 7px; grid-template-columns: 54px 1fr; padding: 7px; }
+.agent-proposal-card li b { color: var(--partner-accent); font-size: 16px; grid-row: span 2; }
+.agent-proposal-card li span,.agent-proposal-card li small { font-size: 16px; }
+.agent-proposal-card li small { color: #766b62; }
+.agent-proposal-card > div:last-child { display: grid; gap: 7px; grid-template-columns: 1fr 1.45fr; }
+.agent-proposal-card button { background: rgba(51,44,39,.1); border: 1px solid rgba(51,44,39,.15); border-radius: 12px; color: #332c27; font-size: 16px; font-weight: 900; min-height: 44px; }
+.agent-proposal-card button:last-child { background: var(--partner-accent); border-color: transparent; color: white; }
+.agent-outfit-preview { align-items: center; background: rgba(74,61,50,.08); border-radius: 12px; display: grid; gap: 8px; grid-template-columns: 76px 1fr; padding: 7px; }
+.agent-outfit-preview .wardrobe-sprite { height: 72px; width: 72px; }
+.agent-outfit-preview small { font-size: 16px; line-height: 1.45; }
 .room-chat-composer { display: grid; gap: 7px; grid-template-columns: minmax(0,1fr) auto; }
 .room-chat-composer input { background: rgba(255,255,255,.94); border: 1px solid rgba(255,255,255,.65); border-radius: 13px; color: #302923; font-size: 16px; min-height: 48px; min-width: 0; outline: 0; padding: 8px 11px; }
 .room-chat-composer input:focus { border-color: var(--partner-accent); box-shadow: 0 0 0 3px color-mix(in srgb,var(--partner-accent) 28%,transparent); }
@@ -280,6 +296,8 @@ button:disabled { cursor: wait; opacity: .55; }
 .card-art .partner-art { height: 100%; object-fit: contain; position: relative; width: 100%; }
 .card-art .human-portrait { background-position: center bottom; }
 .ability-card.travel { background: linear-gradient(145deg,#6d2630,#261c1b); }
+.ability-card.summoned { background: linear-gradient(145deg,color-mix(in srgb,var(--partner-accent) 42%,#322820),#1d1917); }
+.ability-card button { background: #f2c95f; border: 0; border-radius: 12px; bottom: 12px; color: #3c2b21; font-size: 16px; font-weight: 950; min-height: 42px; padding: 0 14px; position: absolute; right: 12px; z-index: 2; }
 .ability-card.locked { filter: saturate(.5); opacity: .72; }
 
 .memory-log { display: grid; gap: 8px; margin-top: 15px; }

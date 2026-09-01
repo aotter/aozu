@@ -31,6 +31,49 @@ type WardrobeItem = (typeof AOZU_WARDROBE_ITEMS)[number];
 type Placement = { x: number; y: number; scale: number };
 type TravelKind = 'spot' | 'food';
 type TravelChatMessage = { id: string; from: 'partner' | 'user'; text: string };
+type AgentProposal =
+  | { id: string; kind: 'life'; activity: Exclude<ModuleId, 'travel'>; summary: string; dialogue?: string }
+  | { id: string; kind: 'travel'; title: string; stops: { day: 1 | 2 | 3; kind: TravelKind; name: string; location: string }[]; dialogue?: string }
+  | { id: string; kind: 'outfit'; itemId: string; dialogue?: string }
+  | { id: string; kind: 'memory'; title: string; summary: string; category: 'life' | 'travel' | 'writing' | 'learning' | 'bond'; dialogue?: string }
+  | { id: string; kind: 'card'; title: string; ability: string; summary: string; requiredCapabilities: string[]; dialogue?: string };
+type SavedMemory = { id: string; partnerId: Partner['id']; title: string; summary: string; category: 'life' | 'travel' | 'writing' | 'learning' | 'bond'; createdAt: number };
+type SavedAbilityCard = { id: string; partnerId: Partner['id']; title: string; ability: string; summary: string; requiredCapabilities: string[]; createdAt: number };
+type SavedLifeRecord = { id: string; partnerId: Partner['id']; activity: Exclude<ModuleId, 'travel'>; summary: string; createdAt: number };
+
+const AOZU_MEMORY_KEY = 'aozu:p0-memories';
+const AOZU_CARD_KEY = 'aozu:p0-ability-cards';
+const AOZU_LIFE_KEY = 'aozu:p0-life-records';
+const memoryCategoryLabels = { life: '生', travel: '旅', writing: '寫', learning: '學', bond: '伴' } as const;
+
+const readStoredList = <T,>(key: string): T[] => {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) ?? '[]');
+    return Array.isArray(value) ? value : [];
+  } catch { return []; }
+};
+
+const saveStoredList = <T extends { id: string }>(key: string, current: T[], value: T) => {
+  const next = [...current.filter(({ id }) => id !== value.id), value].slice(-100);
+  localStorage.setItem(key, JSON.stringify(next));
+  return next;
+};
+
+const agentProposalTitle = (proposal: AgentProposal) => {
+  if (proposal.kind === 'life') return `${modules.find(({ id }) => id === proposal.activity)?.label ?? '生活'}冒險紀錄`;
+  if (proposal.kind === 'travel') return proposal.title;
+  if (proposal.kind === 'outfit') return `穿上${AOZU_WARDROBE_ITEMS.find(({ id }) => id === proposal.itemId)?.label ?? '新配件'}`;
+  if (proposal.kind === 'memory') return proposal.title;
+  return proposal.title;
+};
+
+const agentProposalSummary = (proposal: AgentProposal) => {
+  if (proposal.kind === 'life') return proposal.summary;
+  if (proposal.kind === 'travel') return `${proposal.stops.length} 個地點將加入旅行手札`;
+  if (proposal.kind === 'outfit') return '確認後才會替換同部位配件並重新合成角色造型。';
+  if (proposal.kind === 'memory') return proposal.summary;
+  return `${proposal.ability}｜${proposal.summary}`;
+};
 
 const lifeControls: readonly { id: string; mark: string; label: string; panel: PanelId; module?: ModuleId; tone: string }[] = [
   { id: 'food', mark: '食', label: '飲控', panel: 'quests', module: 'meals', tone: '#f2b84b' },
@@ -187,6 +230,10 @@ export default function Home() {
   const [roomInput, setRoomInput] = useState('');
   const [roomMessage, setRoomMessage] = useState('');
   const [roomUserMessage, setRoomUserMessage] = useState('');
+  const [agentProposal, setAgentProposal] = useState<AgentProposal | null>(null);
+  const [savedMemories, setSavedMemories] = useState<SavedMemory[]>([]);
+  const [savedCards, setSavedCards] = useState<SavedAbilityCard[]>([]);
+  const [savedLifeRecords, setSavedLifeRecords] = useState<SavedLifeRecord[]>([]);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [mobileConsoleOpen, setMobileConsoleOpen] = useState(false);
   const [consoleWidth, setConsoleWidth] = useState(31);
@@ -200,6 +247,15 @@ export default function Home() {
   const partnerListRef = useRef<HTMLDivElement>(null);
   const mobilePartnerListRef = useRef<HTMLDivElement>(null);
   const travelInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSavedMemories(readStoredList<SavedMemory>(AOZU_MEMORY_KEY));
+      setSavedCards(readStoredList<SavedAbilityCard>(AOZU_CARD_KEY));
+      setSavedLifeRecords(readStoredList<SavedLifeRecord>(AOZU_LIFE_KEY));
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -225,7 +281,21 @@ export default function Home() {
 
   useEffect(() => {
     const onUiCommand = (event: Event) => {
-      const detail = (event as CustomEvent<{ command?: string; activity?: string; message?: string }>).detail ?? {};
+      const detail = (event as CustomEvent<{ command?: string; activity?: string; message?: string; proposal?: unknown }>).detail ?? {};
+      if (detail.command === 'stage-proposal') {
+        const proposal = detail.proposal as AgentProposal | undefined;
+        if (!proposal || typeof proposal.id !== 'string' || !['life', 'travel', 'outfit', 'memory', 'card'].includes(proposal.kind)) return;
+        setAgentProposal(proposal);
+        if (proposal.kind === 'life') setActiveModuleId(proposal.activity);
+        if (proposal.kind === 'travel') setActiveModuleId('travel');
+        if (proposal.kind === 'outfit') setSelectedWardrobeItemId(proposal.itemId);
+        setDialogueIntent('module');
+        setDialogueOpen(true);
+        setRoomMessage(proposal.dialogue || '我和 Agent 整理出一個冒險提案。你確認以前，我不會改變紀錄、穿搭、記憶或卡片。');
+        setMobileConsoleOpen(false);
+        setMobileToolsOpen(false);
+        return;
+      }
       if (detail.command === 'open-dialogue') {
         setDialogueOpen(true);
         if (detail.message) setRoomMessage(detail.message);
@@ -250,6 +320,7 @@ export default function Home() {
           setRoomMessage(detail.message || conversationGuides[nextModule.id].intro);
         }
       }
+      setAgentProposal(null);
       setDialogueOpen(true);
       setMobileConsoleOpen(false);
       setMobileToolsOpen(false);
@@ -277,26 +348,31 @@ export default function Home() {
   const activeTravelAccessoryName = activeTravelAccessory?.names[activePartner.id];
   const nextTravelAccessory = AOZU_TRAVEL_ACCESSORIES.find(({ threshold }) => threshold > travelScore);
   const completedStops = travelJournal.entries.filter(({ checked }) => checked).length;
+  const activeSavedMemories = savedMemories.filter(({ partnerId }) => partnerId === activePartner.id).slice().reverse();
+  const activeSavedCards = savedCards.filter(({ partnerId }) => partnerId === activePartner.id).slice().reverse();
+  const activeLifeRecords = savedLifeRecords.filter(({ partnerId }) => partnerId === activePartner.id).slice().reverse();
 
   const refresh = async (application: Application) => {
     const startup = await application.loadStartup();
     if (startup.status === 'main') setRuntime(startup);
   };
 
-  const runAction = async (actionId: string, success: string) => {
-    if (!runtime || busy) return;
+  const runAction = async (actionId: string, success: string, idempotencyKey?: string) => {
+    if (!runtime || busy) return false;
     setBusy(true);
     setRuntimeError('');
     try {
       const { application } = await bootAozu();
-      await application.submitAction(actionId, runtime.stage.revision);
+      await application.submitAction(actionId, runtime.stage.revision, idempotencyKey);
       await refresh(application);
       setToast(success);
       window.setTimeout(() => setToast(''), 1800);
+      return true;
     } catch (error) {
       setRuntimeError(messageFrom(error));
       const { application } = await bootAozu();
       await refresh(application);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -319,6 +395,7 @@ export default function Home() {
       setRoomInput('');
       setRoomMessage('');
       setRoomUserMessage('');
+      setAgentProposal(null);
       setMobileToolsOpen(false);
       setToast(`${partner.displayName}來到房間了`);
       window.setTimeout(() => setToast(''), 1800);
@@ -421,13 +498,13 @@ export default function Home() {
     window.setTimeout(() => { suppressWardrobeClickRef.current = false; }, 0);
   };
 
-  const persistTravelJournal = async (next: TravelJournalState) => {
+  const persistTravelJournal = async (next: TravelJournalState, idempotencyKey?: string) => {
     if (!runtime || busy) return false;
     setBusy(true);
     setRuntimeError('');
     try {
       const { application } = await bootAozu();
-      await application.setItemState('travel-journal', next, runtime.stage.revision);
+      await application.setItemState('travel-journal', next, runtime.stage.revision, idempotencyKey);
       await refresh(application);
       return true;
     } catch (error) {
@@ -663,6 +740,70 @@ export default function Home() {
     if (saved) setToast(`已裝備${accessory.names[activePartner.id]}`);
   };
 
+  const rejectAgentProposal = () => {
+    setAgentProposal(null);
+    setRoomMessage('好，這次先不採用。Agent 的提案沒有改變任何 AOZU 資料。');
+    setToast('提案已捨棄');
+  };
+
+  const confirmAgentProposal = async () => {
+    const proposal = agentProposal;
+    if (!proposal || busy) return;
+    if (proposal.kind === 'life') {
+      const saved = await runAction(proposal.activity, '生活冒險已完成並累積成長', proposal.id);
+      if (!saved) return;
+      const record: SavedLifeRecord = { id: proposal.id, partnerId: activePartner.id, activity: proposal.activity, summary: proposal.summary, createdAt: Date.now() };
+      setSavedLifeRecords((current) => saveStoredList(AOZU_LIFE_KEY, current, record));
+      setPanel('memories');
+      setRoomMessage(`完成！「${proposal.summary}」已成為我們共同完成的生活冒險。`);
+    }
+    if (proposal.kind === 'travel') {
+      const knownIds = new Set(travelJournal.entries.map(({ id }) => id));
+      const room = Math.max(0, 60 - travelJournal.entries.length);
+      const additions = proposal.stops.slice(0, room).map((stop, index) => ({ ...stop, id: `agent-${proposal.id.slice(0, 50)}-${index}`, checked: false })).filter(({ id }) => !knownIds.has(id));
+      if (!additions.length) { setRuntimeError('旅行手札已滿，或這份 Agent 提案已經加入。'); return; }
+      const points = { ...travelJournal.points, planning: travelJournal.points.planning + 6, bond: travelJournal.points.bond + 1 };
+      for (const stop of additions) points[stop.kind === 'food' ? 'taste' : 'exploration'] += 8;
+      const saved = await persistTravelJournal({ ...travelJournal, title: proposal.title, entries: [...travelJournal.entries, ...additions], points }, proposal.id);
+      if (!saved) return;
+      setPanel('journal');
+      setRoomMessage(`完成！${additions.length} 個地點已寫進「${proposal.title}」，能力點數也已更新。`);
+    }
+    if (proposal.kind === 'outfit') {
+      const item = AOZU_WARDROBE_ITEMS.find(({ id }) => id === proposal.itemId);
+      if (!item) return;
+      setSelectedWardrobeItemId(item.id);
+      const saved = await runAction(`wear-${item.id}`, `${item.label}已穿到${activePartner.displayName}身上`, proposal.id);
+      if (!saved) return;
+      setPanel('wardrobe');
+      setRoomMessage(`穿好了！${item.label}已經成為我現在造型的一部分。`);
+    }
+    if (proposal.kind === 'memory') {
+      const memory: SavedMemory = { id: proposal.id, partnerId: activePartner.id, title: proposal.title, summary: proposal.summary, category: proposal.category, createdAt: Date.now() };
+      setSavedMemories((current) => saveStoredList(AOZU_MEMORY_KEY, current, memory));
+      setPanel('memories');
+      setRoomMessage(`我記住「${proposal.title}」了；它只保存在這台裝置，也可以由你決定忘記。`);
+      setToast('共同記憶已保存');
+    }
+    if (proposal.kind === 'card') {
+      const card: SavedAbilityCard = { id: proposal.id, partnerId: activePartner.id, title: proposal.title, ability: proposal.ability, summary: proposal.summary, requiredCapabilities: proposal.requiredCapabilities, createdAt: Date.now() };
+      setSavedCards((current) => saveStoredList(AOZU_CARD_KEY, current, card));
+      setPanel('cards');
+      setRoomMessage(`「${proposal.title}」已封成能力卡。下次可以直接從卡片叫回這項技能。`);
+      setToast('新的能力卡已封存');
+    }
+    setAgentProposal(null);
+    window.setTimeout(() => setToast(''), 2200);
+  };
+
+  const recallAbilityCard = (card: SavedAbilityCard) => {
+    setAgentProposal(null);
+    setDialogueIntent('module');
+    setDialogueOpen(true);
+    setMobileConsoleOpen(false);
+    setRoomMessage(`已召喚「${card.title}」。我會使用「${card.ability}」陪你開始下一段冒險；${card.summary}`);
+  };
+
   const exportCompanion = async () => {
     setDataStatus('正在打包本機記憶…');
     try {
@@ -741,7 +882,14 @@ export default function Home() {
             <span className="room-call-status"><i />與{activePartner.displayName}通話中</span>
             <div className="room-chat-message"><span className="room-chat-avatar"><PartnerHeadshot partner={activePartner} decorative /></span><p><strong>{activePartner.displayName}</strong>{roomMessage || (dialogueIntent === 'writing' ? '把想一起寫的內容貼給我。' : activeGuide.intro)}</p></div>
             {roomUserMessage && <small className="room-user-echo">你說：{roomUserMessage}</small>}
-            <div className="room-chat-composer"><input value={roomInput} maxLength={dialogueIntent === 'writing' ? 1000 : 120} onChange={(event) => setRoomInput(event.target.value)} placeholder={dialogueIntent === 'writing' ? '貼上段落、角色設定或下一句靈感' : pendingPlace && activeModule.id === 'travel' ? '貼上位置或附近地標' : activeGuide.placeholder} /><button type="submit" disabled={!runtime || busy || !roomInput.trim()} aria-label={`送出給${activePartner.displayName}`}>送出</button></div>
+            {agentProposal && <section className="agent-proposal-card" aria-label="WebMCP Agent 提案">
+              <span>WEBMCP 冒險提案</span><strong>{agentProposalTitle(agentProposal)}</strong><p>{agentProposalSummary(agentProposal)}</p>
+              {agentProposal.kind === 'travel' && <ul>{agentProposal.stops.map((stop, index) => <li key={`${stop.name}-${index}`}><b>DAY {stop.day}</b><span>{stop.name}</span><small>{stop.location}</small></li>)}</ul>}
+              {agentProposal.kind === 'outfit' && <div className="agent-outfit-preview"><WardrobeSprite item={AOZU_WARDROBE_ITEMS.find(({ id }) => id === agentProposal.itemId) ?? AOZU_WARDROBE_ITEMS[0]} /><small>紙娃娃會重新合成，不只是把圖貼在角色上。</small></div>}
+              {agentProposal.kind === 'card' && <small>需要能力：{agentProposal.requiredCapabilities.join('、') || 'AOZU 本機能力'}</small>}
+              <em>確認以前不會改變角色資料。</em><div><button type="button" onClick={rejectAgentProposal}>先不要</button><button type="button" disabled={busy} onClick={() => void confirmAgentProposal()}>{busy ? '處理中…' : '確認一起做'}</button></div>
+            </section>}
+            {!agentProposal && <div className="room-chat-composer"><input value={roomInput} maxLength={dialogueIntent === 'writing' ? 1000 : 120} onChange={(event) => setRoomInput(event.target.value)} placeholder={dialogueIntent === 'writing' ? '貼上段落、角色設定或下一句靈感' : pendingPlace && activeModule.id === 'travel' ? '貼上位置或附近地標' : activeGuide.placeholder} /><button type="submit" disabled={!runtime || busy || !roomInput.trim()} aria-label={`送出給${activePartner.displayName}`}>送出</button></div>}
           </form>}
 
           <div ref={paperDollRef} className={`paper-doll partner-${activePartner.kind} ${panel === 'wardrobe' && wardrobeEnabled ? 'is-editing' : ''}`} aria-label={`${activePartner.displayName}，${equippedWardrobeLabel}${activeTravelAccessoryName ? `，${activeTravelAccessoryName}` : ''}`}>
@@ -903,9 +1051,10 @@ export default function Home() {
           </>}
 
           {panel === 'cards' && <>
-            <div className="console-heading"><div><span>ABILITY DECK</span><h1>夥伴卡片</h1></div><b>3 / 12</b></div>
+            <div className="console-heading"><div><span>ABILITY DECK</span><h1>夥伴卡片</h1></div><b>{3 + activeSavedCards.length} / 12</b></div>
             <div className="ability-deck">
               <article className="ability-card featured"><div className="card-art"><PartnerArt partner={activePartner} /></div><span>ACTIVE PARTNER</span><h2>{activePartner.displayName}</h2><p>{activePartner.role}｜{activePartner.quote}</p><b>羈絆 76</b></article>
+              {activeSavedCards.map((card) => <article key={card.id} className="ability-card summoned"><span>WEBMCP ABILITY</span><h2>{card.title}</h2><p>{card.ability}｜{card.summary}</p><b>{card.requiredCapabilities.length ? card.requiredCapabilities.join('・') : 'AOZU LOCAL'}</b><button type="button" onClick={() => recallAbilityCard(card)}>召喚能力</button></article>)}
               <article className="ability-card travel"><span>MEMORY CARD</span><h2>台南三日旅行策劃</h2><p>步行友善 ・ 飲食偏好 ・ 旅費規劃</p><b>68% 解鎖中</b></article>
               <article className="ability-card locked"><span>NEXT CARD</span><h2>七日生活節奏</h2><p>連續完成飲食、步行與記帳後取得。</p><b>還差 3 個任務</b></article>
             </div>
@@ -913,8 +1062,12 @@ export default function Home() {
 
           {panel === 'memories' && <>
             <div className="console-heading"><div><span>MEMORY CORE</span><h1>共同記憶</h1></div><b>本機保存</b></div>
-            <div className="memory-log"><article><span>旅</span><div><strong>台南旅行書</strong><p>一起決定第二天採步行為主，晚餐預算保留給小吃。</p><small>今天 ・ 旅行</small></div></article><article><span>食</span><div><strong>不追求完美的晚餐</strong><p>記得蔬菜和飽足感，比精算每一口更重要。</p><small>昨天 ・ 飲控</small></div></article><article><span>住</span><div><strong>旅行基金 72%</strong><p>本週咖啡支出已整理，沒有動用旅行基金。</p><small>8 月 29 日 ・ 記帳</small></div></article></div>
-            <div className="webmcp-core"><span className="connection-dot" /><div><strong>{runtime?.webmcpAvailable ? 'WebMCP 已連線' : 'WebMCP Core Ready'}</strong><p>支援夥伴狀態檢查、任務提交、角色資產候選與回應寫入。</p></div><b>r{runtime?.stage.revision ?? 0}</b></div>
+            <div className="memory-log">
+              {activeSavedMemories.map((memory) => <article key={memory.id}><span>{memoryCategoryLabels[memory.category]}</span><div><strong>{memory.title}</strong><p>{memory.summary}</p><small>{new Date(memory.createdAt).toLocaleDateString('zh-TW')} ・ Agent 與使用者確認</small></div></article>)}
+              {activeLifeRecords.map((record) => <article key={record.id}><span>{modules.find(({ id }) => id === record.activity)?.category ?? '生'}</span><div><strong>{modules.find(({ id }) => id === record.activity)?.label ?? '生活'}冒險</strong><p>{record.summary}</p><small>{new Date(record.createdAt).toLocaleDateString('zh-TW')} ・ 已完成</small></div></article>)}
+              <article><span>旅</span><div><strong>台南旅行書</strong><p>一起決定第二天採步行為主，晚餐預算保留給小吃。</p><small>今天 ・ 旅行</small></div></article><article><span>食</span><div><strong>不追求完美的晚餐</strong><p>記得蔬菜和飽足感，比精算每一口更重要。</p><small>昨天 ・ 飲控</small></div></article><article><span>住</span><div><strong>旅行基金 72%</strong><p>本週咖啡支出已整理，沒有動用旅行基金。</p><small>8 月 29 日 ・ 記帳</small></div></article>
+            </div>
+            <div className="webmcp-core"><span className="connection-dot" /><div><strong>{runtime?.webmcpAvailable ? 'WebMCP 已連線' : 'WebMCP Core Ready'}</strong><p>Agent 可提案生活紀錄、旅程、穿搭、記憶與能力卡；全部由你確認後才生效。</p></div><b>r{runtime?.stage.revision ?? 0}</b></div>
             <div className="portable-memory"><div><strong>攜帶這位夥伴的記憶</strong><small>ZIP 匯入前會驗證結構、雜湊與資產</small></div><div><button type="button" disabled={!runtime} onClick={exportCompanion}>匯出記憶</button><label>匯入記憶<input className="visually-hidden" type="file" accept=".zip,application/zip" disabled={!runtime} onChange={importCompanion} /></label></div>{dataStatus && <p role="status">{dataStatus}</p>}</div>
           </>}
 

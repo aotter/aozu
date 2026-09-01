@@ -1,8 +1,23 @@
 import type { AgentCapability } from '../../core/application/ports.ts'
 import { CHARACTER_VARIANT_GROUPS, type CharacterAssetTarget, type CharacterVariantGroup, type CharacterVariantLayer } from '../../core/domain/character.ts'
 import { ADVENTURE_SCORE_KEY, parseAdventureScores } from '../../../adventure.ts'
+import { AOZU_PARTNERS, AOZU_WARDROBE_ITEMS } from '../../../aozu.ts'
 
 export const AOZU_ACTIVITIES = ['meals', 'money', 'steps', 'travel', 'fitness', 'writing', 'room-shooter', 'forest-runner'] as const
+const AOZU_LIFE_ACTIVITIES = ['meals', 'money', 'steps', 'fitness'] as const
+const AOZU_MEMORY_CATEGORIES = ['life', 'travel', 'writing', 'learning', 'bond'] as const
+
+const readText = (value: unknown, label: string, maximum: number) => {
+  if (typeof value !== 'string' || !value.trim() || value.length > maximum) throw new Error(`Invalid ${label}`)
+  return value.trim()
+}
+
+const readOptionalText = (value: unknown, label: string, maximum: number) => value === undefined ? undefined : readText(value, label, maximum)
+const readIdempotencyKey = (value: unknown) => {
+  const key = readText(value, 'idempotencyKey', 100)
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(key)) throw new Error('Invalid idempotencyKey')
+  return key
+}
 
 type ModelContext = {
   registerTool(tool: {
@@ -36,7 +51,30 @@ export function registerCompanionTools(document: Document, useCases: {
   const sendUiCommand = (detail: Record<string, unknown>) => {
     document.defaultView?.dispatchEvent(new CustomEvent('aozu-ui-command', { detail }))
   }
+  const stageProposal = (proposal: Record<string, unknown>) => {
+    sendUiCommand({ command: 'stage-proposal', proposal })
+    return { status: 'ok', data: { proposalId: proposal.id, state: 'awaiting-user-confirmation' } }
+  }
   void Promise.all([
+    modelContext.registerTool({
+      name: 'inspect_aozu_capabilities',
+      title: 'Inspect AOZU Adventure Capabilities',
+      description: 'Inspect the active AOZU Companion plus the activities, partners, wardrobe items, and human-confirmation rules available for an agent-led adventure. Use this before proposing life records, trips, outfits, memories, or ability cards.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true },
+      async execute() {
+        return {
+          status: 'ok',
+          data: {
+            current: await useCases.inspect(),
+            activities: AOZU_ACTIVITIES,
+            partners: AOZU_PARTNERS.map(({ id, displayName, role }) => ({ id, displayName, role })),
+            wardrobe: AOZU_WARDROBE_ITEMS.map(({ id, label, theme, slot }) => ({ id, label, theme, slot })),
+            rule: 'WebMCP stages proposals. The user confirms them in AOZU before points, journals, outfits, memories, or cards change.',
+          },
+        }
+      },
+    }, { signal: controller.signal }),
     modelContext.registerTool({
       name: 'open_aozu_dialogue',
       title: 'Open AOZU Companion Dialogue',
@@ -50,6 +88,92 @@ export function registerCompanionTools(document: Document, useCases: {
       async execute(input) {
         sendUiCommand({ command: 'open-dialogue', message: typeof input.message === 'string' ? input.message : '' })
         return { status: 'ok', data: { dialogue: 'open' } }
+      },
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'stage_aozu_life_event',
+      title: 'Stage AOZU Life Event',
+      description: 'Propose a meal, expense, step, or fitness record as one chapter of the active Companion adventure. This only opens an AOZU review; the user must confirm before the deterministic local action runs.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          activity: { type: 'string', enum: AOZU_LIFE_ACTIVITIES },
+          summary: { type: 'string', minLength: 1, maxLength: 300 },
+          dialogue: { type: 'string', minLength: 1, maxLength: 800 },
+          idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' },
+        },
+        required: ['activity', 'summary', 'idempotencyKey'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      async execute(input) {
+        const activity = String(input.activity)
+        if (!AOZU_LIFE_ACTIVITIES.includes(activity as (typeof AOZU_LIFE_ACTIVITIES)[number])) throw new Error('Unknown life activity')
+        return stageProposal({ id: readIdempotencyKey(input.idempotencyKey), kind: 'life', activity, summary: readText(input.summary, 'summary', 300), dialogue: readOptionalText(input.dialogue, 'dialogue', 800) })
+      },
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'stage_aozu_trip_plan',
+      title: 'Stage AOZU Trip Plan',
+      description: 'Propose up to 12 places for the active Companion travel journal. Each stop needs a day, type, name, and location. AOZU shows the complete plan for user confirmation before writing it to the journal.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', minLength: 1, maxLength: 80 },
+          stops: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'object', properties: { day: { type: 'integer', minimum: 1, maximum: 3 }, kind: { type: 'string', enum: ['spot', 'food'] }, name: { type: 'string', minLength: 1, maxLength: 80 }, location: { type: 'string', minLength: 1, maxLength: 120 } }, required: ['day', 'kind', 'name', 'location'], additionalProperties: false } },
+          dialogue: { type: 'string', minLength: 1, maxLength: 800 },
+          idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' },
+        },
+        required: ['title', 'stops', 'idempotencyKey'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      async execute(input) {
+        if (!Array.isArray(input.stops) || input.stops.length < 1 || input.stops.length > 12) throw new Error('Invalid stops')
+        const stops = input.stops.map((value) => {
+          if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid stop')
+          const stop = value as Record<string, unknown>
+          const day = Number(stop.day)
+          const kind = String(stop.kind)
+          if (![1, 2, 3].includes(day) || !['spot', 'food'].includes(kind)) throw new Error('Invalid stop')
+          return { day, kind, name: readText(stop.name, 'stop name', 80), location: readText(stop.location, 'stop location', 120) }
+        })
+        return stageProposal({ id: readIdempotencyKey(input.idempotencyKey), kind: 'travel', title: readText(input.title, 'title', 80), stops, dialogue: readOptionalText(input.dialogue, 'dialogue', 800) })
+      },
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'stage_aozu_outfit',
+      title: 'Stage AOZU Outfit',
+      description: 'Propose one owned paper-doll item for the active Companion. AOZU opens the wardrobe preview and waits for the user before the item is magnetically equipped and the character composite changes.',
+      inputSchema: { type: 'object', properties: { itemId: { type: 'string', enum: AOZU_WARDROBE_ITEMS.map(({ id }) => id) }, dialogue: { type: 'string', minLength: 1, maxLength: 800 }, idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' } }, required: ['itemId', 'idempotencyKey'], additionalProperties: false },
+      annotations: { readOnlyHint: false },
+      async execute(input) {
+        const itemId = String(input.itemId)
+        if (!AOZU_WARDROBE_ITEMS.some(({ id }) => id === itemId)) throw new Error('Unknown wardrobe item')
+        return stageProposal({ id: readIdempotencyKey(input.idempotencyKey), kind: 'outfit', itemId, dialogue: readOptionalText(input.dialogue, 'dialogue', 800) })
+      },
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'stage_aozu_memory',
+      title: 'Stage AOZU Memory',
+      description: 'Propose a short shared memory for the active Companion. AOZU shows the title, summary, and category; nothing becomes long-term memory until the user confirms it.',
+      inputSchema: { type: 'object', properties: { title: { type: 'string', minLength: 1, maxLength: 80 }, summary: { type: 'string', minLength: 1, maxLength: 500 }, category: { type: 'string', enum: AOZU_MEMORY_CATEGORIES }, dialogue: { type: 'string', minLength: 1, maxLength: 800 }, idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' } }, required: ['title', 'summary', 'category', 'idempotencyKey'], additionalProperties: false },
+      annotations: { readOnlyHint: false },
+      async execute(input) {
+        const category = String(input.category)
+        if (!AOZU_MEMORY_CATEGORIES.includes(category as (typeof AOZU_MEMORY_CATEGORIES)[number])) throw new Error('Unknown memory category')
+        return stageProposal({ id: readIdempotencyKey(input.idempotencyKey), kind: 'memory', title: readText(input.title, 'title', 80), summary: readText(input.summary, 'summary', 500), category, dialogue: readOptionalText(input.dialogue, 'dialogue', 800) })
+      },
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'stage_aozu_ability_card',
+      title: 'Stage AOZU Ability Card',
+      description: 'Propose a callable card that packages one learned Companion ability and a minimal memory summary. AOZU presents the card contract for user confirmation and never includes credentials or raw private history.',
+      inputSchema: { type: 'object', properties: { title: { type: 'string', minLength: 1, maxLength: 80 }, ability: { type: 'string', minLength: 1, maxLength: 120 }, summary: { type: 'string', minLength: 1, maxLength: 500 }, requiredCapabilities: { type: 'array', maxItems: 10, items: { type: 'string', minLength: 1, maxLength: 80 } }, dialogue: { type: 'string', minLength: 1, maxLength: 800 }, idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' } }, required: ['title', 'ability', 'summary', 'requiredCapabilities', 'idempotencyKey'], additionalProperties: false },
+      annotations: { readOnlyHint: false },
+      async execute(input) {
+        if (!Array.isArray(input.requiredCapabilities) || input.requiredCapabilities.length > 10) throw new Error('Invalid requiredCapabilities')
+        return stageProposal({ id: readIdempotencyKey(input.idempotencyKey), kind: 'card', title: readText(input.title, 'title', 80), ability: readText(input.ability, 'ability', 120), summary: readText(input.summary, 'summary', 500), requiredCapabilities: input.requiredCapabilities.map((value) => readText(value, 'capability', 80)), dialogue: readOptionalText(input.dialogue, 'dialogue', 800) })
       },
     }, { signal: controller.signal }),
     modelContext.registerTool({

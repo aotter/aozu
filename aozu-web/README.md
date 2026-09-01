@@ -38,13 +38,14 @@ AOZU 初版只使用本資料夾內的素材副本與示範資料。未來即使
 - [產品計劃](docs/PRODUCT_PLAN.md)：服務定位、使用情境、成長與能力卡規則。
 - [技術設計](docs/TECHNICAL_PLAN.md)：WebMCP 邊界、資料所有權、素材匯入與安全設計。
 - [交付計劃](docs/DELIVERY_PLAN.md)：由旅行情境開始的分階段實作與驗收條件。
+- [WebMCP Challenge 計劃](docs/WEBMCP_CHALLENGE_PLAN.md)：活動評分對應、P0 工具、三分鐘示範與送件路線。
 - [素材參考包](assets/README.md)：由原 App 複製且不反向影響原檔的首批視覺素材。
 
 ## 本機視覺原型
 
 互動式 RWD Web 位於 [`site/`](site/)，主畫面是夥伴房間與遊戲 HUD，不採一般網站式 Dashboard。使用者可在布丁獺、泡泡海豹、夜航鯨、琥珀鼬，以及電獺少女蜜柑、Spac1、嘻嘻七張夥伴卡之間切換。桌機、平板與手機都以角色、名字、等級為視覺中心；對話和所有輔助工具預設收合，可點按或拖曳抽屜展開。布丁獺物件櫃將五組高解析透明素材拆成頭部、衣服、背部與手持四個槽位、共二十件物件；可拖到角色身上磁吸就位，同類物件會直接替換，位置與裝備都寫入 Companion item state／loadout。主對話會依飲控、記帳、計步、旅遊、健身或共同寫作引導使用者貼上資料；旅遊任務還會追問位置，寫入三日旅行手札與 checklist，並累積探索、品味、規劃與羈絆點數。
 
-WebMCP 可使用 `open_aozu_dialogue` 喚出對話，使用 `start_aozu_activity` 切換生活任務、共同寫作、房間射擊或森林跳躍冒險，並以 `inspect_aozu_adventure_scores` 讀取兩個遊戲保存在本機的最高分。房間冒險會持續生成黑炭精靈，讓角色以橡皮筋射擊；森林冒險支援空白鍵與觸控跳躍，避開風吹來的垃圾。
+WebMCP 可使用 `open_aozu_dialogue` 喚出對話，使用 `start_aozu_activity` 切換生活任務、共同寫作、房間射擊或森林跳躍冒險，並以 `inspect_aozu_adventure_scores` 讀取本機最高分。P0 另外提供 `inspect_aozu_capabilities`，以及生活事件、旅行手札、紙娃娃穿搭、共同記憶和 Ability Card 五種 `stage_aozu_*` 提案工具。Agent 呼叫後只會打開角色的確認介面；使用者同意後，網站才透過既有 Mantle use case 寫入資料、換裝或封卡。
 
 ```bash
 cd aozu-web/site
