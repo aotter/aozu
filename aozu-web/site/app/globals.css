@@ -409,6 +409,12 @@ button:disabled { cursor: wait; opacity: .55; }
   .game-console.is-travel .travel-chat { flex: none; height: 75svh; min-height: 580px; }
   .paper-doll { height: 76%; width: 56%; }
   .paper-doll.partner-human { height: 86%; width: 72%; }
+  .chat-launcher { display: none; }
+  .mobile-pet-dialogue-hitbox { background: transparent; border: 0; bottom: 0; display: block; left: 18%; padding: 0; pointer-events: auto; position: absolute; right: 18%; top: 8%; touch-action: manipulation; z-index: 2; }
+  .paper-doll.partner-human .mobile-pet-dialogue-hitbox { left: 27%; right: 27%; top: 3%; }
+  .paper-doll.is-editing .mobile-pet-dialogue-hitbox { display: none; }
+  .room-call-status { align-items: center; color: #f5dcc1; display: flex; font-size: 16px; font-weight: 900; gap: 8px; padding-right: 34px; }
+  .room-call-status i { background: #62d6a6; border-radius: 50%; box-shadow: 0 0 0 4px rgba(98,214,166,.16); height: 8px; width: 8px; }
 }
 
 @media (max-width: 700px) {
@@ -430,12 +436,6 @@ button:disabled { cursor: wait; opacity: .55; }
   .room-user-echo { display: none; }
   .room-chat-composer input { min-height: 46px; }
   .room-chat-composer button { min-height: 46px; padding: 0 12px; }
-  .chat-launcher { display: none; }
-  .mobile-pet-dialogue-hitbox { background: transparent; border: 0; bottom: 0; display: block; left: 18%; padding: 0; pointer-events: auto; position: absolute; right: 18%; top: 8%; touch-action: manipulation; z-index: 2; }
-  .paper-doll.partner-human .mobile-pet-dialogue-hitbox { left: 27%; right: 27%; top: 3%; }
-  .paper-doll.is-editing .mobile-pet-dialogue-hitbox { display: none; }
-  .room-call-status { align-items: center; color: #f5dcc1; display: flex; font-size: 16px; font-weight: 900; gap: 8px; padding-right: 34px; }
-  .room-call-status i { background: #62d6a6; border-radius: 50%; box-shadow: 0 0 0 4px rgba(98,214,166,.16); height: 8px; width: 8px; }
   .paper-doll { bottom: 108px; height: 73%; left: 50%; width: 104%; }
   .paper-doll.partner-human { bottom: 108px; height: 80%; width: 112%; }
   .paper-doll.partner-human .travel-charm { bottom: 235px; left: calc(50% + 92px); }

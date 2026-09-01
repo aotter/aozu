@@ -12,35 +12,35 @@ export const AOZU_PARTNERS = [
 ] as const
 
 export const AOZU_WARDROBE_SLOTS = [
-  { id: 'wardrobe-head', label: '頭部', x: 50, y: 17, size: 44 },
-  { id: 'wardrobe-body', label: '衣服', x: 50, y: 58, size: 72 },
-  { id: 'wardrobe-back', label: '背部', x: 72, y: 59, size: 38 },
-  { id: 'wardrobe-hand', label: '手持', x: 22, y: 57, size: 32 },
+  { id: 'wardrobe-head', label: '頭部', x: 50, y: 24, size: 32 },
+  { id: 'wardrobe-body', label: '衣服', x: 50, y: 57, size: 50 },
+  { id: 'wardrobe-back', label: '背部', x: 70, y: 59, size: 26 },
+  { id: 'wardrobe-hand', label: '手持', x: 24, y: 49, size: 21 },
 ] as const
 
 export type AozuWardrobeSlotId = (typeof AOZU_WARDROBE_SLOTS)[number]['id']
 
 export const AOZU_WARDROBE_ITEMS = [
-  { id: 'explorer-bandana', label: '赤葉頭巾', theme: '探險', slot: 'wardrobe-head', image: '/assets/otter-explorer-accessories-v1.png', crop: [610, 230, 370, 390] },
-  { id: 'explorer-vest', label: '多袋探險背心', theme: '探險', slot: 'wardrobe-body', image: '/assets/otter-explorer-accessories-v1.png', crop: [55, 130, 530, 620] },
-  { id: 'explorer-binoculars', label: '黑金望遠鏡', theme: '探險', slot: 'wardrobe-back', image: '/assets/otter-explorer-accessories-v1.png', crop: [160, 790, 440, 300] },
-  { id: 'explorer-compass', label: '黃金羅盤', theme: '探險', slot: 'wardrobe-hand', image: '/assets/otter-explorer-accessories-v1.png', crop: [735, 735, 220, 310] },
-  { id: 'coffee-scarf', label: '奶泡小領巾', theme: '咖啡', slot: 'wardrobe-head', image: '/assets/otter-coffee-accessories-v1.png', crop: [620, 160, 350, 410] },
-  { id: 'coffee-apron', label: '手沖咖啡圍裙', theme: '咖啡', slot: 'wardrobe-body', image: '/assets/otter-coffee-accessories-v1.png', crop: [30, 170, 600, 920] },
-  { id: 'coffee-dripper', label: '隨行手沖包', theme: '咖啡', slot: 'wardrobe-back', image: '/assets/otter-coffee-accessories-v1.png', crop: [620, 1050, 330, 370] },
-  { id: 'coffee-cup', label: '拿鐵隨行杯', theme: '咖啡', slot: 'wardrobe-hand', image: '/assets/otter-coffee-accessories-v1.png', crop: [705, 570, 265, 410] },
-  { id: 'focus-headphones', label: '專注耳機', theme: '專注', slot: 'wardrobe-head', image: '/assets/otter-focus-accessories-v1.png', crop: [250, 50, 520, 390] },
-  { id: 'focus-jacket', label: '智慧機能外套', theme: '專注', slot: 'wardrobe-body', image: '/assets/otter-focus-accessories-v1.png', crop: [100, 430, 820, 670] },
-  { id: 'focus-tablet', label: '智慧共筆板', theme: '專注', slot: 'wardrobe-back', image: '/assets/otter-focus-accessories-v1.png', crop: [55, 1060, 500, 310] },
-  { id: 'focus-stylus', label: '記憶觸控筆', theme: '專注', slot: 'wardrobe-hand', image: '/assets/otter-focus-accessories-v1.png', crop: [570, 1090, 120, 320] },
-  { id: 'night-moon', label: '弦月髮飾', theme: '夜航', slot: 'wardrobe-head', image: '/assets/otter-night-accessories-v1.png', crop: [620, 1120, 220, 310] },
-  { id: 'night-cape', label: '星夜旅行披風', theme: '夜航', slot: 'wardrobe-body', image: '/assets/otter-night-accessories-v1.png', crop: [80, 100, 830, 650] },
-  { id: 'night-satchel', label: '星軌側背包', theme: '夜航', slot: 'wardrobe-back', image: '/assets/otter-night-accessories-v1.png', crop: [70, 1030, 530, 360] },
-  { id: 'night-lantern', label: '暖光提燈', theme: '夜航', slot: 'wardrobe-hand', image: '/assets/otter-night-accessories-v1.png', crop: [680, 760, 270, 360] },
-  { id: 'voyage-cap', label: '波浪船長帽', theme: '遠航', slot: 'wardrobe-head', image: '/assets/otter-voyage-accessories-v1.png', crop: [280, 70, 470, 270] },
-  { id: 'voyage-jacket', label: '紅白遠航夾克', theme: '遠航', slot: 'wardrobe-body', image: '/assets/otter-voyage-accessories-v1.png', crop: [220, 350, 760, 720] },
-  { id: 'voyage-tag', label: '港口行李吊牌', theme: '遠航', slot: 'wardrobe-back', image: '/assets/otter-voyage-accessories-v1.png', crop: [130, 1070, 280, 340] },
-  { id: 'voyage-passport', label: '掌上航海證', theme: '遠航', slot: 'wardrobe-hand', image: '/assets/otter-voyage-accessories-v1.png', crop: [30, 420, 220, 300] },
+  { id: 'explorer-bandana', label: '赤葉頭巾', theme: '探險', slot: 'wardrobe-head', image: '/assets/otter-explorer-accessories-v1.png', crop: [590, 220, 410, 450] },
+  { id: 'explorer-vest', label: '多袋探險背心', theme: '探險', slot: 'wardrobe-body', image: '/assets/otter-explorer-accessories-v1.png', crop: [45, 110, 570, 680] },
+  { id: 'explorer-binoculars', label: '黑金望遠鏡', theme: '探險', slot: 'wardrobe-back', image: '/assets/otter-explorer-accessories-v1.png', crop: [80, 750, 510, 350] },
+  { id: 'explorer-compass', label: '黃金羅盤', theme: '探險', slot: 'wardrobe-hand', image: '/assets/otter-explorer-accessories-v1.png', crop: [610, 690, 360, 360] },
+  { id: 'coffee-scarf', label: '奶泡小領巾', theme: '咖啡', slot: 'wardrobe-head', image: '/assets/otter-coffee-accessories-v1.png', crop: [600, 140, 390, 440] },
+  { id: 'coffee-apron', label: '手沖咖啡圍裙', theme: '咖啡', slot: 'wardrobe-body', image: '/assets/otter-coffee-accessories-v1.png', crop: [30, 150, 610, 970] },
+  { id: 'coffee-dripper', label: '隨行手沖包', theme: '咖啡', slot: 'wardrobe-back', image: '/assets/otter-coffee-accessories-v1.png', crop: [620, 1000, 350, 430] },
+  { id: 'coffee-cup', label: '拿鐵隨行杯', theme: '咖啡', slot: 'wardrobe-hand', image: '/assets/otter-coffee-accessories-v1.png', crop: [680, 570, 300, 430] },
+  { id: 'focus-headphones', label: '專注耳機', theme: '專注', slot: 'wardrobe-head', image: '/assets/otter-focus-accessories-v1.png', crop: [220, 60, 580, 410] },
+  { id: 'focus-jacket', label: '智慧機能外套', theme: '專注', slot: 'wardrobe-body', image: '/assets/otter-focus-accessories-v1.png', crop: [80, 440, 840, 660] },
+  { id: 'focus-tablet', label: '智慧共筆板', theme: '專注', slot: 'wardrobe-back', image: '/assets/otter-focus-accessories-v1.png', crop: [70, 1080, 470, 340] },
+  { id: 'focus-stylus', label: '記憶觸控筆', theme: '專注', slot: 'wardrobe-hand', image: '/assets/otter-focus-accessories-v1.png', crop: [540, 1090, 150, 340] },
+  { id: 'night-moon', label: '弦月髮飾', theme: '夜航', slot: 'wardrobe-head', image: '/assets/otter-night-accessories-v1.png', crop: [590, 1120, 240, 320] },
+  { id: 'night-cape', label: '星夜旅行披風', theme: '夜航', slot: 'wardrobe-body', image: '/assets/otter-night-accessories-v1.png', crop: [470, 90, 510, 690] },
+  { id: 'night-satchel', label: '星軌側背包', theme: '夜航', slot: 'wardrobe-back', image: '/assets/otter-night-accessories-v1.png', crop: [60, 1040, 540, 400] },
+  { id: 'night-lantern', label: '暖光提燈', theme: '夜航', slot: 'wardrobe-hand', image: '/assets/otter-night-accessories-v1.png', crop: [650, 730, 260, 410] },
+  { id: 'voyage-cap', label: '波浪船長帽', theme: '遠航', slot: 'wardrobe-head', image: '/assets/otter-voyage-accessories-v1.png', crop: [260, 50, 520, 270] },
+  { id: 'voyage-jacket', label: '紅白遠航夾克', theme: '遠航', slot: 'wardrobe-body', image: '/assets/otter-voyage-accessories-v1.png', crop: [200, 320, 790, 780] },
+  { id: 'voyage-tag', label: '港口行李吊牌', theme: '遠航', slot: 'wardrobe-back', image: '/assets/otter-voyage-accessories-v1.png', crop: [100, 1050, 370, 380] },
+  { id: 'voyage-passport', label: '掌上航海證', theme: '遠航', slot: 'wardrobe-hand', image: '/assets/otter-voyage-accessories-v1.png', crop: [30, 340, 230, 310] },
 ] as const satisfies ReadonlyArray<{ id: string; label: string; theme: string; slot: AozuWardrobeSlotId; image: string; crop: readonly [number, number, number, number] }>
 
 export const AOZU_TRAVEL_ACCESSORIES = [
@@ -67,7 +67,7 @@ export type TravelJournalState = {
 
 export const DEFAULT_TRAVEL_JOURNAL: TravelJournalState = {
   title: '台南三日散步旅行',
-  equippedAccessoryId: 'route-pin',
+  equippedAccessoryId: 'none',
   entries: [
     { id: 'stop-art-museum', day: 1, kind: 'spot', name: '臺南市美術館二館', location: '中西區忠義路二段', checked: false },
     { id: 'stop-rice-cake', day: 1, kind: 'food', name: '保安路米糕', location: '中西區保安路', checked: false },
@@ -176,12 +176,7 @@ const makeCustomization = (partner: (typeof AOZU_PARTNERS)[number]): AgentCustom
       },
     },
   ],
-  initialEquipment: partner.id === 'otter' ? {
-    'wardrobe-head': 'wardrobe-explorer-bandana',
-    'wardrobe-body': 'wardrobe-explorer-vest',
-    'wardrobe-back': 'wardrobe-explorer-binoculars',
-    'wardrobe-hand': 'wardrobe-explorer-compass',
-  } : {},
+  initialEquipment: {},
 })
 
 export const AOZU_CUSTOMIZATION = makeCustomization(AOZU_PARTNERS[0])

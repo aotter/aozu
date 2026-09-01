@@ -49,8 +49,9 @@ const conversationGuides: Record<ModuleId, { intro: string; placeholder: string;
 };
 
 const defaultPlacement: Placement = { x: 0, y: 0, scale: 1 };
+const legacyStarterWardrobe = ['explorer-bandana', 'explorer-vest', 'explorer-binoculars', 'explorer-compass'];
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value));
-const isMobileViewport = () => window.matchMedia('(max-width: 700px)').matches;
+const isMobileViewport = () => window.matchMedia('(max-width: 1050px)').matches;
 const placementFrom = (state?: Record<string, unknown>): Placement => ({
   x: typeof state?.x === 'number' ? clamp(state.x, -35, 35) : 0,
   y: typeof state?.y === 'number' ? clamp(state.y, -35, 35) : 0,
@@ -182,14 +183,19 @@ export default function Home() {
   const activeModule = modules.find(({ id }) => id === activeModuleId) ?? modules[3];
   const activePartner = AOZU_PARTNERS.find(({ name }) => name === runtime?.companion.name) ?? AOZU_PARTNERS[0];
   const wardrobeEnabled = activePartner.id === 'otter';
-  const equippedWardrobeItems = wardrobeEnabled ? AOZU_WARDROBE_ITEMS.filter(({ id }) => runtime?.loadout.equippedDefinitionIds.includes(`wardrobe-${id}`)) : [];
+  const storedWardrobeItems = wardrobeEnabled ? AOZU_WARDROBE_ITEMS.filter(({ id }) => runtime?.loadout.equippedDefinitionIds.includes(`wardrobe-${id}`)) : [];
+  const hasLegacyStarterWardrobe = storedWardrobeItems.length === legacyStarterWardrobe.length && legacyStarterWardrobe.every((id) => storedWardrobeItems.some((item) => item.id === id));
+  const equippedWardrobeItems = hasLegacyStarterWardrobe ? [] : storedWardrobeItems;
   const selectedWardrobeItem = AOZU_WARDROBE_ITEMS.find(({ id }) => id === selectedWardrobeItemId) ?? equippedWardrobeItems[0] ?? AOZU_WARDROBE_ITEMS[0];
   const selectedWardrobePlacement = placementDraft[`wardrobe-${selectedWardrobeItem.id}`] ?? placementFrom(runtime?.loadout.itemStates[`wardrobe-${selectedWardrobeItem.id}`]);
   const equippedWardrobeLabel = equippedWardrobeItems.map(({ label }) => label).join('、') || '原本造型';
   const activeGuide = conversationGuides[activeModule.id];
   const travelJournal = (runtime?.loadout.itemStates['travel-journal'] as TravelJournalState | undefined) ?? DEFAULT_TRAVEL_JOURNAL;
   const travelScore = Object.values(travelJournal.points).reduce((total, value) => total + value, 0);
-  const activeTravelAccessory = AOZU_TRAVEL_ACCESSORIES.find(({ id }) => id === travelJournal.equippedAccessoryId);
+  const hasLegacyTravelBadge = travelJournal.equippedAccessoryId === 'route-pin'
+    && travelJournal.points.exploration === 12 && travelJournal.points.taste === 8
+    && travelJournal.points.planning === 10 && travelJournal.points.bond === 4;
+  const activeTravelAccessory = hasLegacyTravelBadge ? undefined : AOZU_TRAVEL_ACCESSORIES.find(({ id }) => id === travelJournal.equippedAccessoryId);
   const activeTravelAccessoryName = activeTravelAccessory?.names[activePartner.id];
   const nextTravelAccessory = AOZU_TRAVEL_ACCESSORIES.find(({ threshold }) => threshold > travelScore);
   const completedStops = travelJournal.entries.filter(({ checked }) => checked).length;
@@ -356,6 +362,32 @@ export default function Home() {
     }
   };
 
+  const clearLegacyStarterLayers = async () => {
+    if (!runtime || busy || (!hasLegacyStarterWardrobe && !hasLegacyTravelBadge)) return;
+    setBusy(true);
+    try {
+      const { application } = await bootAozu();
+      let current = runtime;
+      if (hasLegacyStarterWardrobe) {
+        for (const slot of AOZU_WARDROBE_SLOTS) {
+          await application.submitAction(`clear-${slot.id}`, current.stage.revision);
+          const next = await application.loadStartup();
+          if (next.status === 'main') current = next;
+        }
+      }
+      if (hasLegacyTravelBadge) {
+        await application.setItemState('travel-journal', { ...travelJournal, equippedAccessoryId: 'none' }, current.stage.revision);
+        const next = await application.loadStartup();
+        if (next.status === 'main') current = next;
+      }
+      setRuntime(current);
+    } catch (error) {
+      setRuntimeError(messageFrom(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const openTravelChat = () => {
     setPanel('quests');
     setActiveModuleId('travel');
@@ -374,7 +406,10 @@ export default function Home() {
     setPanel(control.panel);
     setMobileToolsOpen(false);
     setMobileConsoleOpen(false);
-    if (!control.module) return;
+    if (!control.module) {
+      void clearLegacyStarterLayers();
+      return;
+    }
     setDialogueIntent('module');
     const mobile = isMobileViewport();
     setDialogueOpen(!mobile);
@@ -399,6 +434,7 @@ export default function Home() {
     setDialogueOpen(false);
     setMobileToolsOpen(false);
     setMobileConsoleOpen(nextPanel !== 'wardrobe');
+    if (nextPanel === 'wardrobe') void clearLegacyStarterLayers();
   };
 
   const beginToolPull = (event: ReactPointerEvent<HTMLElement>) => {

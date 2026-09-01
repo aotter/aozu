@@ -18,12 +18,7 @@ assert.deepEqual(actionIds.slice(0, 5), ['steps', 'fitness', 'meals', 'money', '
 assert.ok(AOZU_WARDROBE_SLOTS.every(({ id }) => actionIds.includes(`clear-${id}`)))
 assert.ok(AOZU_WARDROBE_ITEMS.every(({ id }) => actionIds.includes(`wear-${id}`)))
 assert.equal(candidate.entries.filter(({ collection }) => collection === 'item-definitions').length, AOZU_WARDROBE_ITEMS.length + 1)
-assert.deepEqual(loadout?.data.equipment, {
-  'wardrobe-head': 'wardrobe-explorer-bandana',
-  'wardrobe-body': 'wardrobe-explorer-vest',
-  'wardrobe-back': 'wardrobe-explorer-binoculars',
-  'wardrobe-hand': 'wardrobe-explorer-compass',
-})
+assert.deepEqual(loadout?.data.equipment, {})
 assert.equal(AOZU_PARTNERS.length, 7)
 assert.deepEqual(explorerInventory?.data.state, { x: 0, y: 0, scale: 1 })
 assert.deepEqual((explorerDefinition?.data.definition as { stateSchema?: { required?: string[] } }).stateSchema?.required, ['x', 'y', 'scale'])
@@ -31,6 +26,7 @@ assert.equal(AOZU_WARDROBE_ITEMS.length, 20)
 assert.ok(AOZU_WARDROBE_SLOTS.every(({ id }) => AOZU_WARDROBE_ITEMS.filter(({ slot }) => slot === id).length === 5))
 assert.ok(AOZU_WARDROBE_ITEMS.every(({ crop }) => crop.length === 4))
 assert.deepEqual(travelJournal?.data.state, DEFAULT_TRAVEL_JOURNAL)
+assert.equal(DEFAULT_TRAVEL_JOURNAL.equippedAccessoryId, 'none')
 assert.equal(AOZU_TRAVEL_ACCESSORIES.length, 3)
 assert.ok(AOZU_TRAVEL_ACCESSORIES.every(({ names }) => Object.keys(names).length === AOZU_PARTNERS.length))
 console.log('aozu customization: ok')
