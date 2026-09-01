@@ -9,6 +9,7 @@ const actions = [
 assert.equal(resolvePreparedAction(actions, { actionId: 'train' }).path, 'hot')
 assert.equal(resolvePreparedAction(actions, { text: "let's train" }).path, 'warm')
 assert.deepEqual(resolvePreparedAction(actions, { text: 'unknown' }), { path: 'cold', reason: 'unmatched' })
+assert.throws(() => resolvePreparedAction([{ id: 'train', label: ' ' }], { actionId: 'train' }), /Invalid action/)
 
 const next = executePlaybookPlan(
   { currentStageId: 'one', metrics: { xp: 0 }, flags: {} },

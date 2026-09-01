@@ -1,14 +1,17 @@
-import { linkManifestSet, parseManifestSources, type Diagnostic, type JsonSchema, type ManifestSource } from "@aotter/mantle-spec"
-import { compileRuntimePlan, type RuntimePlan } from "@aotter/mantle-runtime"
+import type { JsonSchema, ManifestSource } from "@aotter/mantle-spec"
+import type { RuntimePlan } from "@aotter/mantle-runtime"
 import {
-  CONDITION_REF,
   EFFECT_SCHEMA,
+  EXPERIENCE_CANDIDATE_SCHEMA,
+  PLAYBOOK_RULE_SCHEMA,
   PLAYBOOK_LIMITS,
   PLAYBOOK_SCHEMA_DEFS,
+  PREPARED_ACTION_SCHEMA,
   PROGRESS_LOOP_IDS,
   PROGRESS_BINDING_SCHEMA,
 } from '../domain/playbook.ts'
 import { CHARACTER_VARIANT_GROUPS } from '../domain/character.ts'
+import { compileBundle } from '../bundle.ts'
 
 const source = (sourceId: string, manifest: object): ManifestSource => ({
   sourceId,
@@ -29,19 +32,7 @@ const objectSchema = (properties: Readonly<Record<string, JsonSchema>>, required
   additionalProperties: false,
 })
 
-const actionSchema = objectSchema(
-  {
-    id: { type: "string", minLength: 1, maxLength: 100 },
-    label: { type: "string", minLength: 1, maxLength: 200 },
-    phrases: {
-      type: "array",
-      maxItems: PLAYBOOK_LIMITS.phrasesPerAction,
-      items: { type: "string", minLength: 1, maxLength: PLAYBOOK_LIMITS.phraseLength },
-    },
-    effects: { type: "array", maxItems: PLAYBOOK_LIMITS.effectsPerActionOrRule, items: EFFECT_SCHEMA },
-  },
-  ["id", "label"],
-)
+const actionSchema = PREPARED_ACTION_SCHEMA
 
 const progressSchema = PROGRESS_BINDING_SCHEMA
 
@@ -80,36 +71,6 @@ const stageProjectionSchema = objectSchema({
     }, ['id', 'label', 'value']),
   },
 }, ['stageId', 'revision', 'status', 'agentFallback', 'title', 'narrative', 'actions', 'progress'])
-
-const experienceCandidateSchema = objectSchema({
-  name: { type: 'string', minLength: 1, maxLength: 200 },
-  initialStageId: { type: 'string', minLength: 1, maxLength: 100 },
-  metrics: { type: 'object', additionalProperties: { type: 'number' } },
-  flags: { type: 'object', additionalProperties: { type: 'boolean' } },
-  itemDefinitions: { type: 'array', maxItems: 100, items: { type: 'object' } },
-  stages: {
-    type: 'array', minItems: 1, maxItems: PLAYBOOK_LIMITS.stages,
-    items: objectSchema({
-      id: { type: 'string', minLength: 1, maxLength: 100 },
-      title: { type: 'string', minLength: 1, maxLength: 500 },
-      narrative: { type: 'string', minLength: 1, maxLength: PLAYBOOK_LIMITS.dialogueLength },
-      terminal: { type: 'boolean' },
-      agentFallback: { type: 'boolean' },
-      scene: sceneReferenceSchema,
-      actions: { type: 'array', maxItems: PLAYBOOK_LIMITS.actionsPerStage, items: actionSchema },
-      progress: { type: 'array', items: progressSchema },
-    }, ['id', 'title', 'narrative', 'actions']),
-  },
-  rules: {
-    type: 'array', maxItems: PLAYBOOK_LIMITS.rules,
-    items: objectSchema({
-      ruleId: { type: 'string', minLength: 1, maxLength: 100 },
-      priority: { type: 'integer' },
-      when: CONDITION_REF,
-      effects: { type: 'array', maxItems: PLAYBOOK_LIMITS.effectsPerActionOrRule, items: EFFECT_SCHEMA },
-    }, ['ruleId', 'priority', 'when', 'effects']),
-  },
-}, ['name', 'initialStageId', 'metrics', 'stages'])
 
 const experienceSeedSchema = objectSchema(
   {
@@ -346,18 +307,7 @@ const ALL_BACKBONE_SOURCES = [
         title: "Rules",
         lifecycle: "operational",
         indexes: [["priority", "ruleId"]],
-        schema: {
-          ...objectSchema(
-          {
-            ruleId: { type: "string", minLength: 1 },
-            priority: { type: "integer" },
-            when: CONDITION_REF,
-            effects: { type: "array", maxItems: PLAYBOOK_LIMITS.effectsPerActionOrRule, items: EFFECT_SCHEMA },
-          },
-          ["ruleId", "priority", "when", "effects"],
-          ),
-          $defs: PLAYBOOK_SCHEMA_DEFS,
-        },
+        schema: PLAYBOOK_RULE_SCHEMA,
       },
     ),
   ),
@@ -511,7 +461,7 @@ const ALL_BACKBONE_SOURCES = [
           draftId: { type: "string", minLength: 1 },
           expectedRevision: { type: "integer", minimum: 0 },
           idempotencyKey: { type: "string", minLength: 1, maxLength: 100 },
-          candidate: experienceCandidateSchema,
+          candidate: EXPERIENCE_CANDIDATE_SCHEMA,
         }, ['draftId', 'expectedRevision', 'idempotencyKey', 'candidate']),
         $defs: PLAYBOOK_SCHEMA_DEFS,
       },
@@ -632,20 +582,8 @@ const ALL_BACKBONE_SOURCES = [
 export const AUTHORING_BACKBONE_SOURCES = ALL_BACKBONE_SOURCES.filter(({ sourceId }) => sourceId.startsWith('authoring/'))
 export const FIXED_BACKBONE_SOURCES = ALL_BACKBONE_SOURCES.filter(({ sourceId }) => sourceId.startsWith('fixed/'))
 
-const diagnosticError = (phase: string, diagnostics: readonly Diagnostic[]) =>
-  new Error(`${phase}: ${diagnostics.map(({ code, path }) => `${code}@${path}`).join(", ")}`)
-
-const compileBackbone = (sources: readonly ManifestSource[]): RuntimePlan => {
-  const parsed = parseManifestSources({ sources })
-  if (!parsed.ok) throw diagnosticError("parse", parsed.diagnostics)
-
-  const linked = linkManifestSet(parsed.value)
-  if (!linked.ok) throw diagnosticError("link", linked.diagnostics)
-
-  const compiled = compileRuntimePlan(linked.value)
-  if (!compiled.ok) throw diagnosticError("compile", compiled.diagnostics)
-  return compiled.value
-}
+const compileBackbone = (sources: readonly ManifestSource[]): RuntimePlan =>
+  compileBundle(Object.fromEntries(sources.map(({ sourceId, text }) => [sourceId, text])))
 
 export const compileAuthoringBackbone = () => compileBackbone(AUTHORING_BACKBONE_SOURCES)
 export const compileFixedBackbone = () => compileBackbone(FIXED_BACKBONE_SOURCES)
