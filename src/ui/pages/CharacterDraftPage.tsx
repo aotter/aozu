@@ -36,7 +36,6 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, onReview
   const location = useLocation()
   const { step } = useParams()
   const category = characterCategories.find(({ id }) => id === step)
-  const reviewing = step === 'review'
   const [draft, setDraft] = useState<CharacterDraft>()
   const [loadError, setLoadError] = useState(false)
   const [busy, setBusy] = useState<string>()
@@ -57,12 +56,11 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, onReview
   }, [openDraft])
 
   if (!step || step === 'identity' || step === 'accessories') return <Navigate to="/character/expressions" state={location.state} replace />
-  if (!category && !reviewing) return <Navigate to="/character/expressions" state={location.state} replace />
+  if (!category) return <Navigate to="/character/expressions" state={location.state} replace />
   if (loadError) return <StatusPage>{t('startup.error')}</StatusPage>
   if (!draft) return <StatusPage>{t('startup.loading')}</StatusPage>
 
   const previewLayers = resolveCharacterDraftLayers(draft)
-  const base = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')!
   const missing = REQUIRED_CHARACTER_TARGETS.filter((target) => !draft.variants
     .find(({ group, id }) => group === target.group && id === target.variantId)?.layers[target.layer])
   const visibleVariants = category ? draft.variants.filter(({ group }) => category.group === group) : []
@@ -136,8 +134,8 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, onReview
         </label>
       </section>
 
-      <section className="min-h-0 min-w-0 overflow-y-auto overscroll-contain rounded-2xl border bg-background p-1.5 sm:p-4" aria-label={t('characterDraft.customizeTitle')}>
-        <nav aria-label={t('characterDraft.categorySwitcher')} className="sticky top-0 z-10 flex gap-1 border-b bg-background pb-2 sm:gap-2">
+      <section className="flex min-h-0 min-w-0 flex-col rounded-2xl border bg-background p-1.5 sm:p-4" aria-label={t('characterDraft.customizeTitle')}>
+        <nav aria-label={t('characterDraft.categorySwitcher')} className="flex shrink-0 gap-1 border-b bg-background pb-2 sm:gap-2">
           {characterCategories.map(({ id, icon: Icon }) => <Button
             key={id}
             type="button"
@@ -152,7 +150,8 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, onReview
           </Button>)}
         </nav>
 
-        {category && !selectedVariant && <>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        {!selectedVariant && <>
           <h2 className="mt-1 truncate text-sm font-medium sm:text-lg">{t(`characterDraft.categories.${category.id}`)}</h2>
           <div className="mt-2 grid grid-cols-2 gap-1.5 sm:mt-4 sm:gap-3">
             {category.group !== 'expression' && <button type="button" aria-label={t('characterDraft.none')} title={t('characterDraft.none')} aria-pressed={!hasSelection(category.group)} className={`relative aspect-square min-w-0 overflow-hidden rounded-xl border bg-background transition-colors hover:border-foreground/40 ${!hasSelection(category.group) ? 'border-foreground ring-1 ring-foreground' : ''}`} onClick={() => clearVariant(category.group)}>
@@ -178,7 +177,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, onReview
           </div>
         </>}
 
-        {category && selectedVariant && (() => {
+        {selectedVariant && (() => {
           const group = CHARACTER_CREATION_GROUPS.find(({ group }) => group === selectedVariant.group)!
           const layeredAccessory = selectedVariant.group === 'prop'
           const primaryLayer = layeredAccessory ? 'front' : group.layers[0]
@@ -208,16 +207,16 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, onReview
           </>
         })()}
 
-        {reviewing && <>
-          <h2 className="mt-1 text-sm font-medium sm:text-lg">{t('characterDraft.review')}</h2>
-          <p className="mt-3 text-xs text-muted-foreground sm:text-sm">{missing.length ? t('characterDraft.missingRequired') : t('characterDraft.ready')}</p>
-          <div className="mt-3 grid gap-1.5 text-xs sm:text-sm">
-            <div className="flex items-center justify-between rounded-xl border p-2"><span>{t('characterDraft.baseTitle')}</span><span className="text-muted-foreground">{base.layers.body ? t('characterDraft.layerReady') : t('characterDraft.layerMissing')}</span></div>
-            <div className="flex items-center justify-between rounded-xl border p-2"><span>{t('characterDraft.neutralExpression')}</span><span className="text-muted-foreground">{missing.some(({ group }) => group === 'expression') ? t('characterDraft.layerMissing') : t('characterDraft.layerReady')}</span></div>
-          </div>
-          <Button size="sm" className="mt-3 w-full" disabled={Boolean(busy) || Boolean(missing.length) || !draft.name.trim()} onClick={async () => { setBusy('review'); setError(undefined); try { await onReview(await updateDraft(draft)) } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); setBusy(undefined) } }}>{busy === 'review' ? t('draft.validating') : t('draft.review')}</Button>
-        </>}
         {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
+        </div>
+        <div className="shrink-0 border-t pt-2">
+          {missing.length > 0 && <p className="mb-2 text-[10px] leading-4 text-muted-foreground sm:text-xs">{t('characterDraft.missingRequired')}</p>}
+          <Button size="sm" className="w-full" disabled={Boolean(busy) || Boolean(missing.length) || !draft.name.trim()} onClick={async () => {
+            setBusy('review'); setError(undefined)
+            try { await onReview(await updateDraft(draft)) }
+            catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); setBusy(undefined) }
+          }}>{busy === 'review' ? t('characterDraft.validating') : t('common.continue')}</Button>
+        </div>
       </section>
     </main>
   </div>
