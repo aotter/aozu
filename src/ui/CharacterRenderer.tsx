@@ -58,20 +58,21 @@ export function CharacterAlignmentRenderer({
   label: string
   candidateLayers: Layer[]
   referenceLayers: Layer[]
-  mode: 'composite' | 'overlay' | 'diagnostic'
+  mode: 'composite' | 'overlay' | 'difference' | 'diagnostic'
   candidateBounds?: Bounds
   referenceBounds?: Bounds
   footLine?: number
 }) {
   if (mode === 'composite') return <CharacterRenderer label={label} layers={candidateLayers} />
   const diagnostic = mode === 'diagnostic'
+  const difference = mode === 'difference'
   return <div className="relative aspect-2/3 w-full overflow-hidden rounded-3xl border bg-muted/40" role="img" aria-label={label}>
     <Layers layers={referenceLayers} style={diagnostic
       ? { opacity: 0.65, filter: 'brightness(0) saturate(100%) invert(75%) sepia(94%) saturate(1454%) hue-rotate(128deg) brightness(103%) contrast(103%)', mixBlendMode: 'screen' }
-      : { opacity: 0.45 }} />
+      : { opacity: difference ? 1 : 0.45 }} />
     <Layers layers={candidateLayers} style={diagnostic
       ? { opacity: 0.65, filter: 'brightness(0) saturate(100%) invert(23%) sepia(97%) saturate(7478%) hue-rotate(312deg) brightness(111%) contrast(111%)', mixBlendMode: 'screen' }
-      : { opacity: 0.65 }} />
+      : { opacity: difference ? 1 : 0.65, ...(difference ? { mixBlendMode: 'difference' } : {}) }} />
     {diagnostic && <>
       <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-1/2 border-l border-dashed border-foreground/30" />
       {footLine !== undefined && <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 border-t border-dashed border-foreground/30" style={{ top: `${footLine / CHARACTER_RIG.canvas.height * 100}%` }} />}

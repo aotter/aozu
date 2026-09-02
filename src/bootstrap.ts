@@ -39,6 +39,7 @@ import {
   hasCurrentCharacterLayer,
   isCharacterDraftAssetCurrent,
   characterAssetPlacement,
+  characterHeadRegistration,
   characterRegistrationFrame,
   resolveCharacterDraftReferenceLayers,
   setCharacterVariantTransform,
@@ -47,8 +48,8 @@ import {
   saveCharacterDraftAsset,
   reviewCharacterDraft,
 } from './core/application/character-creation.ts'
-import { measureCharacterMaskAlignment } from './core/application/character-alignment.ts'
-import { inspectCharacterImage, readCharacterAlphaMask, renderCharacterCompositeDataUrl } from './adapters/browser/character-image.ts'
+import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
+import { inspectCharacterImage, readCharacterAlphaMask, readCharacterVisualSample, renderCharacterCompositeDataUrl } from './adapters/browser/character-image.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
 import { planItemEffects } from './core/application/items.ts'
@@ -285,6 +286,19 @@ export function createApplication(document: Document) {
       return saveCharacterDraftAsset(characterDrafts, inspectCharacterImage, draft, target, blob, filename, source)
     },
     async setCharacterVariantTransform(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string, transform: CharacterVariantTransform) {
+      return setCharacterVariantTransform(characterDrafts, group, variantId, draft.updatedAt, transform)
+    },
+    async autoFitCharacterVariant(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string) {
+      const variant = draft.variants.find((candidate) => candidate.group === group && candidate.id === variantId)
+      const layer = variant && CHARACTER_CREATION_GROUPS.find((candidate) => candidate.group === group)?.layers.find((candidate) => variant.layers[candidate])
+      if (!variant || !layer) throw new Error('Character variant is empty or missing')
+      const target = await characterTarget(draft, { group, variantId, layer })
+      const visualTransform = target?.alignment.visualFit?.suggestedTransform
+      if (visualTransform) return setCharacterVariantTransform(characterDrafts, group, variantId, draft.updatedAt, visualTransform)
+      if (target?.alignment.registration?.role === 'head-anchor' && target.alignment.visualFit) return draft
+      if (target?.alignment.measurement?.status === 'aligned') return draft
+      const transform = highConfidenceCharacterAutoFit(target?.alignment.measurement)
+      if (!transform) throw new Error('No high-confidence auto-fit is available; use the visual alignment controls.')
       return setCharacterVariantTransform(characterDrafts, group, variantId, draft.updatedAt, transform)
     },
     prepareCharacter: (draft: CharacterDraft) => reviewCharacterDraft(inspectCharacterImage, draft),
@@ -564,10 +578,11 @@ export function createApplication(document: Document) {
     const variant = draft.variants.find(({ group, id }) => group === input.group && id === input.variantId)
     const asset = variant?.layers[input.layer]
     const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
-    const expressionReference = draft.variants.find((candidate) =>
-      candidate.group === 'expression' && candidate.layers.head && isCharacterDraftAssetCurrent(draft, candidate, 'head')
-    )?.layers.head
-    const alignmentReference = input.group === 'expression' ? expressionReference : input.group === 'outfit' ? canonical : undefined
+    const headRegistration = characterHeadRegistration(draft)
+    const expressionReference = headRegistration?.asset
+    const alignmentReference = input.group === 'expression' && headRegistration?.variant.id !== input.variantId ? expressionReference
+      : input.group === 'outfit' ? canonical : undefined
+    const referenceTransform = input.group === 'expression' ? headRegistration?.transform : undefined
     const editSource = input.group === 'expression' ? expressionReference ?? canonical
       : input.group === 'outfit' ? canonical : undefined
     const transform = variant?.transform ?? { x: 0, y: 0, scale: 1 }
@@ -576,6 +591,7 @@ export function createApplication(document: Document) {
       alignmentReference ? await readCharacterAlphaMask(alignmentReference.blob) : null,
       await readCharacterAlphaMask(asset.blob),
       transform,
+      referenceTransform,
     ) : null
     const currentBounds = asset?.inspection.visibleBounds ? transformCharacterBounds(asset.inspection.visibleBounds, transform) : undefined
     const overflow = currentBounds ? {
@@ -593,17 +609,26 @@ export function createApplication(document: Document) {
     const reviewDestination = input.group === 'expression' ? 'character-expressions'
       : input.group === 'outfit' ? 'character-outfits'
         : input.group === 'prop' ? 'character-props' : 'character-expressions'
-    const suggestedTransform = measurement?.status === 'misaligned' ? measurement.suggestedTransform : null
-    const transformSupported = suggestedTransform && suggestedTransform.scale >= 0.25 && suggestedTransform.scale <= 4 && Math.abs(suggestedTransform.x) <= 512 && Math.abs(suggestedTransform.y) <= 768
+    const suggestedTransform = highConfidenceCharacterAutoFit(measurement)
+    const visualFit = asset && canonical && input.group === 'expression' && headRegistration?.variant.id === input.variantId
+      ? suggestCharacterVisualRegistration(await readCharacterVisualSample(canonical.blob), await readCharacterVisualSample(asset.blob), transform)
+      : null
     const nextActions = !asset || !variant || !isCharacterDraftAssetCurrent(draft, variant, input.layer) ? [{
       tool: 'submit_character_asset_candidate', required: true, reason: 'Submit the final exact-canvas RGBA target layer.', input: { group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
-    }] : transformSupported ? [{
+    }] : suggestedTransform ? [{
       tool: 'set_character_variant_transform',
       required: true,
       reason: 'Apply the suggested absolute transform, then inspect the alpha-mask alignment again.',
       input: { group: input.group, variantId: input.variantId, expectedUpdatedAt: draft.updatedAt, ...suggestedTransform },
+    }] : visualFit?.suggestedTransform ? [{
+      tool: 'set_character_variant_transform',
+      required: false,
+      reason: 'Try the experimental native pixel-and-edge correlation fit, then visually review the head alignment view; this never approves the draft.',
+      input: { group: input.group, variantId: input.variantId, expectedUpdatedAt: draft.updatedAt, ...visualFit.suggestedTransform },
+    }, {
+      tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, Difference, and Align before user Review.', input: { destination: reviewDestination },
     }] : [{
-      tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, and Align before user Review.', input: { destination: reviewDestination },
+      tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, Difference, and Align before user Review.', input: { destination: reviewDestination },
     }, {
       tool: 'navigate_companion', required: false, reason: 'After the visual preflight is ready, open the complete Character Review.', input: { destination: 'character-review' },
     }]
@@ -653,6 +678,18 @@ export function createApplication(document: Document) {
         candidateBounds: currentBounds,
         overflow,
         measurement,
+        autoFit: suggestedTransform ? { confidence: 'high', transform: suggestedTransform } : null,
+        visualFit,
+        registration: input.group === 'expression' ? {
+          role: headRegistration?.variant.id === input.variantId ? 'head-anchor' : 'follower',
+          anchorVariantId: headRegistration?.variant.id ?? null,
+          calibration: headRegistration?.variant.id === input.variantId ? {
+            status: 'visual-required',
+            compareAgainst: 'canonical-body-default-head',
+            tool: 'set_character_variant_transform',
+            rebasesCurrentExpressions: true,
+          } : null,
+        } : null,
         reviewDestination: WORKSPACE_DESTINATIONS[reviewDestination],
       },
       nextActions,
@@ -731,14 +768,15 @@ export function createApplication(document: Document) {
       const blob = new Blob([bytes], { type: 'image/png' })
       const inspection = await inspectCharacterImage(blob)
       validateCharacterAssetInspection(inspection)
-      const expressionReference = current.variants.find((variant) =>
-        variant.group === 'expression' && variant.layers.head && isCharacterDraftAssetCurrent(current, variant, 'head')
-      )?.layers.head
+      const headRegistration = characterHeadRegistration(current)
+      const expressionReference = headRegistration?.asset
       const alignment = measureCharacterMaskAlignment(
         target.group,
         target.group === 'expression' && expressionReference ? await readCharacterAlphaMask(expressionReference.blob)
           : target.group === 'outfit' && canonical ? await readCharacterAlphaMask(canonical.blob) : null,
         await readCharacterAlphaMask(blob),
+        undefined,
+        target.group === 'expression' ? headRegistration?.transform : undefined,
       )
       if (alignment.status === 'invalid') return {
         status: 'ok',
@@ -768,7 +806,11 @@ export function createApplication(document: Document) {
           input: { group: target.group, variantId: target.variantId, layer: target.layer, expectedUpdatedAt: current.updatedAt },
         }],
       }
-      const draft = await saveCharacterDraftAsset(characterDrafts, async () => inspection, current, target, blob, filename, 'agent')
+      let draft = await saveCharacterDraftAsset(characterDrafts, async () => inspection, current, target, blob, filename, 'agent')
+      const autoFit = highConfidenceCharacterAutoFit(alignment)
+      if (autoFit && target.group !== 'body') {
+        draft = await setCharacterVariantTransform(characterDrafts, target.group, target.variantId, draft.updatedAt, autoFit)
+      }
       const savedVariant = draft.variants.find(({ group, id }) => group === target.group && id === target.variantId)!
       const specification = await characterTarget(draft, target)
       document.defaultView?.dispatchEvent(new Event('character-draft-updated'))
@@ -788,6 +830,7 @@ export function createApplication(document: Document) {
             visiblePixelCount: inspection.visiblePixelCount,
           },
           alignment: specification?.alignment,
+          autoFit: autoFit ? { applied: true, transform: autoFit } : { applied: false },
         },
         nextActions: specification?.nextActions ?? characterNextActions(draft),
       }
@@ -804,6 +847,7 @@ export function createApplication(document: Document) {
       }
       const current = await openCharacterDraft()
       const before = current.variants.find(({ group, id }) => group === input.group && id === input.variantId)?.transform ?? { x: 0, y: 0, scale: 1 }
+      const calibratesHead = input.group === 'expression' && current.headRegistration?.variantId === input.variantId
       const draft = await setCharacterVariantTransform(characterDrafts, input.group, input.variantId, input.expectedUpdatedAt, {
         x: input.x,
         y: input.y,
@@ -819,6 +863,9 @@ export function createApplication(document: Document) {
           target: { group: input.group, variantId: input.variantId },
           before,
           after: variant.transform,
+          rebasedVariantIds: calibratesHead ? draft.variants.filter((candidate) =>
+            candidate.group === 'expression' && candidate.id !== input.variantId && isCharacterDraftAssetCurrent(draft, candidate, 'head')
+          ).map(({ id }) => id) : [],
           updatedAt: draft.updatedAt,
           alignment: specification?.alignment,
         },

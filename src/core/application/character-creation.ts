@@ -46,6 +46,7 @@ export const REQUIRED_CHARACTER_TARGETS = [
 
 const MAX_ASSET_BYTES = 5 * 1024 * 1024
 const variantIdPattern = /^[a-z0-9][a-z0-9_-]{0,39}$/
+const roundTransformValue = (value: number) => Math.round(value * 10_000) / 10_000
 const initialVariants = (): CharacterDraftVariant[] => [
   { group: 'body', id: 'base', label: 'Base body', layers: {} },
   { group: 'expression', id: 'happy', label: 'Happy', layers: {} },
@@ -76,9 +77,21 @@ const boundsCenter = ({ x, y, width, height }: NonNullable<CharacterAssetInspect
 
 export function characterRegistrationFrame(draft: CharacterDraft) {
   const bodyBounds = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body?.inspection.visibleBounds
+  const head = characterHeadRegistration(draft)
   return {
     canvas: { ...CHARACTER_RIG.canvas },
     ...(bodyBounds ? { bodyBounds: { ...bodyBounds }, bodyCenter: boundsCenter(bodyBounds), footLine: bodyBounds.y + bodyBounds.height - 1 } : {}),
+    ...(head?.asset.inspection.visibleBounds ? {
+      head: {
+        variantId: head.variant.id,
+        transform: { ...head.transform },
+        bounds: transformCharacterBounds(head.asset.inspection.visibleBounds, head.transform),
+        calibration: {
+          status: 'visual-required' as const,
+          rebasesCurrentExpressions: true,
+        },
+      },
+    } : {}),
   }
 }
 
@@ -194,8 +207,21 @@ const withoutDefaultExpression = (draft: CharacterDraft): CharacterDraft => {
   }
 }
 
+const withHeadRegistration = (draft: CharacterDraft): CharacterDraft => {
+  const canonicalSha256 = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body?.inspection.sha256
+  const current = (variant: CharacterDraftVariant) => Boolean(canonicalSha256)
+    && variant.group === 'expression' && variant.layers.head?.canonicalSha256 === canonicalSha256
+  const registered = draft.variants.find((variant) => variant.id === draft.headRegistration?.variantId && current(variant))
+  if (registered) return draft
+  const fallback = draft.variants.find(current)
+  if (fallback) return { ...draft, headRegistration: { variantId: fallback.id } }
+  if (!draft.headRegistration) return draft
+  const { headRegistration: _discarded, ...withoutRegistration } = draft
+  return withoutRegistration as CharacterDraft
+}
+
 export function migrateCharacterDraft(draft: CharacterDraft | CharacterDraftV2 | LegacyCharacterDraft): CharacterDraft {
-  if ('schemaVersion' in draft && draft.schemaVersion === 3) return withoutDefaultExpression(draft)
+  if ('schemaVersion' in draft && draft.schemaVersion === 3) return withHeadRegistration(withoutDefaultExpression(draft))
   if ('schemaVersion' in draft && draft.schemaVersion === 2) {
     const usedPropIds = new Set(draft.variants.filter(({ group }) => group === 'prop').map(({ id }) => id))
     const migratedHeadwearIds = new Map<string, string>()
@@ -208,7 +234,7 @@ export function migrateCharacterDraft(draft: CharacterDraft | CharacterDraftV2 |
       migratedHeadwearIds.set(variant.id, id)
       return { ...variant, group: 'prop', id }
     })
-    return withoutDefaultExpression({
+    return withHeadRegistration(withoutDefaultExpression({
       ...draft,
       schemaVersion: 3,
       variants,
@@ -218,7 +244,7 @@ export function migrateCharacterDraft(draft: CharacterDraft | CharacterDraftV2 |
         props: [draft.selected.headwear ? migratedHeadwearIds.get(draft.selected.headwear) : undefined, draft.selected.prop]
           .filter((id): id is string => Boolean(id)),
       },
-    })
+    }))
   }
   const legacy = draft as LegacyCharacterDraft
   const next: CharacterDraft = {
@@ -239,7 +265,7 @@ export function migrateCharacterDraft(draft: CharacterDraft | CharacterDraftV2 |
   copy('outfit', 'outfit-1', 'body', legacy.assets['body-outfit'])
   copy('prop', 'prop-1', 'back', legacy.assets['prop-back'])
   copy('prop', 'prop-1', 'front', legacy.assets['prop-front'])
-  return next
+  return withHeadRegistration(next)
 }
 
 export function validateCharacterAssetInspection(inspection: CharacterAssetInspection) {
@@ -274,10 +300,26 @@ export async function setCharacterVariantTransform(
     return bounds.x + bounds.width > 0 && bounds.y + bounds.height > 0 && bounds.x < CHARACTER_RIG.canvas.width && bounds.y < CHARACTER_RIG.canvas.height
   })
   if (!remainsVisible) throw new Error('Character transform moves every layer outside the canvas')
+  const previousTransform = variant.transform ?? IDENTITY_CHARACTER_TRANSFORM
+  const rebasesHeads = group === 'expression' && draft.headRegistration?.variantId === variantId
+  const rebase = (source: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM) => {
+    const ratio = transform.scale / previousTransform.scale
+    const rebased = {
+      x: roundTransformValue(transform.x + (source.x - previousTransform.x) * ratio),
+      y: roundTransformValue(transform.y + (source.y - previousTransform.y) * ratio),
+      scale: roundTransformValue(source.scale * ratio),
+    }
+    validateCharacterVariantTransform(rebased)
+    return rebased
+  }
   const next = {
     ...draft,
     approvedAt: undefined,
-    variants: draft.variants.map((candidate) => candidate === variant ? { ...candidate, transform: { ...transform } } : candidate),
+    variants: draft.variants.map((candidate) => candidate === variant
+      ? { ...candidate, transform: { ...transform } }
+      : rebasesHeads && candidate.group === 'expression' && isCharacterDraftAssetCurrent(draft, candidate, 'head')
+        ? { ...candidate, transform: rebase(candidate.transform) }
+        : candidate),
     updatedAt: Math.max(Date.now(), draft.updatedAt + 1),
   }
   await drafts.put(next)
@@ -327,6 +369,11 @@ export async function saveCharacterDraftAsset(
     ...draft,
     approvedAt: undefined,
     variants: nextVariants,
+    ...(!derived && previousCanonical && previousCanonical !== inspection.sha256
+      ? { headRegistration: undefined }
+      : target.group === 'expression' && !draft.headRegistration
+        ? { headRegistration: { variantId: target.variantId } }
+        : {}),
     updatedAt: Date.now(),
   }
   await drafts.put(next)
@@ -343,6 +390,13 @@ const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) 
 const assetKey = (variant: Pick<CharacterDraftVariant, 'group' | 'id'>, layer: CharacterVariantLayer) => `${variantKey(variant)}-${layer}`
 const findVariant = (draft: CharacterDraft, group: CharacterVariantGroup, id: string) => draft.variants.find((variant) => variant.group === group && variant.id === id)
 const canonicalAsset = (draft: CharacterDraft) => findVariant(draft, 'body', 'base')?.layers.body
+
+export function characterHeadRegistration(draft: CharacterDraft) {
+  const variant = draft.headRegistration && findVariant(draft, 'expression', draft.headRegistration.variantId)
+  const asset = variant?.layers.head
+  if (!variant || !asset || !isCharacterDraftAssetCurrent(draft, variant, 'head')) return null
+  return { variant, asset, transform: variant.transform ?? IDENTITY_CHARACTER_TRANSFORM }
+}
 
 export function isCharacterDraftAssetCurrent(
   draft: CharacterDraft,

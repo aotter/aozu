@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 
-import { buildCharacterPack, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
-import { measureCharacterMaskAlignment, type CharacterAlphaMask } from '../src/core/application/character-alignment.ts'
+import { buildCharacterPack, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
+import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 import type { CharacterPackLibraryRecord } from '../src/core/application/ports.ts'
@@ -20,6 +20,7 @@ put('prop', 'prop-1', 'back')
 put('prop', 'prop-1', 'front')
 draft.variants.push({ group: 'prop', id: 'prop-2', label: 'Prop 2', layers: { back: asset, front: asset } })
 draft.selected = { expression: 'happy', outfit: 'outfit-1', props: ['prop-1', 'prop-2'] }
+draft.headRegistration = { variantId: 'happy' }
 draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.transform = { x: 2, y: -3, scale: 1.01 }
 
 const pack = buildCharacterPack(draft)
@@ -31,6 +32,9 @@ assert.deepEqual(
 assert.deepEqual(resolveCharacterDraftLayers(draft).map(({ layerOrder }) => layerOrder), [1, 2, 1, 1, 1, 2])
 assert.deepEqual(resolveCharacterDraftLayers(draft).find(({ slot }) => slot === 'expression-head')?.transform, { x: 2, y: -3, scale: 1.01 })
 assert.deepEqual(characterRegistrationFrame(draft).footLine, 739)
+assert.equal(characterHeadRegistration(draft)?.variant.id, 'happy')
+assert.equal(characterRegistrationFrame(draft).head?.variantId, 'happy')
+assert.equal(characterRegistrationFrame(draft).head?.calibration.rebasesCurrentExpressions, true)
 const preview = await reviewCharacterDraft(async () => inspection, draft)
 assert.equal(preview.source, 'character')
 assert.equal('bundleId' in preview, false)
@@ -145,6 +149,15 @@ savedDraft = await saveCharacterDraftAsset(
 )
 assert.equal(hasCurrentCharacterLayer(savedDraft, 'expression', 'happy', 'head'), true)
 assert.equal(savedDraft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.label, 'New happy')
+savedDraft = await saveCharacterDraftAsset(
+  drafts,
+  async () => ({ ...replacementInspection, sha256: 'd'.repeat(64), visibleBounds: { x: 62, y: 11, width: 388, height: 348 } }),
+  savedDraft,
+  { group: 'expression', variantId: 'angry', label: 'New angry', layer: 'head' },
+  new Blob(['angry'], { type: 'image/png' }),
+  'angry.png',
+  'agent',
+)
 const characterMask = (...rectangles: Array<{ x: number; y: number; width: number; height: number }>): CharacterAlphaMask => {
   const alpha = new Uint8Array(512 * 768)
   for (const rectangle of rectangles) for (let y = rectangle.y; y < rectangle.y + rectangle.height; y++) {
@@ -161,19 +174,45 @@ const canonicalMask = characterMask(
 )
 const wholeHeadMask = characterMask({ x: 100, y: 20, width: 312, height: 300 }, { x: 220, y: 320, width: 72, height: 20 })
 assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, canonicalMask).status, 'aligned')
+assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, characterMask(
+  { x: 100, y: 20, width: 312, height: 300 },
+  { x: 200, y: 320, width: 112, height: 20 },
+  { x: 110, y: 340, width: 292, height: 320 },
+  { x: 150, y: 660, width: 80, height: 70 },
+  { x: 282, y: 660, width: 80, height: 70 },
+)).status, 'aligned')
 assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, characterMask({ x: 140, y: 340, width: 232, height: 250 })).status, 'invalid')
 assert.equal(measureCharacterMaskAlignment('expression', wholeHeadMask, wholeHeadMask).status, 'aligned')
+assert.equal(measureCharacterMaskAlignment('expression', null, wholeHeadMask).status, 'unverified')
 assert.equal(measureCharacterMaskAlignment('expression', wholeHeadMask, characterMask({ x: 190, y: 130, width: 132, height: 80 })).status, 'invalid')
 assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, canonicalMask, { x: 20, y: 20, scale: 1 }).status, 'misaligned')
 assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, characterMask({ x: 0, y: 0, width: 10, height: 10 })).diagnostics[0]?.code, 'ALPHA_TOUCHES_CANVAS_EDGE')
+const boarHeadMask = characterMask({ x: 100, y: 100, width: 300, height: 300 })
+const boarHeadTransform = { x: 105, y: -40, scale: 0.55 }
+const boarAlignment = measureCharacterMaskAlignment('expression', boarHeadMask, boarHeadMask, undefined, boarHeadTransform)
+assert.equal(boarAlignment.status, 'misaligned')
+assert.deepEqual(highConfidenceCharacterAutoFit(boarAlignment), boarHeadTransform)
+const visualSample = (left: number, top: number): CharacterVisualSample => {
+  const width = 64; const height = 96; const rgba = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const pixel = ((top + y) * width + left + x) * 4
+    const value = (x * 37 + y * 73 + x * y * 11) % 256
+    rgba[pixel] = value; rgba[pixel + 1] = value * 3 % 256; rgba[pixel + 2] = value * 7 % 256; rgba[pixel + 3] = 255
+  }
+  return { width, height, rgba }
+}
+const visualFit = suggestCharacterVisualRegistration(visualSample(32, 4), visualSample(8, 8))
+assert.ok(visualFit?.suggestedTransform)
+assert.deepEqual(visualFit.suggestedTransform, { x: 192, y: -32, scale: 1 })
 const staleUpdatedAt = savedDraft.updatedAt
 const transformed = await setCharacterVariantTransform(
   drafts,
   'expression',
   'happy',
   staleUpdatedAt,
-  { x: 3, y: -2, scale: 1.02 },
+  { x: 2, y: -3, scale: 0.505 },
 )
-assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 3, y: -2, scale: 1.02 })
+assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 2, y: -3, scale: 0.505 })
+assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'angry')?.transform, { x: 2, y: -3, scale: 0.505 })
 await assert.rejects(() => setCharacterVariantTransform(drafts, 'expression', 'happy', staleUpdatedAt, { x: 0, y: 0, scale: 1 }), /changed/)
 console.log('character creation: ok')
