@@ -30,7 +30,6 @@ import {
   createCharacterDraftFromStarter,
   createCharacterDraft,
   buildCharacterDraftResources,
-  isCharacterDraftPopulated,
   installCharacterDraft,
   listInstalledCharacterPacks,
   loadInstalledCharacterPackResources,
@@ -41,6 +40,7 @@ import {
   characterAssetPlacement,
   characterHeadRegistration,
   characterRegistrationFrame,
+  resolveCharacterDraftAtlasSources,
   resolveCharacterDraftReferenceLayers,
   setCharacterVariantTransform,
   transformCharacterBounds,
@@ -50,6 +50,7 @@ import {
 } from './core/application/character-creation.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
 import { inspectCharacterImage, readCharacterAlphaMask, readCharacterVisualSample, renderCharacterCompositeDataUrl } from './adapters/browser/character-image.ts'
+import { compileCharacterTextureAtlas } from './adapters/browser/character-atlas.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
 import { planItemEffects } from './core/application/items.ts'
@@ -65,7 +66,7 @@ import {
   type StarterStorySelection,
 } from './core/domain/starter.ts'
 import { PLAYBOOK_LIMITS as EXPERIENCE_LIMITS } from './core/domain/playbook.ts'
-import { WORKSPACE_DESTINATIONS, workspaceNavigation, workspacePhase, type WorkspaceDestination } from './core/application/workspace.ts'
+import { activeDraftId, workspaceNavigation, workspacePath, workspacePhase, type WorkspaceDestination } from './core/application/workspace.ts'
 import { compileAuthoringBackbone, compileFixedBackbone, FIXED_BACKBONE_VERSION } from './core/mantle/backbone.ts'
 
 const readDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
@@ -89,6 +90,12 @@ export function createApplication(document: Document) {
   const characterDrafts = createIndexedDbCharacterDraftRepository()
   const characterPacks = createIndexedDbCharacterPackLibraryRepository()
   const browser = document.defaultView
+  let runtimeAtlas: { key: string; value: ReturnType<typeof compileCharacterTextureAtlas> } | undefined
+  const compileRuntimeAtlas = (bundleId: string, layers: NonNullable<Awaited<ReturnType<typeof loadCharacterProjection>>>) => {
+    const key = `${bundleId}:${layers.map(({ id, transform }) => `${id}:${transform.x}:${transform.y}:${transform.scale}`).join('|')}`
+    if (runtimeAtlas?.key !== key) runtimeAtlas = { key, value: compileCharacterTextureAtlas(layers) }
+    return runtimeAtlas.value
+  }
   let starterPackages: ReturnType<typeof loadStarterCatalog> | undefined
   const loadStarters = () => starterPackages ??= loadStarterCatalog(
     browser?.fetch.bind(browser) ?? fetch,
@@ -145,33 +152,67 @@ export function createApplication(document: Document) {
     },
   })
 
-  const openExperienceDraft = async () => {
+  const listExperienceDrafts = async () => {
     const entries = await (await getAuthoringRuntime()).entries.readPublished({ collection: 'experience-drafts' })
-    const current = [...entries]
-      .sort((left, right) => right.createdAt - left.createdAt || right.id.localeCompare(left.id))[0]
-    return current ? toExperienceDraft(current) : null
+    return entries.map(toExperienceDraft).sort((left, right) => right.createdAt - left.createdAt || right.id.localeCompare(left.id))
   }
 
-  const openCharacterDraft = async () => {
-    const existing = await characterDrafts.get()
-    if (existing) {
-      let draft = migrateCharacterDraft(existing)
-      let refreshed = false
-      const variants = await Promise.all(draft.variants.map(async (variant) => ({
-        ...variant,
-        layers: Object.fromEntries(await Promise.all(Object.entries(variant.layers).map(async ([layer, asset]) => {
-          if (!asset || asset.inspection.visibleBounds) return [layer, asset]
-          refreshed = true
-          return [layer, { ...asset, inspection: await inspectCharacterImage(asset.blob) }]
-        }))),
-      })))
-      if (refreshed) draft = { ...draft, variants }
-      if (draft !== existing) await characterDrafts.put(draft)
-      return draft
-    }
-    const draft = createCharacterDraft()
-    await characterDrafts.put(draft)
+  const openExperienceDraft = async (draftId: string) => {
+    const entry = await (await getAuthoringRuntime()).entries.readById(draftId)
+    return entry?.collection === 'experience-drafts' && entry.status === 'published' ? toExperienceDraft(entry) : null
+  }
+
+  const migrateLegacyCharacterDraft = async (experiences: ExperienceDraft[]) => {
+    const legacy = await characterDrafts.get('current')
+    if (!legacy || experiences.some(({ id }) => id === 'current')) return
+    const existingIds = new Set((await characterDrafts.list()).map(({ id }) => id))
+    const target = experiences.find(({ id }) => !existingIds.has(id))
+    if (!target) return
+    await characterDrafts.put({ ...migrateCharacterDraft(legacy), id: target.id })
+    await characterDrafts.delete('current')
+  }
+
+  const listAuthoringDrafts = async () => {
+    const experiences = await listExperienceDrafts()
+    await migrateLegacyCharacterDraft(experiences)
+    const characters = (await characterDrafts.list()).map(migrateCharacterDraft)
+    const ids = new Set([...experiences.map(({ id }) => id), ...characters.map(({ id }) => id)])
+    return [...ids].map((id) => ({
+      id,
+      experience: experiences.find((draft) => draft.id === id) ?? null,
+      character: characters.find((draft) => draft.id === id) ?? null,
+    })).sort((left, right) => Math.max(right.character?.updatedAt ?? 0, right.experience?.updatedAt ?? 0) - Math.max(left.character?.updatedAt ?? 0, left.experience?.updatedAt ?? 0))
+  }
+
+  const openCharacterDraft = async (draftId: string) => {
+    const existing = await characterDrafts.get(draftId)
+    if (!existing) throw new Error('Character Draft not found')
+    let draft = migrateCharacterDraft(existing)
+    let refreshed = false
+    const variants = await Promise.all(draft.variants.map(async (variant) => ({
+      ...variant,
+      layers: Object.fromEntries(await Promise.all(Object.entries(variant.layers).map(async ([layer, asset]) => {
+        if (!asset || asset.inspection.visibleBounds) return [layer, asset]
+        refreshed = true
+        return [layer, { ...asset, inspection: await inspectCharacterImage(asset.blob) }]
+      }))),
+    })))
+    if (refreshed) draft = { ...draft, variants }
+    if (draft !== existing) await characterDrafts.put(draft)
     return draft
+  }
+
+  const deleteAuthoringDraft = async (draftId: string) => {
+    const pending = await bundles.getPendingReview()
+    if (pending?.draftId === draftId) await bundles.discardPendingReview(pending.bundle.record.id)
+    const entry = await createIndexedDbEntryRepository(AUTHORING_NAMESPACE).readById(draftId)
+    if (entry?.collection === 'experience-drafts') await createIndexedDbEntryRepository(AUTHORING_NAMESPACE).delete({
+      id: draftId,
+      collection: 'experience-drafts',
+      expectedVersion: entry.version,
+      expectedStatus: entry.status,
+    })
+    await characterDrafts.delete(draftId)
   }
 
   const selectCharacterPack = async (draftId: string, expectedRevision: number, packId: string, packVersion: number) => {
@@ -186,8 +227,8 @@ export function createApplication(document: Document) {
     return toExperienceDraft(updated)
   }
 
-  const resolveLocalCreation = async () => {
-    const draft = await openExperienceDraft()
+  const resolveLocalCreation = async (draftId: string) => {
+    const draft = await openExperienceDraft(draftId)
     if (!draft?.character) throw new Error('Select and approve a Character before creating a Companion')
     const [story, character] = await Promise.all([
       loadDraftStory(draft),
@@ -208,7 +249,7 @@ export function createApplication(document: Document) {
   }
   const application = {
     async loadStartup() {
-      const [startup, pendingReview, storedCharacter, experience] = await Promise.all([
+      const [startup, pendingReview, drafts] = await Promise.all([
         loadCompanionStartup(agent, bundles, createIndexedDbEntryRepository),
         loadPendingCandidatePreview(
           bundles,
@@ -217,28 +258,30 @@ export function createApplication(document: Document) {
           inspectCharacterImage,
           inspectSceneImage,
         ),
-        characterDrafts.get(),
-        openExperienceDraft(),
+        listAuthoringDrafts(),
       ])
-      const character = storedCharacter ? migrateCharacterDraft(storedCharacter) : null
-      const authoringDraft = character || experience ? {
-        characterName: character?.name ?? null,
-        destination: character?.approvedAt && experience?.character ? '/create' as const : '/character/expressions' as const,
-      } : null
+      const authoringDrafts = drafts.map(({ id, character, experience }) => ({
+        id,
+        name: character?.name ?? experience?.story?.direction.name ?? 'Untitled Companion',
+        status: character?.approvedAt && experience?.character ? 'experience' as const : 'character' as const,
+        destination: workspacePath(character?.approvedAt && experience?.character ? 'create' : 'character-expressions', id),
+      }))
       if (startup.savedCompanions.length) void requestPersistentStorage(document.defaultView?.navigator.storage)
-      if (startup.status !== 'main') return { ...startup, pendingReview, authoringDraft }
+      if (startup.status !== 'main') return { ...startup, pendingReview, authoringDrafts }
       const entries = createIndexedDbEntryRepository(startup.bundleId)
+      const character = await loadCharacterProjection(
+        entries,
+        createIndexedDbAssetRepository,
+        startup.bundleId,
+        inspectCharacterImage,
+        startup.stage.scene?.characterStateId,
+      )
       return {
         ...startup,
         pendingReview,
-        authoringDraft,
-        character: await loadCharacterProjection(
-          entries,
-          createIndexedDbAssetRepository,
-          startup.bundleId,
-          inspectCharacterImage,
-          startup.stage.scene?.characterStateId,
-        ),
+        authoringDrafts,
+        character,
+        characterAtlas: character ? await compileRuntimeAtlas(startup.bundleId, character) : undefined,
         ...(startup.stage.scene?.compositionId ? {
           scene: await loadSceneProjection(
             entries,
@@ -252,18 +295,13 @@ export function createApplication(document: Document) {
     },
     listStarters: loadStarters,
     openExperienceDraft,
-    async startCreation(characterChoice: StarterCharacterSelection, storyChoice: StarterStorySelection, replaceCharacterDraft = false) {
+    async startCreation(characterChoice: StarterCharacterSelection, storyChoice: StarterStorySelection) {
       const packages = await loadStarters()
       const findPackage = (choice: Exclude<StarterCharacterSelection | StarterStorySelection, null>) => {
         const loaded = packages.find(({ starter }) => starter.id === choice.starterId && starter.version === choice.starterVersion)
         if (!loaded) throw new Error(`Starter not found: ${choice.starterId}@${choice.starterVersion}`)
         return loaded
       }
-      const currentCharacter = await characterDrafts.get()
-      if (currentCharacter && isCharacterDraftPopulated(migrateCharacterDraft(currentCharacter)) && !replaceCharacterDraft) return null
-      const character = characterChoice
-        ? createCharacterDraftFromStarter(findPackage(characterChoice), characterChoice.stateId)
-        : createCharacterDraft()
       const experience = storyChoice
         ? createExperienceDraftData(findPackage(storyChoice), storyChoice.directionId)
         : createBlankExperienceDraftData()
@@ -273,9 +311,13 @@ export function createApplication(document: Document) {
         ctx: { user: null, staff: null, env: {} },
       })
       if (!result.ok) throw new Error(result.diagnostic.message ?? 'Experience Draft could not be saved')
+      const savedExperience = toExperienceDraft(result.data)
+      const character = characterChoice
+        ? createCharacterDraftFromStarter(findPackage(characterChoice), characterChoice.stateId, savedExperience.id)
+        : createCharacterDraft(undefined, savedExperience.id)
       await characterDrafts.put(character)
       await requestPersistentStorage(browser?.navigator.storage)
-      return toExperienceDraft(result.data)
+      return savedExperience
     },
     openCharacterDraft,
     async updateCharacterDraft(draft: CharacterDraft) {
@@ -287,7 +329,7 @@ export function createApplication(document: Document) {
       return saveCharacterDraftAsset(characterDrafts, inspectCharacterImage, draft, target, blob, filename, source)
     },
     async setCharacterVariantTransform(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string, transform: CharacterVariantTransform) {
-      return setCharacterVariantTransform(characterDrafts, group, variantId, draft.updatedAt, transform)
+      return setCharacterVariantTransform(characterDrafts, draft.id, group, variantId, draft.updatedAt, transform)
     },
     async autoFitCharacterVariant(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string) {
       const variant = draft.variants.find((candidate) => candidate.group === group && candidate.id === variantId)
@@ -295,17 +337,18 @@ export function createApplication(document: Document) {
       if (!variant || !layer) throw new Error('Character variant is empty or missing')
       const target = await characterTarget(draft, { group, variantId, layer })
       const visualTransform = target?.alignment.visualFit?.suggestedTransform
-      if (visualTransform) return setCharacterVariantTransform(characterDrafts, group, variantId, draft.updatedAt, visualTransform)
+      if (visualTransform) return setCharacterVariantTransform(characterDrafts, draft.id, group, variantId, draft.updatedAt, visualTransform)
       if (target?.alignment.registration?.role === 'head-anchor' && target.alignment.visualFit) return draft
       if (target?.alignment.measurement?.status === 'aligned') return draft
       const transform = highConfidenceCharacterAutoFit(target?.alignment.measurement)
       if (!transform) throw new Error('No high-confidence auto-fit is available; use the visual alignment controls.')
-      return setCharacterVariantTransform(characterDrafts, group, variantId, draft.updatedAt, transform)
+      return setCharacterVariantTransform(characterDrafts, draft.id, group, variantId, draft.updatedAt, transform)
     },
     prepareCharacter: (draft: CharacterDraft) => reviewCharacterDraft(inspectCharacterImage, draft),
+    compileCharacterAtlas: (draft: CharacterDraft) => compileCharacterTextureAtlas(resolveCharacterDraftAtlasSources(draft)),
     listCharacterPacks: () => listInstalledCharacterPacks(characterPacks, inspectCharacterImage),
-    async inspectCreation() {
-      const { draft, character, candidate } = await resolveLocalCreation()
+    async inspectCreation(draftId: string) {
+      const { draft, character, candidate } = await resolveLocalCreation(draftId)
       return {
         character: character.name,
         story: draft.story?.direction.name,
@@ -316,8 +359,8 @@ export function createApplication(document: Document) {
       }
     },
     selectCharacterPack,
-    async approveCharacterDraft(selectForAuthoring = false) {
-      let draft = await characterDrafts.get()
+    async approveCharacterDraft(draftId: string, selectForAuthoring = false) {
+      let draft = await characterDrafts.get(draftId)
       if (!draft) throw new Error('Character draft not found')
       const pack = buildCharacterDraftResources(draft).pack
       const existing = (await characterPacks.list()).find(({ pack: saved }) => saved.id === pack.id && saved.version === pack.version)
@@ -331,7 +374,7 @@ export function createApplication(document: Document) {
         installed = { id: existing.pack.id, version: existing.pack.version }
       } else installed = await installCharacterDraft(characterPacks, inspectCharacterImage, draft)
       if (selectForAuthoring) {
-        const experience = await openExperienceDraft()
+        const experience = await openExperienceDraft(draftId)
         if (!experience) throw new Error('Experience Draft not found')
         await selectCharacterPack(experience.id, experience.revision, installed.id, installed.version)
       }
@@ -348,19 +391,26 @@ export function createApplication(document: Document) {
     async activateCompanion(bundleId: string) {
       return bundles.activate(bundleId, true)
     },
-    async createCompanion() {
+    async createCompanion(draftId: string) {
       const result = await (await getAuthoringRuntime()).invokeTrigger({
-        trigger: 'create-local-companion', input: {}, ctx: { user: null, staff: null, env: {} },
+        trigger: 'create-local-companion', input: { draftId }, ctx: { user: null, staff: null, env: {} },
       })
       if (!result.ok) throw new Error(result.diagnostic.message ?? 'Companion could not be created')
+      await deleteAuthoringDraft(draftId)
     },
     async deleteCompanion(bundleId: string) {
       await bundles.deleteSaved(bundleId)
     },
-    async exportCharacterDraft() {
-      const draft = await characterDrafts.get()
+    deleteAuthoringDraft,
+    async exportCharacterDraft(draftId: string) {
+      const draft = await characterDrafts.get(draftId)
       if (!draft) throw new Error('Character draft not found')
-      return exportCharacterDraftZip(migrateCharacterDraft(draft))
+      const current = migrateCharacterDraft(draft)
+      return exportCharacterDraftZip(
+        current,
+        await openExperienceDraft(draftId),
+        await compileCharacterTextureAtlas(resolveCharacterDraftAtlasSources(current)),
+      )
     },
     async submitAction(actionId: string, expectedRevision: number, idempotencyKey: string = crypto.randomUUID()) {
       const { bundleId, runId, contractVersion } = await active()
@@ -385,8 +435,9 @@ export function createApplication(document: Document) {
     exportData: exportPortableBundle,
     prepareImport: stagePortableBundle,
   }
-  async function createLocalCompanion() {
-    const { draft, candidate } = await resolveLocalCreation()
+  async function createLocalCompanion(rawInput: unknown) {
+    const { draftId } = rawInput as { draftId: string }
+    const { draft, candidate } = await resolveLocalCreation(draftId)
     const submission = await persistExperienceCandidate({
       draftId: draft.id,
       expectedRevision: draft.revision,
@@ -397,11 +448,12 @@ export function createApplication(document: Document) {
     await bundles.activate(submission.data.bundleId, true)
     return { ...submission, data: { ...submission.data, awaitingUserReview: false } }
   }
-  async function inspectExperienceContract() {
-      const draft = await openExperienceDraft()
+  async function inspectExperienceContract(rawInput: unknown) {
+      const { draftId } = rawInput as { draftId: string }
+      const draft = await openExperienceDraft(draftId)
       if (!draft) throw new Error('Choose a character and story starting point before asking the agent to author an experience')
       const story = await loadDraftStory(draft)
-      const characterDraft = draft.character ? null : await openCharacterDraft()
+      const characterDraft = draft.character ? null : await openCharacterDraft(draftId)
       const character = draft.character
         ? await loadInstalledCharacterPackResources(characterPacks, inspectCharacterImage, draft.character)
         : buildCharacterDraftResources(characterDraft!)
@@ -462,7 +514,7 @@ export function createApplication(document: Document) {
           nextActions: [],
         }
       }
-      const storedCharacter = draft.character ? null : await characterDrafts.get()
+      const storedCharacter = draft.character ? null : await characterDrafts.get(input.draftId)
       if (!draft.character && (!storedCharacter || storedCharacter.updatedAt !== input.expectedCharacterUpdatedAt)) throw new ExperienceSubmissionConflict('character_draft_changed')
       const character = draft.character
         ? await loadInstalledCharacterPackResources(characterPacks, inspectCharacterImage, draft.character)
@@ -500,50 +552,65 @@ export function createApplication(document: Document) {
       tool: 'submit_character_asset_candidate',
       required: true,
       reason: `Fill ${target.group}/${target.variantId}/${target.layer} for the current canonical body.`,
-      input: { ...target, expectedUpdatedAt: draft.updatedAt },
+      input: { draftId: draft.id, ...target, expectedUpdatedAt: draft.updatedAt },
     })) : [{
       tool: 'navigate_companion',
       required: true,
       reason: 'Ask the user to review and approve the complete Character Draft.',
-      input: { destination: 'character-review' },
+      input: { destination: 'character-review', draftId: draft.id },
     }]
   }
 
   async function inspectWorkspace() {
-    const [startup, experience, storedCharacter] = await Promise.all([
+    const route = browser?.location.pathname ?? '/'
+    const routeDraftId = activeDraftId(route)
+    const [startup, drafts] = await Promise.all([
       application.loadStartup(),
-      openExperienceDraft(),
-      characterDrafts.get(),
+      listAuthoringDrafts(),
     ])
-    const character = storedCharacter ? migrateCharacterDraft(storedCharacter) : null
+    const activeDraft = drafts.find(({ id }) => id === routeDraftId) ?? null
+    const experience = activeDraft?.experience ?? null
+    const character = activeDraft?.character ?? null
     const missingCharacterTargets = character ? REQUIRED_CHARACTER_TARGETS
       .filter((target) => !hasCurrentCharacterLayer(character, target.group, target.variantId, target.layer)) : REQUIRED_CHARACTER_TARGETS
     const characterReady = Boolean(character && !missingCharacterTargets.length)
     const pendingReview = startup.pendingReview
-    const phase = workspacePhase(browser?.location.pathname ?? '/')
+    const activePendingReview = pendingReview?.source === 'import'
+      ? (routeDraftId ? null : pendingReview)
+      : pendingReview?.draftId === routeDraftId ? pendingReview : null
+    const phase = workspacePhase(route)
     const navigation = workspaceNavigation({
       characterReady,
       experienceReady: Boolean(experience?.character),
-      pendingReview: Boolean(pendingReview),
+      pendingReview: Boolean(activePendingReview),
       activeCompanion: startup.status === 'main',
-    })
-    const nextActions = pendingReview ? [{
-      tool: 'navigate_companion', required: true, reason: 'A candidate is waiting for explicit user review.', input: { destination: 'experience-review' },
+    }).map(({ id }) => ({ id, path: workspacePath(id, routeDraftId) }))
+    const nextActions = activePendingReview ? [{
+      tool: 'navigate_companion', required: true, reason: 'A candidate is waiting for explicit user review.', input: { destination: 'experience-review', ...(routeDraftId ? { draftId: routeDraftId } : {}) },
     }] : phase === 'character' && character ? characterNextActions(character) : startup.status === 'main' ? [{
       tool: 'inspect_companion', required: true, reason: 'Inspect the active Companion before interaction.',
-    }] : missingCharacterTargets.length ? [{
-      tool: 'inspect_character_contract', required: true, reason: 'Inspect the current Character target and canonical reference before generating art.', input: missingCharacterTargets[0],
+    }] : routeDraftId && missingCharacterTargets.length ? [{
+      tool: 'inspect_character_contract', required: true, reason: 'Inspect the current Character target and canonical reference before generating art.', input: { draftId: character?.id, ...missingCharacterTargets[0] },
     }] : experience?.character ? [{
-      tool: 'navigate_companion', required: true, reason: 'Review the resolved Character and Playbook, then create the Companion.', input: { destination: 'create' },
+      tool: 'navigate_companion', required: true, reason: 'Review the resolved Character and Playbook, then create the Companion.', input: { destination: 'create', draftId: experience.id },
     }] : [{
       tool: 'navigate_companion', required: true, reason: 'Choose a Character and Story starting point.', input: { destination: 'starter' },
     }]
     return {
       status: 'ok',
       data: {
-        route: browser?.location.pathname ?? '/',
+        route,
         phase,
+        activeDraftId: routeDraftId,
+        drafts: drafts.map(({ id, character: draftCharacter, experience: draftExperience }) => ({
+          id,
+          name: draftCharacter?.name ?? draftExperience?.story?.direction.name ?? 'Untitled Companion',
+          updatedAt: Math.max(draftCharacter?.updatedAt ?? 0, draftExperience?.updatedAt ?? 0),
+          characterReady: Boolean(draftCharacter?.approvedAt),
+          experienceReady: Boolean(draftExperience?.character),
+        })),
         characterDraft: character ? {
+          id: character.id,
           name: character.name,
           updatedAt: character.updatedAt,
           approved: Boolean(character.approvedAt),
@@ -556,7 +623,7 @@ export function createApplication(document: Document) {
           characterSelected: Boolean(experience.character),
           story: experience.story?.direction.name ?? null,
         } : null,
-        pendingReview: pendingReview ? { source: pendingReview.source, name: pendingReview.name } : null,
+        pendingReview: activePendingReview ? { source: activePendingReview.source, name: activePendingReview.name } : null,
         activeCompanion: startup.status === 'main' ? { id: startup.bundleId, name: startup.companion.name, stageId: startup.stage.stageId } : null,
         savedCompanions: startup.savedCompanions,
         navigation,
@@ -566,11 +633,24 @@ export function createApplication(document: Document) {
   }
 
   async function navigateCompanion(rawInput: unknown) {
-    const destination = (rawInput as { destination: WorkspaceDestination }).destination
+    const { destination, draftId } = rawInput as { destination: WorkspaceDestination; draftId?: string }
     const workspace = await inspectWorkspace()
-    if (!workspace.data.navigation.some(({ id }) => id === destination)) throw new Error(`Destination is unavailable: ${destination}`)
-    const path = WORKSPACE_DESTINATIONS[destination]
-    browser?.setTimeout(() => browser.dispatchEvent(new browser.CustomEvent('companion-navigate', { detail: { destination } })), 0)
+    const targetDraftId = draftId ?? workspace.data.activeDraftId
+    const target = targetDraftId ? (await listAuthoringDrafts()).find(({ id }) => id === targetDraftId) : null
+    const draftDestination = destination.startsWith('character-') || destination === 'create' || destination === 'experience-review'
+    if (draftDestination && !target) throw new Error('Draft ID is required for this destination')
+    const pending = await bundles.getPendingReview()
+    const allowed = workspaceNavigation({
+      characterReady: Boolean(target?.character && !REQUIRED_CHARACTER_TARGETS.some((required) =>
+        !hasCurrentCharacterLayer(target.character!, required.group, required.variantId, required.layer),
+      )),
+      experienceReady: Boolean(target?.experience?.character),
+      pendingReview: Boolean(pending && (pending.source === 'import' ? !targetDraftId : pending.draftId === targetDraftId)),
+      activeCompanion: Boolean(workspace.data.activeCompanion),
+    })
+    if (!allowed.some(({ id }) => id === destination)) throw new Error(`Destination is unavailable: ${destination}`)
+    const path = workspacePath(destination, targetDraftId)
+    browser?.setTimeout(() => browser.dispatchEvent(new browser.CustomEvent('companion-navigate', { detail: { destination, draftId: targetDraftId } })), 0)
     return { status: 'ok', data: { destination, path }, nextActions: [] }
   }
 
@@ -620,23 +700,23 @@ export function createApplication(document: Document) {
       ? suggestCharacterVisualRegistration(await readCharacterVisualSample(canonical.blob), await readCharacterVisualSample(asset.blob), transform)
       : null
     const nextActions = !asset || !variant || !isCharacterDraftAssetCurrent(draft, variant, input.layer) ? [{
-      tool: 'submit_character_asset_candidate', required: true, reason: 'Submit the final exact-canvas RGBA target layer.', input: { group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
+      tool: 'submit_character_asset_candidate', required: true, reason: 'Submit the final exact-canvas RGBA target layer.', input: { draftId: draft.id, group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
     }] : suggestedTransform ? [{
       tool: 'set_character_variant_transform',
       required: true,
       reason: 'Apply the suggested absolute transform, then inspect the alpha-mask alignment again.',
-      input: { group: input.group, variantId: input.variantId, expectedUpdatedAt: draft.updatedAt, ...suggestedTransform },
+      input: { draftId: draft.id, group: input.group, variantId: input.variantId, expectedUpdatedAt: draft.updatedAt, ...suggestedTransform },
     }] : visualFit?.suggestedTransform ? [{
       tool: 'set_character_variant_transform',
       required: false,
       reason: 'Try the experimental native pixel-and-edge correlation fit, then visually review the head alignment view; this never approves the draft.',
-      input: { group: input.group, variantId: input.variantId, expectedUpdatedAt: draft.updatedAt, ...visualFit.suggestedTransform },
+      input: { draftId: draft.id, group: input.group, variantId: input.variantId, expectedUpdatedAt: draft.updatedAt, ...visualFit.suggestedTransform },
     }, {
-      tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, Difference, and Align before user Review.', input: { destination: reviewDestination },
+      tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, Difference, and Align before user Review.', input: { destination: reviewDestination, draftId: draft.id },
     }] : [{
-      tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, Difference, and Align before user Review.', input: { destination: reviewDestination },
+      tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, Difference, and Align before user Review.', input: { destination: reviewDestination, draftId: draft.id },
     }, {
-      tool: 'navigate_companion', required: false, reason: 'After the visual preflight is ready, open the complete Character Review.', input: { destination: 'character-review' },
+      tool: 'navigate_companion', required: false, reason: 'After the visual preflight is ready, open the complete Character Review.', input: { destination: 'character-review', draftId: draft.id },
     }]
     return {
       input: { group: input.group, variantId: input.variantId, layer: input.layer },
@@ -696,16 +776,17 @@ export function createApplication(document: Document) {
             rebasesCurrentExpressions: true,
           } : null,
         } : null,
-        reviewDestination: WORKSPACE_DESTINATIONS[reviewDestination],
+        reviewDestination: workspacePath(reviewDestination, draft.id),
       },
       nextActions,
     }
   }
 
   async function inspectCharacterContract(rawInput: unknown) {
-      const draft = await openCharacterDraft()
+      const { draftId, ...targetInput } = rawInput as { draftId: string }
+      const draft = await openCharacterDraft(draftId)
       const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
-      const target = await characterTarget(draft, rawInput)
+      const target = await characterTarget(draft, targetInput)
       return {
         status: 'ok',
         data: {
@@ -721,7 +802,7 @@ export function createApplication(document: Document) {
               current: isCharacterDraftAssetCurrent(draft, variant, layer),
             })),
           })),
-          draft: { name: draft.name, selected: draft.selected, updatedAt: draft.updatedAt },
+          draft: { id: draft.id, name: draft.name, selected: draft.selected, updatedAt: draft.updatedAt },
           registrationFrame: characterRegistrationFrame(draft),
           canonicalReference: canonical ? {
             filename: canonical.filename,
@@ -747,6 +828,7 @@ export function createApplication(document: Document) {
 
   async function submitCharacterAssetCandidate(rawInput: unknown) {
       const input = rawInput as {
+        draftId: string
         group: CharacterVariantGroup
         variantId: string
         label: string
@@ -767,7 +849,7 @@ export function createApplication(document: Document) {
       const binary = atob(match[1])
       const bytes = new Uint8Array(binary.length)
       for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
-      const current = await openCharacterDraft()
+      const current = await openCharacterDraft(input.draftId)
       if (current.updatedAt !== input.expectedUpdatedAt) throw new Error(`Character Draft changed; expected ${input.expectedUpdatedAt}, current ${current.updatedAt}`)
       const canonical = current.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
       if (!(target.group === 'body' && target.variantId === 'base' && target.layer === 'body') && !canonical) throw new Error('Submit body/base/body before derived character assets')
@@ -809,13 +891,13 @@ export function createApplication(document: Document) {
           tool: 'submit_character_asset_candidate',
           required: true,
           reason: alignment.diagnostics[0]?.message ?? 'Regenerate the rejected character asset.',
-          input: { group: target.group, variantId: target.variantId, layer: target.layer, expectedUpdatedAt: current.updatedAt },
+          input: { draftId: current.id, group: target.group, variantId: target.variantId, layer: target.layer, expectedUpdatedAt: current.updatedAt },
         }],
       }
       let draft = await saveCharacterDraftAsset(characterDrafts, async () => inspection, current, target, blob, filename, 'agent')
       const autoFit = highConfidenceCharacterAutoFit(alignment)
       if (autoFit && target.group !== 'body') {
-        draft = await setCharacterVariantTransform(characterDrafts, target.group, target.variantId, draft.updatedAt, autoFit)
+        draft = await setCharacterVariantTransform(characterDrafts, current.id, target.group, target.variantId, draft.updatedAt, autoFit)
       }
       const savedVariant = draft.variants.find(({ group, id }) => group === target.group && id === target.variantId)!
       const specification = await characterTarget(draft, target)
@@ -844,6 +926,7 @@ export function createApplication(document: Document) {
 
   async function setCharacterTransform(rawInput: unknown) {
       const input = rawInput as {
+        draftId: string
         group: CharacterVariantGroup
         variantId: string
         expectedUpdatedAt: number
@@ -851,10 +934,10 @@ export function createApplication(document: Document) {
         y: number
         scale: number
       }
-      const current = await openCharacterDraft()
+      const current = await openCharacterDraft(input.draftId)
       const before = current.variants.find(({ group, id }) => group === input.group && id === input.variantId)?.transform ?? { x: 0, y: 0, scale: 1 }
       const calibratesHead = input.group === 'expression' && current.headRegistration?.variantId === input.variantId
-      const draft = await setCharacterVariantTransform(characterDrafts, input.group, input.variantId, input.expectedUpdatedAt, {
+      const draft = await setCharacterVariantTransform(characterDrafts, input.draftId, input.group, input.variantId, input.expectedUpdatedAt, {
         x: input.x,
         y: input.y,
         scale: input.scale,

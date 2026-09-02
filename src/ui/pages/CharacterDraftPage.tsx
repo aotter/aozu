@@ -4,8 +4,9 @@ import { useTranslation } from 'react-i18next'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
 
 import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterRegistrationFrame, hasCurrentCharacterLayer, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, transformCharacterBounds } from '@/core/application/character-creation.ts'
-import { IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetTarget, type CharacterDraft, type CharacterDraftVariant, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
-import { CharacterAlignmentRenderer, CharacterAssetImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
+import { workspacePath, type WorkspaceDestination } from '@/core/application/workspace.ts'
+import { IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetTarget, type CharacterDraft, type CharacterDraftVariant, type CharacterTextureAtlas, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
+import { CharacterAlignmentRenderer, CharacterAssetImage, CharacterAtlasFrameImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
 import { DataControls } from '@/ui/DataControls'
 import { StatusPage } from '@/ui/pages/StatusPage'
@@ -18,6 +19,9 @@ const characterCategories: CharacterCategory[] = [
   { id: 'outfits', group: 'outfit', icon: ShirtIcon },
   { id: 'props', group: 'prop', icon: ShapesIcon },
 ]
+const categoryDestinations: Record<CharacterCategoryId, WorkspaceDestination> = {
+  expressions: 'character-expressions', outfits: 'character-outfits', props: 'character-props',
+}
 const expressionIcons = ['happy', 'sad', 'angry', 'surprised', 'sleepy']
 const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
   if (group === 'expression') return `/assets/character-slots/expression-${expressionIcons.includes(variantId) ? variantId : 'happy'}.png`
@@ -25,27 +29,41 @@ const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
   return '/assets/character-slots/body-outfit.png'
 }
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
+const useBlobUrl = (blob?: Blob) => {
+  const [src, setSrc] = useState<string>()
+  useEffect(() => {
+    if (!blob) return
+    const url = URL.createObjectURL(blob)
+    // oxlint-disable-next-line react/set-state-in-effect -- Object URLs are external browser resources.
+    setSrc(url)
+    return () => URL.revokeObjectURL(url)
+  }, [blob])
+  return src
+}
 
-export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, autoFitVariant, exportDraft, onReview }: {
+export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, autoFitVariant, compileAtlas, exportDraft, onReview }: {
   openDraft(): Promise<CharacterDraft>
   updateDraft(draft: CharacterDraft): Promise<CharacterDraft>
   saveAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string): Promise<CharacterDraft>
   setVariantTransform(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string, transform: CharacterVariantTransform): Promise<CharacterDraft>
   autoFitVariant(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string): Promise<CharacterDraft>
+  compileAtlas(draft: CharacterDraft): Promise<CharacterTextureAtlas | undefined>
   exportDraft(): Promise<Blob>
   onReview(draft: CharacterDraft): Promise<void>
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
-  const { step } = useParams()
+  const { draftId, step } = useParams()
   const category = characterCategories.find(({ id }) => id === step)
   const [draft, setDraft] = useState<CharacterDraft>()
   const [loadError, setLoadError] = useState(false)
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
+  const [compiled, setCompiled] = useState<{ updatedAt: number; atlas?: CharacterTextureAtlas }>()
   const [selectedVariantKey, setSelectedVariantKey] = useState<string>()
   const [alignmentMode, setAlignmentMode] = useState<'composite' | 'overlay' | 'difference' | 'diagnostic'>('overlay')
+  const compiledAt = useRef<number | undefined>(undefined)
   const drag = useRef<{
     draft: CharacterDraft
     group: CharacterVariantGroup
@@ -72,8 +90,24 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
     }
   }, [openDraft])
 
-  if (!step || step === 'identity' || step === 'accessories') return <Navigate to="/character/expressions" state={location.state} replace />
-  if (!category) return <Navigate to="/character/expressions" state={location.state} replace />
+  useEffect(() => {
+    if (!draft || compiledAt.current === draft.updatedAt) return
+    compiledAt.current = draft.updatedAt
+    let active = true
+    void compileAtlas(draft)
+      .then((atlas) => { if (active) setCompiled({ updatedAt: draft.updatedAt, atlas }) })
+      .catch((caught) => {
+        console.error('Character atlas compile failed', caught)
+        if (active) setCompiled({ updatedAt: draft.updatedAt })
+      })
+    return () => { active = false }
+  }, [compileAtlas, draft])
+
+  const atlas = draft && compiled?.updatedAt === draft.updatedAt ? compiled.atlas : undefined
+  const atlasSrc = useBlobUrl(atlas?.image)
+
+  if (!step || step === 'identity' || step === 'accessories') return <Navigate to={workspacePath('character-expressions', draftId)} state={location.state} replace />
+  if (!category) return <Navigate to={workspacePath('character-expressions', draftId)} state={location.state} replace />
   if (loadError) return <StatusPage>{t('startup.error')}</StatusPage>
   if (!draft) return <StatusPage>{t('startup.loading')}</StatusPage>
 
@@ -209,7 +243,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                 referenceBounds={referenceBounds}
                 footLine={registration.footLine}
               />
-            : <CharacterRenderer label={draft.name} layers={previewLayers} />}</div>
+            : <CharacterRenderer label={draft.name} layers={previewLayers} atlas={atlas} />}</div>
         </div>
         {selectedVariant && <div className="mt-2 grid grid-cols-4 gap-1" aria-label={t('characterDraft.alignment.label')}>
           {(['composite', 'overlay', 'difference', 'diagnostic'] as const).map((mode) => <Button key={mode} type="button" size="sm" variant={alignmentMode === mode ? 'secondary' : 'ghost'} className="h-7 px-1 text-[10px] sm:text-xs" onClick={() => setAlignmentMode(mode)}>{t(`characterDraft.alignment.${mode}`)}</Button>)}
@@ -229,7 +263,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
             size="icon"
             className="size-8 shrink-0 rounded-lg sm:size-9"
             aria-current={category?.id === id ? 'page' : undefined}
-            onClick={() => { setSelectedVariantKey(undefined); navigate(`/character/${id}`, { replace: true, state: location.state }) }}
+            onClick={() => { setSelectedVariantKey(undefined); navigate(workspacePath(categoryDestinations[id], draft.id), { replace: true, state: location.state }) }}
           >
             <Icon className="size-4" />
             <span className="sr-only">{t(`characterDraft.categories.${id}`)}</span>
@@ -245,14 +279,18 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
             </button>
             {visibleVariants.map((variant) => {
               const group = CHARACTER_CREATION_GROUPS.find(({ group }) => group === variant.group)!
-              const thumbnail = variant.layers.front && isCharacterDraftAssetCurrent(draft, variant, 'front')
-                ? variant.layers.front
-                : group.layers.map((layer) => isCharacterDraftAssetCurrent(draft, variant, layer) ? variant.layers[layer] : undefined).find(Boolean)
+              const thumbnailLayer = variant.layers.front && isCharacterDraftAssetCurrent(draft, variant, 'front')
+                ? 'front'
+                : group.layers.find((layer) => isCharacterDraftAssetCurrent(draft, variant, layer))
+              const thumbnail = thumbnailLayer ? variant.layers[thumbnailLayer] : undefined
+              const frameId = thumbnailLayer && `${variant.group}-${variant.id}-${thumbnailLayer}`
               const selected = isSelected(variant)
               return <div key={variantKey(variant)} className={`relative min-w-0 overflow-hidden rounded-xl border bg-background transition-colors hover:border-foreground/40 ${selected ? 'border-foreground ring-1 ring-foreground' : ''}`}>
                 <button type="button" aria-label={variant.label} title={variant.label} aria-pressed={selected} className="block w-full" onClick={() => toggleVariant(variant)}>
                   <span className="flex aspect-square items-center justify-center bg-muted/40 p-1 sm:p-2">{thumbnail
-                    ? <CharacterAssetImage blob={thumbnail.blob} label={variant.label} />
+                    ? atlas && atlasSrc && frameId && atlas.data.frames[frameId]
+                      ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={frameId} label={variant.label} />
+                      : <CharacterAssetImage blob={thumbnail.blob} label={variant.label} />
                     : variant.group === 'prop' ? <ShapesIcon className="size-1/2 text-[#7b739e]/70" />
                       : <CharacterSlotPlaceholder src={characterSlotIcon(variant.group, variant.id)} label={variant.label} />}</span>
                 </button>
@@ -326,14 +364,20 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
             </div>}
             <label className="mt-2 block cursor-pointer overflow-hidden rounded-xl border hover:border-foreground/40 sm:mt-4">
               <span className="flex aspect-square items-center justify-center bg-muted/40 p-2">{primaryAsset
-                ? <CharacterAssetImage blob={primaryAsset.blob} />
+                ? atlas && atlasSrc && atlas.data.frames[`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`]
+                  ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`} />
+                  : <CharacterAssetImage blob={primaryAsset.blob} />
                 : PlaceholderIcon ? <PlaceholderIcon className="size-1/2 text-[#7b739e]/70" />
                   : <CharacterSlotPlaceholder src={characterSlotIcon(selectedVariant.group, selectedVariant.id)} />}</span>
               <span className="block truncate p-1.5 text-[10px] sm:p-2 sm:text-xs">{t(layeredAccessory ? 'characterDraft.layers.primary' : `characterDraft.layers.${primaryLayer}`)}</span>
               {fileInput(selectedVariant, primaryLayer)}
             </label>
             {layeredAccessory && <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-dashed p-2 hover:border-foreground/40">
-              <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted/40">{behindAsset ? <CharacterAssetImage blob={behindAsset.blob} /> : <Layers2Icon className="size-5 text-[#7b739e]/70" />}</span>
+              <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted/40">{behindAsset
+                ? atlas && atlasSrc && atlas.data.frames[`${selectedVariant.group}-${selectedVariant.id}-back`]
+                  ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={`${selectedVariant.group}-${selectedVariant.id}-back`} />
+                  : <CharacterAssetImage blob={behindAsset.blob} />
+                : <Layers2Icon className="size-5 text-[#7b739e]/70" />}</span>
               <span className="min-w-0 truncate text-[9px] sm:text-xs">{t('characterDraft.layers.behindOptional')}</span>
               {fileInput(selectedVariant, 'back')}
             </label>}

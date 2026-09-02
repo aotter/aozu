@@ -89,6 +89,7 @@ export type StarterStorySelection = null | { starterId: string; starterVersion: 
 
 export interface ExperienceCandidatePreviewSnapshot {
   source: 'experience'
+  draftId: string
   bundleId: string
   name: string
   story: null | {

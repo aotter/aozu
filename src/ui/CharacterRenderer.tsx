@@ -1,6 +1,6 @@
-import type { CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
-import { CHARACTER_RIG, IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetInspection, type CharacterVariantTransform } from '@/core/domain/character'
+import { CHARACTER_RIG, IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetInspection, type CharacterTextureAtlas, type CharacterVariantTransform } from '@/core/domain/character'
 import { BlobImage, CrossfadeBlobImage } from '@/ui/BlobImage'
 import { cn } from '@/ui/lib/utils'
 
@@ -26,11 +26,54 @@ const Layers = ({ layers, style }: { layers: Layer[]; style?: CSSProperties }) =
   style={layerStyle(layer, style)}
 />)
 
-export function CharacterRenderer({ label, layers, className }: { label: string; layers: Layer[]; className?: string }) {
+function AtlasLayers({ atlas, layers }: { atlas: CharacterTextureAtlas; layers: Layer[] }) {
+  const host = useRef<HTMLDivElement>(null)
+  const controller = useRef<{ update(atlas: CharacterTextureAtlas, frameIds: readonly string[]): Promise<boolean>; destroy(): void }>(undefined)
+  const latest = useRef({ atlas, frameIds: layers.map(({ id }) => id) })
+  const [ready, setReady] = useState(false)
+  const frameIds = layers.map(({ id }) => id).join('\n')
+
+  useEffect(() => {
+    let disposed = false
+    void (async () => {
+      const { mountCharacterTextureAtlas } = await import('@/adapters/browser/pixi-character-atlas')
+      if (disposed || !host.current) return
+      const mounted = await mountCharacterTextureAtlas(host.current)
+      if (disposed) return mounted.destroy()
+      controller.current = mounted
+      const rendered = await mounted.update(latest.current.atlas, latest.current.frameIds)
+      if (disposed) return
+      if (rendered) setReady(true)
+    })().catch((error) => {
+      console.error('Character atlas render failed', error)
+    })
+    return () => {
+      disposed = true
+      controller.current?.destroy()
+      controller.current = undefined
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    latest.current = { atlas, frameIds: frameIds.split('\n') }
+    void controller.current?.update(atlas, frameIds.split('\n')).then((rendered) => { if (active && rendered) setReady(true) }).catch((error) => {
+      console.error('Character atlas update failed', error)
+    })
+    return () => { active = false }
+  }, [atlas, frameIds])
+
+  return <>
+    {!ready && <Layers layers={layers} />}
+    <div ref={host} aria-hidden="true" className="absolute inset-0" />
+  </>
+}
+
+export function CharacterRenderer({ label, layers, atlas, className }: { label: string; layers: Layer[]; atlas?: CharacterTextureAtlas; className?: string }) {
   return (
     <div className={cn('relative aspect-2/3 w-full overflow-hidden rounded-3xl border bg-muted/40', className)} role="img" aria-label={label}>
       {!layers.length && <div className="absolute inset-0 p-8"><CharacterSlotPlaceholder src="/assets/character-slots/body-base.png" /></div>}
-      <Layers layers={layers} />
+      {atlas && layers.length ? <AtlasLayers atlas={atlas} layers={layers} /> : <Layers layers={layers} />}
     </div>
   )
 }
@@ -103,4 +146,30 @@ export function CharacterSlotPlaceholder({ src, label }: { src: string; label?: 
 
 export function CharacterAssetImage({ blob, label = '' }: { blob: Blob; label?: string }) {
   return <BlobImage blob={blob} alt={label} className="size-full object-contain" />
+}
+
+export function CharacterAtlasFrameImage({ atlas, src, frameId, label = '' }: {
+  atlas: CharacterTextureAtlas
+  src: string
+  frameId: string
+  label?: string
+}) {
+  const frame = atlas.data.frames[frameId]?.frame
+  if (!frame) return null
+  return <span className="flex size-full items-center justify-center overflow-hidden">
+    <span className="relative block max-h-full max-w-full overflow-hidden" style={{ aspectRatio: `${frame.w}/${frame.h}`, ...(frame.w >= frame.h ? { width: '100%' } : { height: '100%' }) }}>
+      <img
+        src={src}
+        alt={label}
+        className="absolute max-w-none"
+        style={{
+          width: `${atlas.data.meta.size.w / frame.w * 100}%`,
+          height: `${atlas.data.meta.size.h / frame.h * 100}%`,
+          maxHeight: 'none',
+          left: `${-frame.x / frame.w * 100}%`,
+          top: `${-frame.y / frame.h * 100}%`,
+        }}
+      />
+    </span>
+  </span>
 }

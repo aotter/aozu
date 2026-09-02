@@ -17,6 +17,7 @@ export type StagedCandidatePreview =
     }
   | {
       source: 'character'
+      draftId: string
       name: string
       appearanceCount: number
       layers: Array<ResolvedCharacterLayer & { blob: Blob }>
@@ -48,6 +49,8 @@ export async function loadPendingCandidatePreview(
     assetCount: (await assetsFor(record.id).list()).length,
   }
   if (record.identity.contractVersion !== 2) throw new Error('Pending experience identity is incompatible')
+  const draftId = pending.draftId ?? (await entriesFor('companion-authoring').readPublished({ collection: 'experience-drafts' }))
+    .find(({ data }) => (data.lastSubmission as { bundleId?: unknown } | undefined)?.bundleId === record.id)?.id ?? 'current'
   const stage = await loadStage(entries, record.metadata.runId)
   const stages = await entries.readPublished({ collection: 'stages' })
   const characterLayers = await loadCharacterProjection(
@@ -61,6 +64,7 @@ export async function loadPendingCandidatePreview(
   const starter = record.metadata.starter
   return {
     source: 'experience',
+    draftId,
     bundleId: record.id,
     name: record.metadata.name,
     story: starter ? {

@@ -2,27 +2,47 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/ui/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/ui/components/ui/alert-dialog'
 import { DataControls } from '@/ui/DataControls'
 import type { SavedCompanion } from '@/core/application/companion'
 import type { StagedCandidatePreview } from '@/core/application/candidate'
 
 const startOptions = ['starter', 'bundle'] as const
 
-export function StartPage({ savedCompanions, pendingReview, authoringDraft, onOpenCompanion, onDeleteCompanion, onChooseStarter, onResumeReview, onResumeDraft, exportCharacterDraft, prepareImport }: {
+export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onOpenCompanion, onDeleteCompanion, onChooseStarter, onResumeReview, onResumeDraft, onDeleteDraft, exportCharacterDraft, prepareImport }: {
   savedCompanions: SavedCompanion[]
   pendingReview: StagedCandidatePreview | null
-  authoringDraft: { characterName: string | null; destination: '/character/expressions' | '/create' } | null
+  authoringDrafts: Array<{ id: string; name: string; status: 'character' | 'experience'; destination: string }>
   onOpenCompanion(bundleId: string): Promise<void>
   onDeleteCompanion(bundleId: string): Promise<void>
   onChooseStarter(): void
   onResumeReview(): void
-  onResumeDraft(destination: '/character/expressions' | '/create'): void
-  exportCharacterDraft(): Promise<Blob>
+  onResumeDraft(destination: string): void
+  onDeleteDraft(draftId: string): Promise<void>
+  exportCharacterDraft(draftId: string): Promise<Blob>
   prepareImport(blob: Blob): Promise<void>
 }) {
   const { t } = useTranslation()
   const [deleting, setDeleting] = useState<string>()
   const [deleteError, setDeleteError] = useState(false)
+  const [confirmation, setConfirmation] = useState<{ kind: 'draft' | 'companion'; id: string; name: string }>()
+  const deleteConfirmed = async () => {
+    if (!confirmation || deleting) return
+    setDeleting(confirmation.id); setDeleteError(false)
+    try {
+      await (confirmation.kind === 'draft' ? onDeleteDraft(confirmation.id) : onDeleteCompanion(confirmation.id))
+      setConfirmation(undefined)
+    } catch { setDeleteError(true) } finally { setDeleting(undefined) }
+  }
 
   return <>
     <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-3xl flex-col justify-center px-4 py-10">
@@ -38,18 +58,20 @@ export function StartPage({ savedCompanions, pendingReview, authoringDraft, onOp
           <Button onClick={onResumeReview}>{t('start.pending.resume')}</Button>
         </article>
       </section>}
-      {authoringDraft && <section className="mt-8">
+      {authoringDrafts.length > 0 && <section className="mt-8">
         <h2 className="font-heading text-lg font-medium">{t('start.draft.title')}</h2>
-        <article className="mt-3 flex flex-col items-stretch justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm sm:flex-row sm:items-center">
+        <div className="mt-3 grid gap-3">{authoringDrafts.map((draft) => <article key={draft.id} className="flex flex-col items-stretch justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm sm:flex-row sm:items-center">
           <div className="min-w-0">
-            {authoringDraft.characterName && <h3 className="truncate font-heading font-medium">{authoringDraft.characterName}</h3>}
-            <p className="mt-1 text-xs text-muted-foreground">{t(`start.draft.${authoringDraft.destination === '/create' ? 'experience' : 'character'}`)}</p>
+            <h3 className="truncate font-heading font-medium">{draft.name}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{t(`start.draft.${draft.status}`)}</p>
           </div>
           <div className="flex shrink-0 items-center justify-end gap-2">
-            <DataControls exportData={exportCharacterDraft} exportFilename="companion-character-draft.zip" exportIconOnly exportLabel={t('draft.download')} />
-            <Button onClick={() => onResumeDraft(authoringDraft.destination)}>{t('start.draft.resume')}</Button>
+            <DataControls exportData={() => exportCharacterDraft(draft.id)} exportFilename={`${draft.name}-draft.zip`} exportIconOnly exportLabel={t('draft.download')} />
+            <Button variant="destructive" disabled={Boolean(deleting)} onClick={() => setConfirmation({ kind: 'draft', id: draft.id, name: draft.name })}>{t('start.saved.delete')}</Button>
+            <Button onClick={() => onResumeDraft(draft.destination)}>{t('start.draft.resume')}</Button>
           </div>
-        </article>
+        </article>)}</div>
+        {deleteError && <p role="alert" className="mt-2 text-sm text-destructive">{t('start.saved.deleteError')}</p>}
       </section>}
       {savedCompanions.length > 0 && <section className="mt-8">
         <h2 className="font-heading text-lg font-medium">{t('start.saved.title')}</h2>
@@ -61,11 +83,7 @@ export function StartPage({ savedCompanions, pendingReview, authoringDraft, onOp
             </div>
             <div className="flex shrink-0 gap-1">
               <Button disabled={Boolean(deleting)} onClick={() => void onOpenCompanion(companion.bundleId)}>{t(companion.active ? 'start.saved.continue' : 'start.saved.open')}</Button>
-              <Button variant="destructive" disabled={Boolean(deleting)} onClick={async () => {
-                if (!window.confirm(t('start.saved.confirmDelete', { name: companion.name }))) return
-                setDeleting(companion.bundleId); setDeleteError(false)
-                try { await onDeleteCompanion(companion.bundleId) } catch { setDeleteError(true) } finally { setDeleting(undefined) }
-              }}>{t('start.saved.delete')}</Button>
+              <Button variant="destructive" disabled={Boolean(deleting)} onClick={() => setConfirmation({ kind: 'companion', id: companion.bundleId, name: companion.name })}>{t('start.saved.delete')}</Button>
             </div>
           </article>)}
         </div>
@@ -79,5 +97,19 @@ export function StartPage({ savedCompanions, pendingReview, authoringDraft, onOp
         </section>)}
       </div>
     </main>
+    <AlertDialog open={Boolean(confirmation)} onOpenChange={(open) => { if (!open && !deleting) setConfirmation(undefined) }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t(`start.${confirmation?.kind === 'draft' ? 'draft' : 'saved'}.deleteTitle`)}</AlertDialogTitle>
+          <AlertDialogDescription>{confirmation && t(`start.${confirmation.kind === 'draft' ? 'draft' : 'saved'}.confirmDelete`, { name: confirmation.name })}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={Boolean(deleting)}>{t('common.cancel')}</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" disabled={Boolean(deleting)} onClick={(event) => { event.preventDefault(); void deleteConfirmed() }}>
+            {deleting ? t('start.saved.deleting') : t('start.saved.delete')}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </>
 }

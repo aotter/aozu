@@ -48,15 +48,11 @@ export async function persistTriggeredExperienceCandidate(
   const entries = transaction.objectStore(ENTRY_STORE)
   const meta = transaction.objectStore(META_STORE)
   const draftKey = [AUTHORING_NAMESPACE, draftId] as [string, string]
-  const [current, authoringEntries, pending] = await Promise.all([
+  const [current, pending] = await Promise.all([
     entries.get(draftKey),
-    entries.index('bundleId').getAll(AUTHORING_NAMESPACE),
     meta.get(PENDING_REVIEW_KEY),
   ])
-  const selected = authoringEntries
-    .filter((entry) => entry.collection === 'experience-drafts' && entry.status === 'published')
-    .sort((left, right) => right.createdAt - left.createdAt || right.id.localeCompare(left.id))[0]
-  if (!current || selected?.id !== current.id || current.collection !== 'experience-drafts' || current.status !== 'published') {
+  if (!current || current.collection !== 'experience-drafts' || current.status !== 'published') {
     await transaction.done
     throw new ExperienceSubmissionConflict('draft_not_found')
   }
@@ -123,6 +119,7 @@ export async function persistTriggeredExperienceCandidate(
   await meta.put(encodePendingReview({
     bundleId: candidate.record.id,
     source: 'experience',
+    draftId,
     createdAt: candidate.record.createdAt,
   }), PENDING_REVIEW_KEY)
   await transaction.done

@@ -66,7 +66,7 @@ export interface CharacterAssetTarget {
 }
 
 export interface CharacterDraft {
-  id: 'current'
+  id: string
   schemaVersion: 3
   packId: string
   name: string
@@ -126,6 +126,33 @@ export interface ResolvedCharacterLayer {
   slotOrder: number
   layerOrder: number
   transform: CharacterVariantTransform
+}
+
+export interface CharacterAtlasSource {
+  id: string
+  blob: Blob
+  transform: CharacterVariantTransform
+}
+
+export interface CharacterTextureAtlas {
+  image: Blob
+  data: {
+    frames: Record<string, {
+      frame: { x: number; y: number; w: number; h: number }
+      rotated: false
+      trimmed: true
+      spriteSourceSize: { x: number; y: number; w: number; h: number }
+      sourceSize: { w: number; h: number }
+    }>
+    meta: {
+      app: 'Companion'
+      version: '1'
+      image: 'character.atlas.png'
+      format: 'RGBA8888'
+      size: { w: number; h: number }
+      scale: '1'
+    }
+  }
 }
 
 const idPattern = /^[a-z0-9][a-z0-9_-]{0,63}$/

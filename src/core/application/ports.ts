@@ -60,6 +60,7 @@ export interface BundleActivationRepository {
 export interface PendingCandidateReview {
   bundle: ValidatedBundle
   source: 'experience' | 'import'
+  draftId?: string
   createdAt: number
 }
 
@@ -74,9 +75,10 @@ export interface AssetRepository {
 export type AssetRepositoryFactory = (bundleId: string) => AssetRepository
 
 export interface CharacterDraftRepository {
-  get(): Promise<CharacterDraft | null>
+  list(): Promise<CharacterDraft[]>
+  get(id: string): Promise<CharacterDraft | null>
   put(draft: CharacterDraft): Promise<void>
-  clear(): Promise<void>
+  delete(id: string): Promise<void>
 }
 
 export interface CharacterPackLibraryRecord {
