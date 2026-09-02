@@ -1,6 +1,6 @@
 import type { CharacterAlphaMask, CharacterVisualSample } from '../../core/application/character-alignment.ts'
 import type { CharacterEditableRegion } from '../../core/application/character-creation.ts'
-import { CHARACTER_RIG, type CharacterAssetInspection, type ResolvedCharacterLayer } from '../../core/domain/character.ts'
+import { CHARACTER_RIG, IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetInspection, type CharacterVariantTransform, type ResolvedCharacterLayer } from '../../core/domain/character.ts'
 
 const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
 
@@ -73,14 +73,18 @@ export async function readCharacterAlphaMask(blob: Blob): Promise<CharacterAlpha
   return { width: canvas.width, height: canvas.height, alpha }
 }
 
-export async function readCharacterVisualSample(blob: Blob): Promise<CharacterVisualSample> {
+export async function readCharacterVisualSample(
+  blob: Blob,
+  transform: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM,
+): Promise<CharacterVisualSample> {
   const bitmap = await createImageBitmap(blob)
   const canvas = document.createElement('canvas')
   canvas.width = CHARACTER_RIG.canvas.width / 8
   canvas.height = CHARACTER_RIG.canvas.height / 8
   const context = canvas.getContext('2d', { willReadFrequently: true })
   if (!context) throw new Error('Canvas is unavailable')
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  context.setTransform(transform.scale / 8, 0, 0, transform.scale / 8, transform.x / 8, transform.y / 8)
+  context.drawImage(bitmap, 0, 0)
   bitmap.close()
   return { width: canvas.width, height: canvas.height, rgba: context.getImageData(0, 0, canvas.width, canvas.height).data }
 }

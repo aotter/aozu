@@ -4,6 +4,7 @@ import {
   type CharacterVariantGroup,
   type CharacterVariantTransform,
 } from '../domain/character.ts'
+import type { CharacterEditableRegion } from './character-creation.ts'
 
 export interface CharacterAlphaMask {
   width: number
@@ -21,6 +22,45 @@ type Bounds = { x: number; y: number; width: number; height: number }
 type MaskStats = { bounds?: Bounds; visiblePixels: number; edgeTouchPixels: number; center?: { x: number; y: number } }
 
 const round = (value: number) => Math.round(value * 10_000) / 10_000
+
+export function measureProtectedRegionDelta(
+  reference: CharacterVisualSample,
+  candidate: CharacterVisualSample,
+  region: CharacterEditableRegion,
+) {
+  // ponytail: coarse alpha-aware sampling tolerates antialiasing; promote it to a gate only after labeled fixtures prove a threshold.
+  if (reference.width !== candidate.width || reference.height !== candidate.height) return null
+  let changedPixels = 0
+  let comparedPixels = 0
+  for (let y = 0; y < reference.height; y++) for (let x = 0; x < reference.width; x++) {
+    const rigX = (x + 0.5) * CHARACTER_RIG.canvas.width / reference.width
+    const rigY = (y + 0.5) * CHARACTER_RIG.canvas.height / reference.height
+    const editable = region.shape.kind === 'ellipse'
+      ? ((rigX - region.shape.cx) / region.shape.rx) ** 2 + ((rigY - region.shape.cy) / region.shape.ry) ** 2 <= 1
+      : rigX >= region.shape.x && rigX <= region.shape.x + region.shape.width
+        && rigY >= region.shape.y && rigY <= region.shape.y + region.shape.height
+    if (editable) continue
+    const index = (y * reference.width + x) * 4
+    const referenceAlpha = reference.rgba[index + 3]!
+    const candidateAlpha = candidate.rgba[index + 3]!
+    if (Math.max(referenceAlpha, candidateAlpha) <= 16) continue
+    comparedPixels++
+    let delta = Math.abs(referenceAlpha - candidateAlpha)
+    for (let channel = 0; channel < 3; channel++) {
+      delta = Math.max(delta, Math.abs(
+        reference.rgba[index + channel]! * referenceAlpha / 255
+        - candidate.rgba[index + channel]! * candidateAlpha / 255,
+      ))
+    }
+    if (delta > 24) changedPixels++
+  }
+  return {
+    protectedChangeRatio: round(comparedPixels ? changedPixels / comparedPixels : 0),
+    changedPixels,
+    comparedPixels,
+    sample: { width: reference.width, height: reference.height },
+  }
+}
 
 const maskStats = (mask: CharacterAlphaMask): MaskStats => {
   let minX = mask.width

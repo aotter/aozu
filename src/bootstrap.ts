@@ -48,7 +48,7 @@ import {
   saveCharacterDraftAsset,
   reviewCharacterDraft,
 } from './core/application/character-creation.ts'
-import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
+import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
 import { inspectCharacterImage, readCharacterAlphaMask, readCharacterVisualSample, renderCharacterCompositeDataUrl, renderCharacterEditMaskDataUrl } from './adapters/browser/character-image.ts'
 import { compileCharacterTextureAtlas } from './adapters/browser/character-atlas.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
@@ -703,6 +703,13 @@ export function createApplication(document: Document) {
       : null
     const editableRegion = input.group === 'expression' ? registrationFrame.editableRegions.expression
       : input.group === 'outfit' ? registrationFrame.editableRegions.outfit : undefined
+    const protectedRegionDelta = asset && alignmentReference && editableRegion
+      ? measureProtectedRegionDelta(
+          await readCharacterVisualSample(alignmentReference.blob, referenceTransform),
+          await readCharacterVisualSample(asset.blob, transform),
+          editableRegion,
+        )
+      : null
     const nextActions = !asset || !variant || !isCharacterDraftAssetCurrent(draft, variant, input.layer) ? [{
       tool: 'submit_character_asset_candidate', required: true, reason: 'Submit the final exact-canvas RGBA target layer.', input: { draftId: draft.id, group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
     }] : suggestedTransform ? [{
@@ -788,6 +795,7 @@ export function createApplication(document: Document) {
         candidateBounds: currentBounds,
         overflow,
         measurement,
+        protectedRegionDelta,
         autoFit: suggestedTransform ? { confidence: 'high', transform: suggestedTransform } : null,
         visualFit,
         registration: input.group === 'expression' ? {
@@ -839,7 +847,7 @@ export function createApplication(document: Document) {
             'An outfit replaces the character-skin slot: generate the complete dressed character, never a clothing-only overlay. Preserve pose, body center, head position, and foot line. Generate props against the returned current composite.',
             'Generate at 1024×1536 and deterministically downsample 50% to the exact 512×768 canvas. Never crop, reframe, or recenter.',
             'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
-            'When the target returns an editableRegion mask, transparent pixels are editable and opaque pixels are protected. Keep all changes inside that deterministic registration-derived region.',
+            'When the target returns an editableRegion mask, transparent pixels are editable and opaque pixels are protected. Keep all changes inside that deterministic registration-derived region; protectedRegionDelta reports non-blocking drift after submission, where 0 means unchanged and lower is better.',
             'Submit only final RGBA PNG layers. The website validates but never repairs candidate images.',
             'Expression layers replace the whole aligned head, including the same fixed hairstyle and facial hair. Hair and facial hair are not customizable slots.',
             'No expression overlay means the default face baked into the body. Optional whole-head variants include happy, sad, angry, surprised, and sleepy; additional variants are allowed.',

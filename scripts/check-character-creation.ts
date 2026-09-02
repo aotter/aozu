@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { strFromU8, unzipSync } from 'fflate'
 
 import { buildCharacterPack, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
-import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
+import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 import type { CharacterPackLibraryRecord } from '../src/core/application/ports.ts'
@@ -264,6 +264,18 @@ const visualSample = (left: number, top: number): CharacterVisualSample => {
 const visualFit = suggestCharacterVisualRegistration(visualSample(32, 4), visualSample(8, 8))
 assert.ok(visualFit?.suggestedTransform)
 assert.deepEqual(visualFit.suggestedTransform, { x: 192, y: -32, scale: 1 })
+const protectedReference = visualSample(0, 0)
+protectedReference.rgba.fill(64)
+for (let index = 3; index < protectedReference.rgba.length; index += 4) protectedReference.rgba[index] = 255
+const protectedRegion = { source: 'registration-derived' as const, basis: 'head-anchor' as const, shape: { kind: 'ellipse' as const, cx: 256, cy: 192, rx: 128, ry: 96 } }
+const insideEdit = structuredClone(protectedReference)
+insideEdit.rgba[(24 * 64 + 32) * 4] = 255
+assert.equal(measureProtectedRegionDelta(protectedReference, insideEdit, protectedRegion)?.protectedChangeRatio, 0)
+const outsideEdit = structuredClone(protectedReference)
+outsideEdit.rgba[(2 * 64 + 2) * 4] = 255
+const protectedDelta = measureProtectedRegionDelta(protectedReference, outsideEdit, protectedRegion)
+assert.equal(protectedDelta?.changedPixels, 1)
+assert.ok((protectedDelta?.protectedChangeRatio ?? 0) > 0)
 const staleUpdatedAt = savedDraft.updatedAt
 const transformed = await setCharacterVariantTransform(
   drafts,
