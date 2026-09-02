@@ -24,10 +24,13 @@ const categoryDestinations: Record<CharacterCategoryId, WorkspaceDestination> = 
 }
 const expressionIcons = ['happy', 'sad', 'angry', 'surprised', 'sleepy']
 const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
-  if (group === 'expression') return `/assets/character-slots/expression-${expressionIcons.includes(variantId) ? variantId : 'happy'}.png`
+  if (group === 'expression') return `/assets/expression-placeholders/${expressionIcons.includes(variantId) ? variantId : 'happy'}.png`
   if (group === 'body') return '/assets/character-slots/body-base.png'
   return '/assets/character-slots/body-outfit.png'
 }
+const CharacterVariantPlaceholder = ({ group, variantId, label }: { group: CharacterVariantGroup; variantId: string; label?: string }) => group === 'expression'
+  ? <img className="expression-placeholder" src={characterSlotIcon(group, variantId)} alt={label ?? ''} />
+  : <CharacterSlotPlaceholder src={characterSlotIcon(group, variantId)} label={label} />
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
 const useBlobUrl = (blob?: Blob) => {
   const [src, setSrc] = useState<string>()
@@ -332,7 +335,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                       ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={frameId} label={variant.label} />
                       : <CharacterAssetImage blob={thumbnail.blob} label={variant.label} />
                     : variant.group === 'prop' ? <ShapesIcon className="size-1/2 text-[#7b739e]/70" />
-                      : <CharacterSlotPlaceholder src={characterSlotIcon(variant.group, variant.id)} label={variant.label} />}</span><span className="variant-label">{variant.label}</span>
+                      : <CharacterVariantPlaceholder group={variant.group} variantId={variant.id} label={variant.label} />}</span><span className="variant-label">{variant.label}</span>
                 </button>
                 <button type="button" title={t('characterDraft.editVariant', { name: variant.label })} className="variant-edit" aria-label={t('characterDraft.editVariant', { name: variant.label })} onClick={() => setSelectedVariantKey(variantKey(variant))}><PencilIcon className="size-4" /></button>
               </div>
@@ -408,7 +411,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                   ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`} />
                   : <CharacterAssetImage blob={primaryAsset.blob} />
                 : PlaceholderIcon ? <PlaceholderIcon className="size-1/2 text-[#7b739e]/70" />
-                  : <CharacterSlotPlaceholder src={characterSlotIcon(selectedVariant.group, selectedVariant.id)} />}</span>
+                  : <CharacterVariantPlaceholder group={selectedVariant.group} variantId={selectedVariant.id} />}</span>
               <span>{t(layeredAccessory ? 'characterDraft.layers.primary' : `characterDraft.layers.${primaryLayer}`)}</span>
               {fileInput(selectedVariant, primaryLayer)}
             </label>
