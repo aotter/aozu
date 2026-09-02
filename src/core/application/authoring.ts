@@ -449,6 +449,7 @@ export function assembleExperienceCandidate(
     assets,
     preview: {
       source: 'experience',
+      draftId: draft.id,
       bundleId,
       name: input.name,
       story: story ? {

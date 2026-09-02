@@ -466,7 +466,10 @@ const ALL_BACKBONE_SOURCES = [
     envelope('Procedure', 'navigate-companion', {
       title: 'Navigate Companion',
       description: 'Navigate the website to one destination returned by inspect_workspace. This changes only the browser surface and never mutates Companion data or approves a review.',
-      input: objectSchema({ destination: { enum: Object.keys(WORKSPACE_DESTINATIONS) } }, ['destination']),
+      input: objectSchema({
+        destination: { enum: Object.keys(WORKSPACE_DESTINATIONS) },
+        draftId: { type: 'string', minLength: 1 },
+      }, ['destination']),
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.navigate-companion' },
     }),
@@ -500,7 +503,7 @@ const ALL_BACKBONE_SOURCES = [
     envelope('Procedure', 'create-local-companion', {
       title: 'Create Local Companion',
       description: 'Validate and activate the selected Character and Starter Playbook without agent participation.',
-      input: objectSchema({}),
+      input: objectSchema({ draftId: { type: 'string', minLength: 1 } }, ['draftId']),
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.create-local-companion' },
     }),
@@ -517,7 +520,7 @@ const ALL_BACKBONE_SOURCES = [
     envelope('Procedure', 'inspect-experience-contract', {
       title: 'Inspect Experience Contract',
       description: 'Required first step when an agent customizes an experience. Returns the exact Experience Draft revision, selected character resources, optional Story seed and scene resources, Playbook skeleton, vocabulary, and limits. The local creation flow can activate a Starter Playbook without agent participation.',
-      input: emptyReadOnlyInput,
+      input: { ...objectSchema({ draftId: { type: 'string', minLength: 1 } }, ['draftId']), readOnly: true },
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.inspect-experience-contract' },
     }),
@@ -562,10 +565,11 @@ const ALL_BACKBONE_SOURCES = [
       description: 'Required before generating or changing character art. Optionally name one target to receive its exact reference layer, alpha-mask diagnostics, z-order, canonical freshness, and alignment mode. A registered head anchor may include an experimental native pixel-and-edge correlation suggestion; it is never applied or approved automatically. Outfits are complete dressed character-skin replacements, not clothing-only overlays. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
       input: {
         ...objectSchema({
+          draftId: { type: 'string', minLength: 1 },
           group: { enum: CHARACTER_VARIANT_GROUPS },
           variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
           layer: { enum: ['body', 'head', 'back', 'front'] },
-        }),
+        }, ['draftId']),
         readOnly: true,
       },
       output: toolResultSchema,
@@ -585,6 +589,7 @@ const ALL_BACKBONE_SOURCES = [
       title: 'Submit Character Asset Candidate',
       description: 'Fill one layer of a character variant with a final PNG candidate. Inspect the contract first. Outfits must contain the complete dressed character because they replace character-skin; clothing-only images are rejected. Whole-head expressions include the complete aligned head, hairstyle, and facial hair. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. Send an exact 512×768 RGBA data:image/png;base64 URL with real transparency. Alpha-mask preflight rejects structurally invalid candidates without mutating the draft. A valid candidate is staged only and is never approved or activated.',
       input: objectSchema({
+        draftId: { type: 'string', minLength: 1 },
         group: { enum: CHARACTER_VARIANT_GROUPS },
         variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
         label: { type: 'string', minLength: 1, maxLength: 80 },
@@ -592,7 +597,7 @@ const ALL_BACKBONE_SOURCES = [
         expectedUpdatedAt: { type: 'integer', minimum: 0 },
         filename: { type: 'string', minLength: 1, maxLength: 200 },
         dataUrl: { type: 'string', pattern: '^data:image/png;base64,', maxLength: 7_100_000 },
-      }, ['group', 'variantId', 'label', 'layer', 'expectedUpdatedAt', 'filename', 'dataUrl']),
+      }, ['draftId', 'group', 'variantId', 'label', 'layer', 'expectedUpdatedAt', 'filename', 'dataUrl']),
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.submit-character-asset-candidate' },
     }),
@@ -610,13 +615,14 @@ const ALL_BACKBONE_SOURCES = [
       title: 'Set Character Variant Transform',
       description: 'Safety net for an otherwise valid staged character variant whose full-canvas pixels need translation or uniform scale. Use absolute values returned or derived from inspect_character_contract; never accumulate directional nudges. When the target is the registered head anchor, visually compare it with the canonical body default head; changing it automatically rebases every current expression. Front and back prop layers share this transform. The canonical body is locked.',
       input: objectSchema({
+        draftId: { type: 'string', minLength: 1 },
         group: { enum: ['expression', 'outfit', 'prop'] },
         variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
         expectedUpdatedAt: { type: 'integer', minimum: 0 },
         x: { type: 'number', minimum: -512, maximum: 512 },
         y: { type: 'number', minimum: -768, maximum: 768 },
         scale: { type: 'number', minimum: 0.25, maximum: 4 },
-      }, ['group', 'variantId', 'expectedUpdatedAt', 'x', 'y', 'scale']),
+      }, ['draftId', 'group', 'variantId', 'expectedUpdatedAt', 'x', 'y', 'scale']),
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.set-character-variant-transform' },
     }),

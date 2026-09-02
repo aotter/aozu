@@ -24,6 +24,7 @@ export const decodePendingReview = (value: string | undefined): PendingReviewPoi
   const pointer = JSON.parse(value) as Partial<PendingReviewPointer>
   if (
     typeof pointer.bundleId !== 'string' ||
+    (pointer.draftId !== undefined && typeof pointer.draftId !== 'string') ||
     (pointer.source !== 'experience' && pointer.source !== 'import') ||
     !Number.isSafeInteger(pointer.createdAt) || pointer.createdAt! < 0
   ) throw new Error('Invalid pending review pointer')

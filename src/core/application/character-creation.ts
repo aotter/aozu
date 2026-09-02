@@ -58,8 +58,8 @@ const initialVariants = (): CharacterDraftVariant[] => [
   { group: 'prop', id: 'prop-1', label: 'Prop 1', layers: {} },
 ]
 
-export const createCharacterDraft = (packId = `character-${crypto.randomUUID()}`): CharacterDraft => ({
-  id: 'current',
+export const createCharacterDraft = (packId = `character-${crypto.randomUUID()}`, id = 'current'): CharacterDraft => ({
+  id,
   schemaVersion: 3,
   packId,
   name: 'My Companion',
@@ -123,13 +123,13 @@ export function resolveStarterCharacterLayers(loaded: ValidatedStarterPackage, s
   })
 }
 
-export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage, stateId: string): CharacterDraft {
+export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage, stateId: string, draftId = 'current'): CharacterDraft {
   const { state, blobs } = starterCharacter(loaded, stateId)
   const pack = loaded.starter.characterPack
   const appearances = new Map(pack.appearances.map((appearance) => [appearance.id, appearance]))
   const assets = new Map(pack.assets.map((asset) => [asset.id, asset]))
   const files = new Map(loaded.starter.assetFiles.map((file) => [file.blobId, file]))
-  const draft = createCharacterDraft()
+  const draft = createCharacterDraft(undefined, draftId)
   const propIds = new Map<string, string>()
   const usedPropIds = new Set<string>()
   const propId = (appearanceId: string) => {
@@ -281,12 +281,13 @@ export function validateCharacterAssetInspection(inspection: CharacterAssetInspe
 
 export async function setCharacterVariantTransform(
   drafts: CharacterDraftRepository,
+  draftId: string,
   group: CharacterVariantGroup,
   variantId: string,
   expectedUpdatedAt: number,
   transform: CharacterVariantTransform,
 ) {
-  const stored = await drafts.get()
+  const stored = await drafts.get(draftId)
   if (!stored) throw new Error('Character Draft not found')
   const draft = migrateCharacterDraft(stored)
   if (draft.updatedAt !== expectedUpdatedAt) throw new Error(`Character Draft changed; expected ${expectedUpdatedAt}, current ${draft.updatedAt}`)
@@ -558,6 +559,7 @@ export async function reviewCharacterDraft(
   await validateLibraryRecord(inspect, { name: draft.name.trim(), pack, composition: pack.defaultComposition, assets })
   return {
     source: 'character',
+    draftId: draft.id,
     name: draft.name.trim(),
     appearanceCount: pack.appearances.length,
     layers,
