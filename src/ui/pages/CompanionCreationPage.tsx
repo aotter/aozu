@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/ui/components/ui/button'
 import { StatusPage } from '@/ui/pages/StatusPage'
+import { localizedText } from '@/ui/localizedText'
 
 type Summary = { character: string; story?: string; stages: number; actions: number; metrics: number; rules: number }
 
@@ -10,7 +11,8 @@ export function CompanionCreationPage({ loadSummary, onCreate }: {
   loadSummary(): Promise<Summary>
   onCreate(): Promise<void>
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const localize = (value: string) => localizedText(value, i18n.resolvedLanguage ?? i18n.language)
   const [summary, setSummary] = useState<Summary | null>()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
@@ -28,8 +30,8 @@ export function CompanionCreationPage({ loadSummary, onCreate }: {
     <h1 className="font-heading text-3xl font-semibold tracking-tight">{t('create.title')}</h1>
     <p className="mt-3 text-sm leading-6 text-muted-foreground">{t('create.description')}</p>
     <dl className="mt-8 divide-y rounded-2xl border px-4">
-      <div className="flex justify-between gap-4 py-4"><dt>{t('create.character')}</dt><dd className="text-right text-muted-foreground">{summary.character}</dd></div>
-      <div className="flex justify-between gap-4 py-4"><dt>{t('create.story')}</dt><dd className="text-right text-muted-foreground">{summary.story ?? t('create.blankStory')}</dd></div>
+      <div className="flex justify-between gap-4 py-4"><dt>{t('create.character')}</dt><dd className="text-right text-muted-foreground">{localize(summary.character)}</dd></div>
+      <div className="flex justify-between gap-4 py-4"><dt>{t('create.story')}</dt><dd className="text-right text-muted-foreground">{summary.story ? localize(summary.story) : t('create.blankStory')}</dd></div>
     </dl>
     <dl className="mt-4 grid grid-cols-4 divide-x rounded-2xl border py-4 text-center">
       {(['stages', 'actions', 'metrics', 'rules'] as const).map((key) => <div key={key} className="flex flex-col px-2">

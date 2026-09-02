@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "aozu-origin",
   "version": 1,
-  "name": "AOZU 起源任務",
-  "description": "從創造布丁獺開始，透過 WebMCP 完成第一場旅行冒險並封存能力卡。",
+  "name": "AOZU 起源任務 / AOZU Origin Quest",
+  "description": "從創造布丁獺開始，透過 WebMCP 完成第一場旅行冒險並封存能力卡。 / Create Pudding Otter, complete a first journey with WebMCP, and seal the new ability in a card.",
   "compatibility": {
     "contractVersion": 2,
     "backboneVersion": "6"
@@ -96,8 +96,8 @@
   "characterStates": [
     {
       "id": "character:aozu-otter",
-      "name": "布丁獺",
-      "summary": "一位尚未選定能力與裝備、等待和你共同成長的 AOZU 夥伴。",
+      "name": "布丁獺 / Pudding Otter",
+      "summary": "一位尚未選定能力與裝備、等待和你共同成長的 AOZU 夥伴。 / An AOZU companion waiting to choose abilities, equipment, and grow with you.",
       "packId": "aozu-pudding-otter",
       "packVersion": 1,
       "composition": [
@@ -140,8 +140,8 @@
   "directions": [
     {
       "id": "origin-travel",
-      "name": "AOZU 人物創建任務",
-      "summary": "告訴夥伴三個想去的地方，完成行程後取得遠航造型與可再次召回的旅程策劃能力。",
+      "name": "AOZU 人物創建任務 / AOZU Character Forge Quest",
+      "summary": "告訴夥伴三個想去的地方，完成行程後取得遠航造型與可再次召回的旅程策劃能力。 / Tell your companion three places, finish the itinerary, and unlock a voyage outfit plus a recallable travel-planning ability.",
       "seed": {
         "kind": "task",
         "directionId": "origin-travel",
@@ -151,7 +151,7 @@
           "mastery"
         ],
         "completionMode": "finite",
-        "brief": "以 WebMCP 引導使用者建立布丁獺，收集三個旅行地點，整理為可執行行程，完成後授予並穿上遠航造型，再把旅程策劃能力封存為可召回的 Origin Card。"
+        "brief": "以 WebMCP 引導使用者建立布丁獺，收集三個旅行地點，整理為可執行行程，完成後授予並穿上遠航造型，再把旅程策劃能力封存為可召回的 Origin Card。 / Use WebMCP to create Pudding Otter, collect three destinations, make an actionable itinerary, equip the voyage outfit, and seal travel planning in a recallable Origin Card."
       },
       "sceneCompositionId": "scene:aozu-club-room",
       "playbook": {
@@ -166,7 +166,7 @@
         "itemDefinitions": [
           {
             "id": "origin-travel-card",
-            "name": "旅程策劃 Origin Card",
+            "name": "旅程策劃 Origin Card / Travel Planning Origin Card",
             "equipSlot": "outfit",
             "defaultAppearance": {
               "packId": "aozu-pudding-otter",
@@ -182,16 +182,18 @@
         "stages": [
           {
             "id": "meet-companion",
-            "title": "和布丁獺相遇",
-            "narrative": "先確認這位夥伴，再一起接受第一場旅行建立任務。",
+            "title": "和布丁獺相遇 / Meet Pudding Otter",
+            "narrative": "先確認這位夥伴，再一起接受第一場旅行建立任務。 / Meet your companion, then accept the first travel-building quest together.",
             "agentFallback": true,
             "actions": [
               {
                 "id": "start-origin-quest",
-                "label": "接受起源任務",
+                "label": "接受起源任務 / Accept Origin Quest",
                 "phrases": [
                   "接受起源任務",
-                  "開始創建我的夥伴"
+                  "開始創建我的夥伴",
+                  "accept origin quest",
+                  "start creating my companion"
                 ],
                 "effects": [
                   {
@@ -209,7 +211,7 @@
             "progress": [
               {
                 "id": "bond",
-                "label": "羈絆",
+                "label": "羈絆 / Bond",
                 "source": {
                   "fact": "metric",
                   "id": "bond"
@@ -220,16 +222,18 @@
           },
           {
             "id": "plan-first-trip",
-            "title": "告訴我想去的地方",
-            "narrative": "把景點、店名或地址貼進對話框；WebMCP 會協助整理。也可以用下方動作逐一確認三個地點。",
+            "title": "告訴我想去的地方 / Tell Me Where to Go",
+            "narrative": "把景點、店名或地址貼進對話框；WebMCP 會協助整理。也可以用下方動作逐一確認三個地點。 / Paste a sight, shop, or address into the dialogue. WebMCP will organize it, or confirm three places with the action below.",
             "agentFallback": true,
             "actions": [
               {
                 "id": "confirm-place",
-                "label": "確認一個地點",
+                "label": "確認一個地點 / Confirm a Place",
                 "phrases": [
                   "確認一個地點",
-                  "加入這個地點"
+                  "加入這個地點",
+                  "confirm a place",
+                  "add this place"
                 ],
                 "effects": [
                   {
@@ -243,7 +247,7 @@
             "progress": [
               {
                 "id": "planning",
-                "label": "行程完成度",
+                "label": "行程完成度 / Itinerary Progress",
                 "source": {
                   "fact": "metric",
                   "id": "planning"
@@ -254,15 +258,17 @@
           },
           {
             "id": "claim-reward",
-            "title": "遠航造型已穿上",
-            "narrative": "布丁獺已真正換成完整遠航造型，旅程策劃能力也已加入角色。現在把這段能力封存起來。",
+            "title": "遠航造型已穿上 / Voyage Outfit Equipped",
+            "narrative": "布丁獺已真正換成完整遠航造型，旅程策劃能力也已加入角色。現在把這段能力封存起來。 / Pudding Otter has changed into the complete voyage outfit and gained travel planning. Seal this ability now.",
             "actions": [
               {
                 "id": "seal-origin-card",
-                "label": "封存 Origin Card",
+                "label": "封存 Origin Card / Seal Origin Card",
                 "phrases": [
                   "封存 Origin Card",
-                  "保存旅程策劃能力"
+                  "保存旅程策劃能力",
+                  "seal origin card",
+                  "save travel planning ability"
                 ],
                 "effects": [
                   {
@@ -285,8 +291,8 @@
           },
           {
             "id": "origin-card",
-            "title": "旅程策劃 Origin Card",
-            "narrative": "這位夥伴與旅程策劃能力已保存為 Companion。之後可從首頁再次開啟，也能匯出 Bundle 帶走。",
+            "title": "旅程策劃 Origin Card / Travel Planning Origin Card",
+            "narrative": "這位夥伴與旅程策劃能力已保存為 Companion。之後可從首頁再次開啟，也能匯出 Bundle 帶走。 / This companion and travel-planning ability are saved. Reopen the card from Home or export its portable Bundle.",
             "terminal": true,
             "actions": []
           }

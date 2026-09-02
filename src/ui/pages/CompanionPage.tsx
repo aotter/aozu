@@ -8,6 +8,7 @@ import { CharacterRenderer } from '@/ui/CharacterRenderer'
 import { SceneRenderer } from '@/ui/SceneRenderer'
 import { Button } from '@/ui/components/ui/button'
 import { Separator } from '@/ui/components/ui/separator'
+import { localizedText } from '@/ui/localizedText'
 
 export function CompanionPage({ companionName, stage, dialogue, pendingTurns, character, characterAtlas, scene, onAction, onText }: {
   companionName: string
@@ -20,7 +21,8 @@ export function CompanionPage({ companionName, stage, dialogue, pendingTurns, ch
   onAction(actionId: string): Promise<void>
   onText(text: string): Promise<void>
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const localize = (value: string) => localizedText(value, i18n.resolvedLanguage ?? i18n.language)
   const [busy, setBusy] = useState(false)
   const [text, setText] = useState('')
 
@@ -28,9 +30,9 @@ export function CompanionPage({ companionName, stage, dialogue, pendingTurns, ch
     <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-5xl flex-col px-4">
       <section aria-label={t('main.stageTitle')} className="flex min-h-0 flex-1 items-center justify-center py-6">
         <div className="flex aspect-2/3 max-h-[65svh] w-full max-w-sm items-center justify-center rounded-3xl bg-background shadow-sm">
-          <SceneRenderer label={t('main.sceneLabel', { name: stage.title })} layers={scene ?? []}>
-            {character ? <CharacterRenderer label={companionName} layers={character} atlas={characterAtlas} className="size-full rounded-none border-0 bg-transparent" /> : <div className="grid size-full place-items-center p-6 text-center text-muted-foreground">
-              <div><h1 id="stage-title" className="text-base font-medium text-foreground">{stage.title}</h1><p className="mt-1 text-sm">{stage.narrative}</p></div>
+          <SceneRenderer label={t('main.sceneLabel', { name: localize(stage.title) })} layers={scene ?? []}>
+            {character ? <CharacterRenderer label={localize(companionName)} layers={character} atlas={characterAtlas} className="size-full rounded-none border-0 bg-transparent" /> : <div className="grid size-full place-items-center p-6 text-center text-muted-foreground">
+              <div><h1 id="stage-title" className="text-base font-medium text-foreground">{localize(stage.title)}</h1><p className="mt-1 text-sm">{localize(stage.narrative)}</p></div>
             </div>}
           </SceneRenderer>
         </div>
@@ -47,7 +49,7 @@ export function CompanionPage({ companionName, stage, dialogue, pendingTurns, ch
             {stage.actions.map((action) => <Button key={action.id} variant="outline" disabled={busy || stage.status !== 'active'} onClick={async () => {
               setBusy(true)
               try { await onAction(action.id) } finally { setBusy(false) }
-            }}>{action.label}</Button>)}
+            }}>{localize(action.label)}</Button>)}
           </div>
           <form className="mt-3 flex gap-2" onSubmit={async (event) => {
             event.preventDefault()

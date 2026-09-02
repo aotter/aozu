@@ -265,7 +265,7 @@ export function createApplication(document: Document) {
         id,
         name: character?.name ?? experience?.story?.direction.name ?? 'Untitled Companion',
         status: character?.approvedAt && experience?.character ? 'experience' as const : 'character' as const,
-        destination: workspacePath(character?.approvedAt && experience?.character ? 'create' : 'character-expressions', id),
+        destination: workspacePath(character?.approvedAt && experience?.character ? 'create' : 'character-body', id),
       }))
       if (startup.savedCompanions.length) void requestPersistentStorage(document.defaultView?.navigator.storage)
       if (startup.status !== 'main') return { ...startup, pendingReview, authoringDrafts }
@@ -695,9 +695,10 @@ export function createApplication(document: Document) {
     const lineage = input.group === 'body' ? 'establish-canonical'
       : input.group === 'expression' || input.group === 'outfit' ? 'edit-canonical-body'
         : 'place-against-current-composite'
-    const reviewDestination = input.group === 'expression' ? 'character-expressions'
+    const reviewDestination = input.group === 'body' ? 'character-body'
+      : input.group === 'expression' ? 'character-expressions'
       : input.group === 'outfit' ? 'character-outfits'
-        : input.group === 'prop' ? 'character-props' : 'character-expressions'
+        : 'character-props'
     const suggestedTransform = highConfidenceCharacterAutoFit(measurement)
     const visualFit = asset && canonical && input.group === 'expression' && headRegistration?.variant.id === input.variantId
       ? suggestCharacterVisualRegistration(await readCharacterVisualSample(canonical.blob), await readCharacterVisualSample(asset.blob), transform)

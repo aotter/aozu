@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { PlusIcon, SparklesIcon, Trash2Icon } from 'lucide-react'
+import { useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import type { StagedCandidatePreview } from '@/core/application/candidate'
+import type { SavedCompanion } from '@/core/application/companion'
 import { Button } from '@/ui/components/ui/button'
 import {
   AlertDialog,
@@ -13,10 +16,9 @@ import {
   AlertDialogTitle,
 } from '@/ui/components/ui/alert-dialog'
 import { DataControls } from '@/ui/DataControls'
-import type { SavedCompanion } from '@/core/application/companion'
-import type { StagedCandidatePreview } from '@/core/application/candidate'
+import { localizedText } from '@/ui/localizedText'
 
-const startOptions = ['starter', 'bundle'] as const
+const CARD_SLOTS = 10
 
 export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onOpenCompanion, onDeleteCompanion, onChooseStarter, onResumeReview, onResumeDraft, onDeleteDraft, exportCharacterDraft, prepareImport }: {
   savedCompanions: SavedCompanion[]
@@ -31,10 +33,13 @@ export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onO
   exportCharacterDraft(draftId: string): Promise<Blob>
   prepareImport(blob: Blob): Promise<void>
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const localize = (value: string) => localizedText(value, i18n.resolvedLanguage ?? i18n.language)
   const [deleting, setDeleting] = useState<string>()
   const [deleteError, setDeleteError] = useState(false)
   const [confirmation, setConfirmation] = useState<{ kind: 'draft' | 'companion'; id: string; name: string }>()
+  const visibleCompanions = savedCompanions.slice(0, CARD_SLOTS)
+  const slots = Array.from({ length: CARD_SLOTS }, (_, index) => visibleCompanions[index])
   const deleteConfirmed = async () => {
     if (!confirmation || deleting) return
     setDeleting(confirmation.id); setDeleteError(false)
@@ -45,58 +50,72 @@ export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onO
   }
 
   return <>
-    <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-3xl flex-col justify-center px-4 py-10">
-      <h1 className="font-heading text-3xl font-semibold tracking-tight">{t('start.title')}</h1>
-      <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">{t('start.description')}</p>
-      {pendingReview && <section className="mt-8">
-        <h2 className="font-heading text-lg font-medium">{t('start.pending.title')}</h2>
-        <article className="mt-3 flex items-center justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm">
-          <div className="min-w-0">
-            <h3 className="truncate font-heading font-medium">{pendingReview.name}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{t('start.pending.description')}</p>
-          </div>
+    <main className="parchment-screen home-parchment">
+      <header className="home-hero">
+        <p className="eyebrow"><SparklesIcon aria-hidden="true" />{t('start.eyebrow')}</p>
+        <h1>{t('start.title')}</h1>
+        <p>{t('start.description')}</p>
+      </header>
+
+      {(pendingReview || authoringDrafts.length > 0) && <section className="stitched-panel continue-panel">
+        <h2>{t(pendingReview ? 'start.pending.title' : 'start.draft.title')}</h2>
+        {pendingReview && <article className="continue-row">
+          <span><b>{localize(pendingReview.name)}</b><small>{t('start.pending.description')}</small></span>
           <Button onClick={onResumeReview}>{t('start.pending.resume')}</Button>
-        </article>
-      </section>}
-      {authoringDrafts.length > 0 && <section className="mt-8">
-        <h2 className="font-heading text-lg font-medium">{t('start.draft.title')}</h2>
-        <div className="mt-3 grid gap-3">{authoringDrafts.map((draft) => <article key={draft.id} className="flex flex-col items-stretch justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm sm:flex-row sm:items-center">
-          <div className="min-w-0">
-            <h3 className="truncate font-heading font-medium">{draft.name}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{t(`start.draft.${draft.status}`)}</p>
-          </div>
-          <div className="flex shrink-0 items-center justify-end gap-2">
+        </article>}
+        {authoringDrafts.map((draft) => <article key={draft.id} className="continue-row">
+          <span><b>{localize(draft.name)}</b><small>{t(`start.draft.${draft.status}`)}</small></span>
+          <span className="continue-actions">
             <DataControls exportData={() => exportCharacterDraft(draft.id)} exportFilename={`${draft.name}-draft.zip`} exportIconOnly exportLabel={t('draft.download')} />
-            <Button variant="destructive" disabled={Boolean(deleting)} onClick={() => setConfirmation({ kind: 'draft', id: draft.id, name: draft.name })}>{t('start.saved.delete')}</Button>
+            <Button variant="destructive" disabled={Boolean(deleting)} onClick={() => setConfirmation({ kind: 'draft', id: draft.id, name: localize(draft.name) })}>{t('start.saved.delete')}</Button>
             <Button onClick={() => onResumeDraft(draft.destination)}>{t('start.draft.resume')}</Button>
-          </div>
-        </article>)}</div>
-        {deleteError && <p role="alert" className="mt-2 text-sm text-destructive">{t('start.saved.deleteError')}</p>}
+          </span>
+        </article>)}
       </section>}
-      {savedCompanions.length > 0 && <section className="mt-8">
-        <h2 className="font-heading text-lg font-medium">{t('start.saved.title')}</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {savedCompanions.map((companion) => <article key={companion.bundleId} className="flex items-center justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm">
-            <div className="min-w-0">
-              <h3 className="truncate font-heading font-medium">{companion.name}</h3>
-              {companion.active && <p className="mt-1 text-xs text-muted-foreground">{t('start.saved.current')}</p>}
-            </div>
-            <div className="flex shrink-0 gap-1">
-              <Button disabled={Boolean(deleting)} onClick={() => void onOpenCompanion(companion.bundleId)}>{t(companion.active ? 'start.saved.continue' : 'start.saved.open')}</Button>
-              <Button variant="destructive" disabled={Boolean(deleting)} onClick={() => setConfirmation({ kind: 'companion', id: companion.bundleId, name: companion.name })}>{t('start.saved.delete')}</Button>
-            </div>
-          </article>)}
+
+      <section className="card-vault" aria-labelledby="card-vault-title">
+        <div className="vault-heading">
+          <span><small>{t('start.saved.kicker')}</small><h2 id="card-vault-title">{t('start.saved.title')}</h2></span>
+          <span className="card-count">{visibleCompanions.length} / {CARD_SLOTS}</span>
         </div>
-        {deleteError && <p role="alert" className="mt-2 text-sm text-destructive">{t('start.saved.deleteError')}</p>}
-      </section>}
-      <div className="mt-8 grid gap-3 sm:grid-cols-2">
-        {startOptions.map((option) => <section key={option} className="flex min-h-40 flex-col rounded-2xl border bg-background p-4 shadow-sm">
-          <h2 className="font-heading font-medium">{t(`start.options.${option}.title`)}</h2>
-          <p className="mt-2 text-sm leading-5 text-muted-foreground">{t(`start.options.${option}.description`)}</p>
-          {option === 'bundle' ? <div className="mt-auto"><DataControls prepareImport={prepareImport} /></div> : <Button className="mt-auto" onClick={onChooseStarter}>{t('start.chooseStarter')}</Button>}
-        </section>)}
-      </div>
+        <p className="vault-hint">{t('start.saved.hint')}</p>
+        <div className="companion-card-fan">
+          {slots.map((companion, index) => {
+            const center = (CARD_SLOTS - 1) / 2
+            const distance = index - center
+            const style = {
+              '--card-angle': `${distance * 5.5}deg`,
+              '--card-offset': `${distance * 3.3}rem`,
+              '--card-lift': `${Math.abs(distance) * 0.42}rem`,
+              '--card-z': index + 1,
+            } as CSSProperties
+            const companionName = companion ? localize(companion.name) : ''
+            return <article key={companion?.bundleId ?? `empty-${index}`} className={`companion-card-slot ${companion ? 'is-saved' : 'is-empty'}`} style={style}>
+              {companion ? <>
+                <button type="button" className="companion-card-face" onClick={() => void onOpenCompanion(companion.bundleId)}>
+                  <span className="card-crest">AOZU</span>
+                  <span className="card-orbit" aria-hidden="true" />
+                  <strong>{companionName}</strong>
+                  <small>{companion.active ? t('start.saved.current') : t('start.saved.open')}</small>
+                </button>
+                <button type="button" className="card-delete" aria-label={`${t('start.saved.delete')} ${companionName}`} disabled={Boolean(deleting)} onClick={() => setConfirmation({ kind: 'companion', id: companion.bundleId, name: companionName })}><Trash2Icon /></button>
+              </> : <button type="button" className="companion-card-face empty-card" onClick={onChooseStarter} aria-label={t('start.card.create')}>
+                <PlusIcon aria-hidden="true" />
+              </button>}
+            </article>
+          })}
+        </div>
+      </section>
+
+      <section className="home-actions stitched-panel">
+        <div><h2>{t('start.options.starter.title')}</h2><p>{t('start.options.starter.description')}</p></div>
+        <Button onClick={onChooseStarter}><PlusIcon />{t('start.chooseStarter')}</Button>
+        <div><h2>{t('start.options.bundle.title')}</h2><p>{t('start.options.bundle.description')}</p></div>
+        <DataControls prepareImport={prepareImport} />
+      </section>
+      {deleteError && <p role="alert" className="form-error">{t('start.saved.deleteError')}</p>}
     </main>
+
     <AlertDialog open={Boolean(confirmation)} onOpenChange={(open) => { if (!open && !deleting) setConfirmation(undefined) }}>
       <AlertDialogContent>
         <AlertDialogHeader>

@@ -15,11 +15,12 @@ import { CompanionCreationPage } from '@/ui/pages/CompanionCreationPage'
 import { StarterDraftPage } from '@/ui/pages/StarterDraftPage'
 import { StartPage } from '@/ui/pages/StartPage'
 import { StatusPage } from '@/ui/pages/StatusPage'
+import { localizedText } from '@/ui/localizedText'
 
 type FlowReturnTo = '/start' | '/companion'
 
 export function AppRoutes({ application }: { application: Application }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
   const draftId = activeDraftId(location.pathname)
@@ -116,8 +117,8 @@ export function AppRoutes({ application }: { application: Application }) {
     closeFlow()
   }
   const headerTitle = location.pathname === '/companion' && startup.status === 'main'
-    ? startup.companion.name
-    : location.pathname.endsWith('/review') ? review?.name : undefined
+    ? localizedText(startup.companion.name, i18n.resolvedLanguage ?? i18n.language)
+    : location.pathname.endsWith('/review') && review ? localizedText(review.name, i18n.resolvedLanguage ?? i18n.language) : undefined
   const importCandidate = async (blob: Blob, returnTo: FlowReturnTo) => {
     setPreview(await application.prepareImport(blob))
     navigate('/review', { state: { returnTo } })
@@ -151,7 +152,7 @@ export function AppRoutes({ application }: { application: Application }) {
     <Route path="/starter" element={<StarterDraftPage
       loadStarters={application.listStarters}
       startCreation={application.startCreation}
-      onSelected={(draft) => navigate(workspacePath('character-expressions', draft.id), { replace: true, state: { returnTo: flowReturnTo ?? '/start' } })}
+      onSelected={(draft, targetPart) => navigate(workspacePath(targetPart === 'body' ? 'character-body' : 'character-expressions', draft.id), { replace: true, state: { returnTo: flowReturnTo ?? '/start' } })}
     />} />
     <Route path="/drafts/:draftId/character" element={characterDraftPage} />
     <Route path="/drafts/:draftId/character/:step" element={characterDraftPage} />

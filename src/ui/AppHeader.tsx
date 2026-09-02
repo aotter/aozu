@@ -12,7 +12,12 @@ type AppHeaderProps = {
 }
 
 export function AppHeader({ webmcpAvailable, title, onBack, actions }: AppHeaderProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const language = i18n.resolvedLanguage === 'en' ? 'en' : 'zh-TW'
+  const setLanguage = (next: 'zh-TW' | 'en') => {
+    window.localStorage.setItem('aozu-language', next)
+    void i18n.changeLanguage(next)
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
@@ -27,6 +32,10 @@ export function AppHeader({ webmcpAvailable, title, onBack, actions }: AppHeader
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <div className="language-switch" role="group" aria-label={t('navigation.language')}>
+            <button type="button" aria-pressed={language === 'zh-TW'} onClick={() => setLanguage('zh-TW')}>中</button>
+            <button type="button" aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>EN</button>
+          </div>
           <span
             aria-label={t(webmcpAvailable ? 'main.webmcpConnected' : 'main.webmcpUnavailable')}
             className="flex items-center gap-1.5 text-xs text-muted-foreground"

@@ -1,6 +1,7 @@
 export const WORKSPACE_DESTINATIONS = {
   start: '/start',
   starter: '/starter',
+  'character-body': '/character/body',
   'character-expressions': '/character/expressions',
   'character-outfits': '/character/outfits',
   'character-props': '/character/props',
@@ -13,7 +14,7 @@ export const WORKSPACE_DESTINATIONS = {
 export type WorkspaceDestination = keyof typeof WORKSPACE_DESTINATIONS
 
 const DRAFT_DESTINATIONS = new Set<WorkspaceDestination>([
-  'character-expressions', 'character-outfits', 'character-props', 'character-review', 'create', 'experience-review',
+  'character-body', 'character-expressions', 'character-outfits', 'character-props', 'character-review', 'create', 'experience-review',
 ])
 
 export const activeDraftId = (pathname: string) => {
@@ -44,7 +45,7 @@ export function workspaceNavigation({ characterReady, experienceReady, pendingRe
   activeCompanion: boolean
 }) {
   const allowed = new Set<WorkspaceDestination>([
-    'start', 'starter', 'character-expressions', 'character-outfits', 'character-props',
+    'start', 'starter', 'character-body', 'character-expressions', 'character-outfits', 'character-props',
   ])
   if (characterReady) allowed.add('character-review')
   if (experienceReady) allowed.add('create')

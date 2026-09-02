@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/ui/components/ui/alert-dialog'
+import { localizedText } from '@/ui/localizedText'
 
 export function CandidateReviewPage({ preview, onApprove, onCancel, onDiscard }: {
   preview: StagedCandidatePreview
@@ -23,7 +24,8 @@ export function CandidateReviewPage({ preview, onApprove, onCancel, onDiscard }:
   onCancel(): Promise<void>
   onDiscard?(): Promise<void>
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const localize = (value: string) => localizedText(value, i18n.resolvedLanguage ?? i18n.language)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
   const run = async (task: () => Promise<void>) => {
@@ -38,7 +40,7 @@ export function CandidateReviewPage({ preview, onApprove, onCancel, onDiscard }:
       <h1 className="mt-2 font-heading text-3xl font-semibold tracking-tight">{t('candidate.title')}</h1>
       <p className="mt-3 text-sm leading-6 text-muted-foreground">{t('candidate.description')}</p>
       <section className="mt-6 rounded-2xl border bg-background p-5 shadow-sm">
-        <h2 className="font-heading text-lg font-medium">{preview.name}</h2>
+        <h2 className="font-heading text-lg font-medium">{localize(preview.name)}</h2>
         {preview.source === 'character' && <div className="mx-auto mt-4 max-w-xs"><CharacterRenderer label={preview.name} layers={preview.layers} /></div>}
         {preview.source === 'experience' && <div className="mx-auto mt-4 max-w-xs">{preview.sceneLayers.length
           ? <SceneRenderer label={preview.initialTitle} layers={preview.sceneLayers}>
@@ -48,15 +50,15 @@ export function CandidateReviewPage({ preview, onApprove, onCancel, onDiscard }:
         <dl className="mt-4 grid gap-2 text-sm">
           {preview.source === 'experience' ? <>
             {preview.story && <>
-              <div className="flex justify-between gap-4"><dt>{t('candidate.starter')}</dt><dd>{preview.story.starter.name} · v{preview.story.starter.version}</dd></div>
-              <div className="flex justify-between gap-4"><dt>{t('candidate.direction')}</dt><dd>{preview.story.direction.name}</dd></div>
+              <div className="flex justify-between gap-4"><dt>{t('candidate.starter')}</dt><dd>{localize(preview.story.starter.name)} · v{preview.story.starter.version}</dd></div>
+              <div className="flex justify-between gap-4"><dt>{t('candidate.direction')}</dt><dd>{localize(preview.story.direction.name)}</dd></div>
             </>}
             <div className="flex justify-between gap-4"><dt>{t('candidate.loops')}</dt><dd>{preview.seed.loopIds.join(' + ')}</dd></div>
             <div className="flex justify-between gap-4"><dt>{t('candidate.completionMode')}</dt><dd>{preview.seed.completionMode}</dd></div>
             <div className="flex justify-between gap-4"><dt>{t('candidate.stages')}</dt><dd>{preview.stageCount}</dd></div>
-            <div className="flex justify-between gap-4"><dt>{t('candidate.initialStage')}</dt><dd>{preview.initialTitle}</dd></div>
+            <div className="flex justify-between gap-4"><dt>{t('candidate.initialStage')}</dt><dd>{localize(preview.initialTitle)}</dd></div>
             <div className="flex justify-between gap-4"><dt>{t('candidate.fallbacks')}</dt><dd>{preview.agentFallbackCount}</dd></div>
-            <div className="mt-2"><dt className="font-medium">{t('candidate.initialContent')}</dt><dd className="mt-1 text-muted-foreground">{preview.initialNarrative}</dd></div>
+            <div className="mt-2"><dt className="font-medium">{t('candidate.initialContent')}</dt><dd className="mt-1 text-muted-foreground">{localize(preview.initialNarrative)}</dd></div>
           </> : preview.source === 'import' ? <>
             <div className="flex justify-between gap-4"><dt>{t('candidate.entries')}</dt><dd>{preview.entryCount}</dd></div>
             <div className="flex justify-between gap-4"><dt>{t('candidate.assets')}</dt><dd>{preview.assetCount}</dd></div>
