@@ -666,6 +666,16 @@ export function createApplication(document: Document) {
         overflow,
         measurement,
         autoFit: suggestedTransform ? { confidence: 'high', transform: suggestedTransform } : null,
+        registration: input.group === 'expression' ? {
+          role: headRegistration?.variant.id === input.variantId ? 'head-anchor' : 'follower',
+          anchorVariantId: headRegistration?.variant.id ?? null,
+          calibration: headRegistration?.variant.id === input.variantId ? {
+            status: 'visual-required',
+            compareAgainst: 'canonical-body-default-head',
+            tool: 'set_character_variant_transform',
+            rebasesCurrentExpressions: true,
+          } : null,
+        } : null,
         reviewDestination: WORKSPACE_DESTINATIONS[reviewDestination],
       },
       nextActions,
@@ -823,6 +833,7 @@ export function createApplication(document: Document) {
       }
       const current = await openCharacterDraft()
       const before = current.variants.find(({ group, id }) => group === input.group && id === input.variantId)?.transform ?? { x: 0, y: 0, scale: 1 }
+      const calibratesHead = input.group === 'expression' && current.headRegistration?.variantId === input.variantId
       const draft = await setCharacterVariantTransform(characterDrafts, input.group, input.variantId, input.expectedUpdatedAt, {
         x: input.x,
         y: input.y,
@@ -838,6 +849,9 @@ export function createApplication(document: Document) {
           target: { group: input.group, variantId: input.variantId },
           before,
           after: variant.transform,
+          rebasedVariantIds: calibratesHead ? draft.variants.filter((candidate) =>
+            candidate.group === 'expression' && candidate.id !== input.variantId && isCharacterDraftAssetCurrent(draft, candidate, 'head')
+          ).map(({ id }) => id) : [],
           updatedAt: draft.updatedAt,
           alignment: specification?.alignment,
         },

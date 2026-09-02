@@ -46,6 +46,7 @@ export const REQUIRED_CHARACTER_TARGETS = [
 
 const MAX_ASSET_BYTES = 5 * 1024 * 1024
 const variantIdPattern = /^[a-z0-9][a-z0-9_-]{0,39}$/
+const roundTransformValue = (value: number) => Math.round(value * 10_000) / 10_000
 const initialVariants = (): CharacterDraftVariant[] => [
   { group: 'body', id: 'base', label: 'Base body', layers: {} },
   { group: 'expression', id: 'happy', label: 'Happy', layers: {} },
@@ -85,6 +86,10 @@ export function characterRegistrationFrame(draft: CharacterDraft) {
         variantId: head.variant.id,
         transform: { ...head.transform },
         bounds: transformCharacterBounds(head.asset.inspection.visibleBounds, head.transform),
+        calibration: {
+          status: 'visual-required' as const,
+          rebasesCurrentExpressions: true,
+        },
       },
     } : {}),
   }
@@ -295,10 +300,26 @@ export async function setCharacterVariantTransform(
     return bounds.x + bounds.width > 0 && bounds.y + bounds.height > 0 && bounds.x < CHARACTER_RIG.canvas.width && bounds.y < CHARACTER_RIG.canvas.height
   })
   if (!remainsVisible) throw new Error('Character transform moves every layer outside the canvas')
+  const previousTransform = variant.transform ?? IDENTITY_CHARACTER_TRANSFORM
+  const rebasesHeads = group === 'expression' && draft.headRegistration?.variantId === variantId
+  const rebase = (source: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM) => {
+    const ratio = transform.scale / previousTransform.scale
+    const rebased = {
+      x: roundTransformValue(transform.x + (source.x - previousTransform.x) * ratio),
+      y: roundTransformValue(transform.y + (source.y - previousTransform.y) * ratio),
+      scale: roundTransformValue(source.scale * ratio),
+    }
+    validateCharacterVariantTransform(rebased)
+    return rebased
+  }
   const next = {
     ...draft,
     approvedAt: undefined,
-    variants: draft.variants.map((candidate) => candidate === variant ? { ...candidate, transform: { ...transform } } : candidate),
+    variants: draft.variants.map((candidate) => candidate === variant
+      ? { ...candidate, transform: { ...transform } }
+      : rebasesHeads && candidate.group === 'expression' && isCharacterDraftAssetCurrent(draft, candidate, 'head')
+        ? { ...candidate, transform: rebase(candidate.transform) }
+        : candidate),
     updatedAt: Math.max(Date.now(), draft.updatedAt + 1),
   }
   await drafts.put(next)

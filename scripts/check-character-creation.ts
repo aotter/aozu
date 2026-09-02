@@ -34,6 +34,7 @@ assert.deepEqual(resolveCharacterDraftLayers(draft).find(({ slot }) => slot === 
 assert.deepEqual(characterRegistrationFrame(draft).footLine, 739)
 assert.equal(characterHeadRegistration(draft)?.variant.id, 'happy')
 assert.equal(characterRegistrationFrame(draft).head?.variantId, 'happy')
+assert.equal(characterRegistrationFrame(draft).head?.calibration.rebasesCurrentExpressions, true)
 const preview = await reviewCharacterDraft(async () => inspection, draft)
 assert.equal(preview.source, 'character')
 assert.equal('bundleId' in preview, false)
@@ -148,6 +149,15 @@ savedDraft = await saveCharacterDraftAsset(
 )
 assert.equal(hasCurrentCharacterLayer(savedDraft, 'expression', 'happy', 'head'), true)
 assert.equal(savedDraft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.label, 'New happy')
+savedDraft = await saveCharacterDraftAsset(
+  drafts,
+  async () => ({ ...replacementInspection, sha256: 'd'.repeat(64), visibleBounds: { x: 62, y: 11, width: 388, height: 348 } }),
+  savedDraft,
+  { group: 'expression', variantId: 'angry', label: 'New angry', layer: 'head' },
+  new Blob(['angry'], { type: 'image/png' }),
+  'angry.png',
+  'agent',
+)
 const characterMask = (...rectangles: Array<{ x: number; y: number; width: number; height: number }>): CharacterAlphaMask => {
   const alpha = new Uint8Array(512 * 768)
   for (const rectangle of rectangles) for (let y = rectangle.y; y < rectangle.y + rectangle.height; y++) {
@@ -188,8 +198,9 @@ const transformed = await setCharacterVariantTransform(
   'expression',
   'happy',
   staleUpdatedAt,
-  { x: 3, y: -2, scale: 1.02 },
+  { x: 2, y: -3, scale: 0.505 },
 )
-assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 3, y: -2, scale: 1.02 })
+assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 2, y: -3, scale: 0.505 })
+assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'angry')?.transform, { x: 2, y: -3, scale: 0.505 })
 await assert.rejects(() => setCharacterVariantTransform(drafts, 'expression', 'happy', staleUpdatedAt, { x: 0, y: 0, scale: 1 }), /changed/)
 console.log('character creation: ok')

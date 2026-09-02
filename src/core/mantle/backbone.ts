@@ -608,7 +608,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/set-character-variant-transform.yaml',
     envelope('Procedure', 'set-character-variant-transform', {
       title: 'Set Character Variant Transform',
-      description: 'Safety net for an otherwise valid staged character variant whose full-canvas pixels need translation or uniform scale. Use absolute values returned or derived from inspect_character_contract; never accumulate directional nudges. Front and back prop layers share this transform. The canonical body is locked.',
+      description: 'Safety net for an otherwise valid staged character variant whose full-canvas pixels need translation or uniform scale. Use absolute values returned or derived from inspect_character_contract; never accumulate directional nudges. When the target is the registered head anchor, visually compare it with the canonical body default head; changing it automatically rebases every current expression. Front and back prop layers share this transform. The canonical body is locked.',
       input: objectSchema({
         group: { enum: ['expression', 'outfit', 'prop'] },
         variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
