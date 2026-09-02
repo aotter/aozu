@@ -101,7 +101,6 @@ const zhTW = {
     generateCharacterDescription: '讓 Agent 讀取角色契約、生成素材並提交候選稿。',
     or: '或使用範例',
     useTemplate: '以布丁獺範例開始',
-    openForge: '開啟空白角色工房',
     rigLabel: '基礎骨架 · 512 × 768 RGBA',
   },
   candidate: {
@@ -332,7 +331,6 @@ const en = {
     generateCharacterDescription: 'Let an agent inspect the character contract, generate assets, and submit a candidate.',
     or: 'Or use an example',
     useTemplate: 'Start with Pudding Otter',
-    openForge: 'Open blank character forge',
     rigLabel: 'Base Rig · 512 × 768 RGBA',
   },
   candidate: {
