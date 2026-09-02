@@ -90,6 +90,7 @@ export function AppRoutes({ application }: { application: Application }) {
     saveAsset={application.saveCharacterAsset}
     setVariantTransform={application.setCharacterVariantTransform}
     autoFitVariant={application.autoFitCharacterVariant}
+    exportDraft={application.exportCharacterDraft}
     onReview={(draft) => prepareReview(application.prepareCharacter(draft))}
   />
   const showBack = location.pathname !== '/' && location.pathname !== '/start'
@@ -131,6 +132,7 @@ export function AppRoutes({ application }: { application: Application }) {
       pendingReview={startup.pendingReview}
       onResumeReview={() => navigate('/review', { state: { returnTo: '/start' } })}
       authoringDraft={startup.authoringDraft}
+      exportCharacterDraft={application.exportCharacterDraft}
       onResumeDraft={(destination) => navigate(destination, { state: { returnTo: '/start' } })}
     />} />
     <Route path="/starter" element={<StarterDraftPage

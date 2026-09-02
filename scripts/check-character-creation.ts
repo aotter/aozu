@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
+import { strFromU8, unzipSync } from 'fflate'
 
 import { buildCharacterPack, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 import type { CharacterPackLibraryRecord } from '../src/core/application/ports.ts'
+import { exportCharacterDraftZip } from '../src/adapters/zip/character-draft.ts'
 
 const inspection = { width: 512, height: 768, hasTransparentPixels: true, hasVisiblePixels: true, genuineRgba: true, visibleBounds: { x: 40, y: 20, width: 430, height: 720 }, visiblePixelCount: 100, size: 10, sha256: 'a'.repeat(64) }
 const asset: CharacterDraftAsset = { blob: new Blob(['sprite'], { type: 'image/png' }), filename: 'sprite.png', source: 'user', inspection, canonicalSha256: inspection.sha256 }
@@ -22,6 +24,15 @@ draft.variants.push({ group: 'prop', id: 'prop-2', label: 'Prop 2', layers: { ba
 draft.selected = { expression: 'happy', outfit: 'outfit-1', props: ['prop-1', 'prop-2'] }
 draft.headRegistration = { variantId: 'happy' }
 draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.transform = { x: 2, y: -3, scale: 1.01 }
+
+const draftArchive = unzipSync(new Uint8Array(await (await exportCharacterDraftZip(draft)).arrayBuffer()))
+const archivedDraft = JSON.parse(strFromU8(draftArchive['draft.json']!))
+const archivedPack = JSON.parse(strFromU8(draftArchive['character-pack.json']!))
+assert.deepEqual(archivedDraft.selected, draft.selected)
+assert.deepEqual(archivedDraft.headRegistration, draft.headRegistration)
+assert.deepEqual(archivedDraft.variants.find(({ group, id }: { group: string; id: string }) => group === 'expression' && id === 'happy').transform, { x: 2, y: -3, scale: 1.01 })
+assert.deepEqual(archivedPack.appearances.find(({ id }: { id: string }) => id === 'expression-happy').layers[0].transform, { x: 2, y: -3, scale: 1.01 })
+assert.equal(strFromU8(draftArchive['assets/expression-happy-head.png']!), 'sprite')
 
 const pack = buildCharacterPack(draft)
 assert.deepEqual(pack.defaultComposition.map(({ appearanceId }) => appearanceId), ['outfit-outfit-1', 'expression-happy', 'prop-prop-1', 'prop-prop-2'])
@@ -72,6 +83,9 @@ await assert.rejects(() => loadInstalledCharacterPackResources(library, async ()
 const incomplete = createCharacterDraft('incomplete')
 assert.throws(() => buildCharacterPack(incomplete), /required/)
 await assert.rejects(() => installCharacterDraft(library, async () => inspection, incomplete), /required/)
+const incompleteArchive = unzipSync(new Uint8Array(await (await exportCharacterDraftZip(incomplete)).arrayBuffer()))
+assert.ok(incompleteArchive['draft.json'])
+assert.equal(incompleteArchive['character-pack.json'], undefined)
 assert.equal(installed.length, 2)
 
 const migrated = migrateCharacterDraft({

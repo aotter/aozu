@@ -12,7 +12,7 @@ const en = {
     loading: 'Loading local data…',
     error: 'Local data could not be loaded. Refresh and try again.',
   },
-  draft: { name: 'Companion name' },
+  draft: { name: 'Companion name', download: 'Download draft ZIP' },
   start: {
     title: 'Create your companion',
     description: 'Continue a saved Companion or start a new one. Confirmed data is saved locally.',

@@ -1,35 +1,44 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { DownloadIcon } from 'lucide-react'
 
 import { Button } from '@/ui/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/components/ui/tooltip'
 
 export function DataControls({
   exportData,
+  exportFilename = 'companion.zip',
+  exportIconOnly = false,
+  exportLabel,
   prepareImport,
 }: {
   exportData?(): Promise<Blob>
-  prepareImport(blob: Blob): Promise<void>
+  exportFilename?: string
+  exportIconOnly?: boolean
+  exportLabel?: string
+  prepareImport?(blob: Blob): Promise<void>
 }) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle')
+  const downloadLabel = exportLabel ?? t('data.export')
   const run = async (task: () => Promise<void>) => {
     setStatus('busy')
     try { await task(); setStatus('done') } catch { setStatus('error') }
   }
 
   return (
-    <div className="grid gap-2 py-1">
-      {exportData && <Button variant="ghost" className="justify-start" disabled={status === 'busy'} onClick={() => void run(async () => {
+    <div className="grid gap-2">
+      {exportData && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant={prepareImport ? 'ghost' : 'outline'} size={exportIconOnly ? 'icon' : 'default'} className={prepareImport ? 'justify-start' : undefined} aria-label={downloadLabel} disabled={status === 'busy'} onClick={() => void run(async () => {
         const url = URL.createObjectURL(await exportData())
         const link = document.createElement('a')
         link.href = url
-        link.download = 'companion.zip'
+        link.download = exportFilename
         document.body.append(link)
         link.click()
         link.remove()
         setTimeout(() => URL.revokeObjectURL(url), 1_000)
-      })}>{t('data.export')}</Button>}
-      <Button asChild variant={exportData ? 'ghost' : 'default'} className={exportData ? 'justify-start' : 'w-full'}>
+      })}><DownloadIcon />{exportIconOnly ? <span className="sr-only">{downloadLabel}</span> : downloadLabel}</Button></TooltipTrigger>{exportIconOnly && <TooltipContent>{downloadLabel}</TooltipContent>}</Tooltip></TooltipProvider>}
+      {prepareImport && <Button asChild variant={exportData ? 'ghost' : 'default'} className={exportData ? 'justify-start' : 'w-full'}>
         <label>
           {t('data.import')}
           <input className="sr-only" type="file" accept=".zip,application/zip" disabled={status === 'busy'} onChange={(event) => {
@@ -38,8 +47,8 @@ export function DataControls({
             if (file) void run(() => prepareImport(file))
           }} />
         </label>
-      </Button>
-      {status !== 'idle' && <p role="status" className="px-4 text-xs text-muted-foreground">{t(`data.${status}`)}</p>}
+      </Button>}
+      {status !== 'idle' && <p role="status" className={exportIconOnly ? 'sr-only' : 'px-4 text-xs text-muted-foreground'}>{t(`data.${status}`)}</p>}
     </div>
   )
 }
