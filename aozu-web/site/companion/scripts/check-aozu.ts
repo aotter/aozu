@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { AOZU_CUSTOMIZATION, AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, AOZU_WARDROBE_ITEMS, AOZU_WARDROBE_SLOTS, DEFAULT_TRAVEL_JOURNAL } from '../aozu.ts'
+import { advanceOriginProgress, AOZU_CUSTOMIZATION, AOZU_ORIGIN_LOOP_STAGES, AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, AOZU_WARDROBE_ITEMS, AOZU_WARDROBE_SLOTS, DEFAULT_TRAVEL_JOURNAL } from '../aozu.ts'
 import { assembleAuthoredCandidate } from '../src/core/application/authoring.ts'
 
 const candidate = assembleAuthoredCandidate('bundle:aozu-check', AOZU_CUSTOMIZATION, 1)
@@ -30,4 +30,9 @@ assert.deepEqual(travelJournal?.data.state, DEFAULT_TRAVEL_JOURNAL)
 assert.equal(DEFAULT_TRAVEL_JOURNAL.equippedAccessoryId, 'none')
 assert.equal(AOZU_TRAVEL_ACCESSORIES.length, 3)
 assert.ok(AOZU_TRAVEL_ACCESSORIES.every(({ names }) => Object.keys(names).length === AOZU_PARTNERS.length))
+assert.deepEqual(AOZU_ORIGIN_LOOP_STAGES.map(({ id }) => id), ['forge', 'quest', 'reward', 'card', 'recall'])
+assert.equal(advanceOriginProgress(0, 3), 1)
+assert.equal(advanceOriginProgress(0, 3, 2), 2)
+assert.equal(advanceOriginProgress(2, 3, 1), 2)
+assert.equal(advanceOriginProgress(3, 3), 3)
 console.log('aozu customization: ok')

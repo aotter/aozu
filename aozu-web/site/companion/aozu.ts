@@ -54,6 +54,17 @@ export const AOZU_FORGE_QUESTS = [
   { id: 'writing', label: '共同寫作', ability: '共筆創作', rewardItemId: 'focus-stylus', defaultGoal: '一起留下三段能繼續發展的共同文字', steps: ['貼上第一個想法', '一起補出下一段', '保存本次創作方向'] },
 ] as const
 
+export const AOZU_ORIGIN_LOOP_STAGES = [
+  { id: 'forge', label: '創角' },
+  { id: 'quest', label: '任務' },
+  { id: 'reward', label: '獎勵' },
+  { id: 'card', label: '封卡' },
+  { id: 'recall', label: '再召喚' },
+] as const
+
+export const advanceOriginProgress = (current: number, total: number, target?: number) =>
+  Math.min(total, Math.max(current, target ?? current + 1))
+
 export const AOZU_TRAVEL_ACCESSORIES = [
   { id: 'route-pin', icon: '⌖', threshold: 30, skill: '規劃', names: { otter: '葉脈旅標', seal: '泡泡旅標', whale: '星航旅標', weasel: '琥珀路章', mikan: '晴橘路章', space: '星圖定位章', xixi: '元氣行程章' } },
   { id: 'compass', icon: '◇', threshold: 60, skill: '探索', names: { otter: '貝殼羅盤', seal: '潮汐羅盤', whale: '夜航羅盤', weasel: '收納羅盤', mikan: '曜橘羅盤', space: '星軌羅盤', xixi: '躍動羅盤' } },

@@ -178,9 +178,11 @@ button:disabled { cursor: wait; opacity: .55; }
 .module-glass-card b { color: var(--module-tone); font-size: 16px; }
 .module-glass-card button { background: var(--module-tone); border: 0; border-radius: 14px; color: white; font-size: 16px; font-weight: 900; grid-column: 1/-1; min-height: 48px; }
 
-.forge-loop { display: grid; gap: 6px; grid-template-columns: repeat(4,1fr); margin: 14px 0; }
+.forge-loop { display: grid; gap: 6px; grid-template-columns: repeat(5,1fr); margin: 14px 0; }
 .forge-loop span { background: rgba(255,255,255,.58); border: 1px solid rgba(255,255,255,.8); border-radius: 12px; color: var(--muted); font-size: 16px; font-weight: 900; padding: 9px 5px; text-align: center; }
 .forge-loop span.is-active { background: var(--partner-accent); color: white; }
+.forge-loop span.is-done { background: #2b2622; color: #ffdc72; }
+.forge-loop-global { margin-top: 10px; }
 .forge-form { display: grid; gap: 13px; }
 .forge-preview { align-items: center; backdrop-filter: blur(20px) saturate(1.2); background: linear-gradient(145deg,rgba(255,255,255,.76),rgba(255,255,255,.38)); border: 1px solid rgba(255,255,255,.82); border-radius: 20px; display: grid; gap: 14px; grid-template-columns: 82px 1fr; padding: 14px; }
 .forge-preview .partner-portrait { border: 3px solid color-mix(in srgb,var(--partner-accent) 50%,white); border-radius: 18px; height: 82px; overflow: hidden; }
@@ -345,6 +347,8 @@ button:disabled { cursor: wait; opacity: .55; }
 .ability-card.travel { background: linear-gradient(145deg,#6d2630,#261c1b); }
 .ability-card.summoned { background: linear-gradient(145deg,color-mix(in srgb,var(--partner-accent) 42%,#322820),#1d1917); }
 .ability-card button { background: #f2c95f; border: 0; border-radius: 12px; bottom: 12px; color: #3c2b21; font-size: 16px; font-weight: 950; min-height: 42px; padding: 0 14px; position: absolute; right: 12px; z-index: 2; }
+.ability-card.is-recalled { box-shadow: inset 0 0 0 3px #ffdc72,0 16px 36px rgba(55,41,31,.18); }
+.forge-next-cycle { background: rgba(43,38,34,.92); border: 1px solid rgba(255,255,255,.32); border-radius: 14px; color: white; font-size: 16px; font-weight: 900; margin-top: 14px; min-height: 48px; padding: 10px 16px; width: 100%; }
 .ability-card.locked { filter: saturate(.5); opacity: .72; }
 
 .memory-log { display: grid; gap: 8px; margin-top: 15px; }

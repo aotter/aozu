@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
 
-import { AOZU_FORGE_QUESTS, AOZU_FORGE_STARTER_ITEM_IDS, AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, AOZU_WARDROBE_ITEMS, AOZU_WARDROBE_SLOTS, DEFAULT_TRAVEL_JOURNAL, ensureAozuCompanions, type AozuStartup, type AozuWardrobeSlotId, type TravelJournalState } from '../companion/aozu.ts';
+import { advanceOriginProgress, AOZU_FORGE_QUESTS, AOZU_FORGE_STARTER_ITEM_IDS, AOZU_ORIGIN_LOOP_STAGES, AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, AOZU_WARDROBE_ITEMS, AOZU_WARDROBE_SLOTS, DEFAULT_TRAVEL_JOURNAL, ensureAozuCompanions, type AozuStartup, type AozuWardrobeSlotId, type TravelJournalState } from '../companion/aozu.ts';
 import type { AdventureMode } from '../companion/adventure.ts';
 import { createApplication, type Application } from '../companion/src/bootstrap.ts';
 import { AdventureGame } from './adventure-game.tsx';
@@ -333,6 +333,7 @@ export default function Home() {
   const [savedCards, setSavedCards] = useState<SavedAbilityCard[]>([]);
   const [savedLifeRecords, setSavedLifeRecords] = useState<SavedLifeRecord[]>([]);
   const [forgeProfile, setForgeProfile] = useState<ForgeProfile | null>(null);
+  const [summonedCardId, setSummonedCardId] = useState<string | null>(null);
   const [forgeDraft, setForgeDraft] = useState(defaultForgeDraft);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [mobileConsoleOpen, setMobileConsoleOpen] = useState(false);
@@ -483,6 +484,12 @@ export default function Home() {
   const activeSavedMemories = savedMemories.filter(({ partnerId }) => partnerId === activePartner.id).slice().reverse();
   const activeSavedCards = savedCards.filter(({ partnerId }) => partnerId === activePartner.id).slice().reverse();
   const activeLifeRecords = savedLifeRecords.filter(({ partnerId }) => partnerId === activePartner.id).slice().reverse();
+  const originCard = forgeProfile ? savedCards.find(({ originProfileId }) => originProfileId === forgeProfile.id) : undefined;
+  const summonedCard = savedCards.find(({ id }) => id === summonedCardId);
+  const originLoopStage = !forgeProfile ? 0
+    : summonedCard ? 4
+      : forgeProfile.progress < forgeProfile.steps.length ? 1
+        : originCard ? 3 : 2;
 
   const refresh = async (application: Application) => {
     const startup = await application.loadStartup();
@@ -495,10 +502,12 @@ export default function Home() {
     setForgeProfile(profile);
   };
 
-  const advanceForgeQuest = async (kind: ForgeQuestKind, application?: Application) => {
+  const advanceForgeQuest = async (kind: ForgeQuestKind, options: { application?: Application; targetProgress?: number } = {}) => {
     const profile = forgeProfile;
     if (!profile || profile.questKind !== kind || profile.progress >= profile.steps.length) return;
-    const next = { ...profile, progress: Math.min(profile.steps.length, profile.progress + 1) };
+    const progress = advanceOriginProgress(profile.progress, profile.steps.length, options.targetProgress);
+    if (progress === profile.progress) return;
+    const next = { ...profile, progress };
     saveForgeProfile(next);
     if (next.progress < next.steps.length) {
       setToast(`Origin Quest ${next.progress} / ${next.steps.length}`);
@@ -529,7 +538,7 @@ export default function Home() {
     setSavedMemories((current) => saveStoredList(AOZU_MEMORY_KEY, current, memory));
 
     try {
-      const activeApplication = application ?? (await bootAozu()).application;
+      const activeApplication = options.application ?? (await bootAozu()).application;
       const startup = await activeApplication.loadStartup();
       if (startup.status === 'main') {
         await activeApplication.submitAction(`wear-${quest.rewardItemId}`, startup.stage.revision, `origin-reward-${next.id}`);
@@ -539,6 +548,8 @@ export default function Home() {
       setRuntimeError(`Origin Card 已封存，但獎勵配件尚未裝上：${messageFrom(error)}`);
     }
     setPanel('cards');
+    setDialogueOpen(false);
+    setMobileConsoleOpen(true);
     setRoomMessage(`我們完成第一場冒險了！「${quest.ability}」已封成 Origin Card，${AOZU_WARDROBE_ITEMS.find(({ id }) => id === quest.rewardItemId)?.label}也已解鎖並穿上。`);
     setToast('Origin Card 已封存');
   };
@@ -553,7 +564,7 @@ export default function Home() {
       const startup = await refresh(application);
       setToast(success);
       window.setTimeout(() => setToast(''), 1800);
-      if (startup.status === 'main' && startup.stage.revision > runtime.stage.revision && AOZU_FORGE_QUESTS.some(({ id }) => id === actionId)) await advanceForgeQuest(actionId as ForgeQuestKind, application);
+      if (startup.status === 'main' && startup.stage.revision > runtime.stage.revision && AOZU_FORGE_QUESTS.some(({ id }) => id === actionId)) await advanceForgeQuest(actionId as ForgeQuestKind, { application });
       return true;
     } catch (error) {
       setRuntimeError(messageFrom(error));
@@ -623,6 +634,7 @@ export default function Home() {
       setRoomMessage('');
       setRoomUserMessage('');
       setAgentProposal(null);
+      setSummonedCardId(null);
       setMobileToolsOpen(false);
       setToast(`${partner.displayName}來到房間了`);
       window.setTimeout(() => setToast(''), 1800);
@@ -890,6 +902,7 @@ export default function Home() {
       setRoomMessage(reply);
       setTravelInput('');
       setRoomInput('');
+      await advanceForgeQuest('travel', { targetProgress: 1 });
       return;
     }
 
@@ -906,7 +919,7 @@ export default function Home() {
     else points.taste += 8;
     const saved = await persistTravelJournal({ ...travelJournal, entries: [...travelJournal.entries, entry], points });
     if (!saved) return;
-    await advanceForgeQuest('travel');
+    await advanceForgeQuest('travel', { targetProgress: 2 });
 
     const reply = `完成！我把「${entry.name}」排進第 ${entry.day} 天手札。規劃 +6、${entry.kind === 'food' ? '品味' : '探索'} +8、羈絆 +1。`;
     setTravelChat((messages) => [...messages,
@@ -918,6 +931,16 @@ export default function Home() {
     setTravelInput('');
     setRoomInput('');
     setToast(`${entry.name}已加入旅行手札`);
+    if (summonedCard) {
+      const memory: SavedMemory = { id: `recall-use-${summonedCard.id}-${Date.now().toString(36)}`, partnerId: summonedCard.partnerId, title: `${summonedCard.ability}再次啟用`, summary: `用「${summonedCard.title}」把${entry.name}與位置整理進旅行手札。`, category: 'travel', createdAt: Date.now() };
+      setSavedMemories((current) => saveStoredList(AOZU_MEMORY_KEY, current, memory));
+    }
+    if (activeForgeProfile?.questKind === 'travel' && activeForgeProfile.progress < 2) {
+      setPanel('journal');
+      setDialogueOpen(false);
+      setMobileConsoleOpen(true);
+      setToast(`${entry.name}已加入；勾選一個行程完成最後一步`);
+    }
     window.setTimeout(() => setToast(''), 2200);
   };
 
@@ -943,6 +966,10 @@ export default function Home() {
       setRoomInput('');
       setRoomMessage(`這段我收進共同文字了。我們已經一起留下 ${notes.length} 段內容；你可以再貼一段，我會繼續陪你寫。`);
       await advanceForgeQuest('writing');
+      if (summonedCard) {
+        const memory: SavedMemory = { id: `recall-use-${summonedCard.id}-${Date.now().toString(36)}`, partnerId: summonedCard.partnerId, title: `${summonedCard.ability}再次啟用`, summary: `用「${summonedCard.title}」共同保存了一段新文字。`, category: 'writing', createdAt: Date.now() };
+        setSavedMemories((current) => saveStoredList(AOZU_MEMORY_KEY, current, memory));
+      }
       return;
     }
     if (activeModule.id === 'travel') {
@@ -952,7 +979,11 @@ export default function Home() {
     setRoomUserMessage(value);
     setRoomInput('');
     setRoomMessage(activeGuide.done);
-    await runAction(activeModule.id, `${activeModule.label}已寫進共同記憶`);
+    const saved = await runAction(activeModule.id, `${activeModule.label}已寫進共同記憶`);
+    if (saved && summonedCard) {
+      const memory: SavedMemory = { id: `recall-use-${summonedCard.id}-${Date.now().toString(36)}`, partnerId: summonedCard.partnerId, title: `${summonedCard.ability}再次啟用`, summary: `用「${summonedCard.title}」完成：${value}`, category: 'life', createdAt: Date.now() };
+      setSavedMemories((current) => saveStoredList(AOZU_MEMORY_KEY, current, memory));
+    }
   };
 
   const toggleJournalEntry = async (entryId: string) => {
@@ -969,7 +1000,7 @@ export default function Home() {
     });
     if (saved) {
       setToast(current.checked ? '已恢復為待完成' : `完成 ${current.name}，能力點數已更新`);
-      if (!current.checked) await advanceForgeQuest('travel');
+      if (!current.checked && forgeProfile?.questKind === 'travel' && forgeProfile.progress >= 2) await advanceForgeQuest('travel', { targetProgress: 3 });
     }
   };
 
@@ -1025,6 +1056,7 @@ export default function Home() {
           createdAt: Date.now(),
         };
         saveForgeProfile(profile);
+        setSummonedCardId(null);
         const memory: SavedMemory = { id: `forge-memory-${proposal.id}`, partnerId: partner.id, title: `${proposal.name}誕生`, summary: `${proposal.personality}的${proposal.role}，準備完成「${proposal.questGoal}」。`, category: 'bond', createdAt: Date.now() };
         setSavedMemories((current) => saveStoredList(AOZU_MEMORY_KEY, current, memory));
         setSelectedWardrobeItemId(item.id);
@@ -1068,7 +1100,7 @@ export default function Home() {
       for (const stop of additions) points[stop.kind === 'food' ? 'taste' : 'exploration'] += 8;
       const saved = await persistTravelJournal({ ...travelJournal, title: proposal.title, entries: [...travelJournal.entries, ...additions], points }, proposal.id);
       if (!saved) return;
-      await advanceForgeQuest('travel');
+      await advanceForgeQuest('travel', { targetProgress: 2 });
       setPanel('journal');
       setRoomMessage(`完成！${additions.length} 個地點已寫進「${proposal.title}」，能力點數也已更新。`);
     }
@@ -1109,12 +1141,29 @@ export default function Home() {
     if (card.kind === 'origin' && forgeProfile?.id === card.originProfileId) {
       const partner = AOZU_PARTNERS.find(({ id }) => id === forgeProfile.basePartnerId);
       if (partner) await switchPartner(partner);
+      setActiveModuleId(forgeProfile.questKind === 'writing' ? 'steps' : forgeProfile.questKind);
+      setDialogueIntent(forgeProfile.questKind === 'writing' ? 'writing' : 'module');
+      setPanel('quests');
     }
+    setSummonedCardId(card.id);
     setDialogueOpen(true);
     setMobileConsoleOpen(false);
     setRoomMessage(card.kind === 'origin'
       ? `我回來了！「${card.title}」保留了我們的個性、能力與第一場冒險。現在要用「${card.ability}」一起做什麼？`
       : `已召喚「${card.title}」。我會使用「${card.ability}」陪你開始下一段冒險；${card.summary}`);
+  };
+
+  const beginNextForgeCycle = () => {
+    localStorage.removeItem(AOZU_FORGE_KEY);
+    setForgeProfile(null);
+    setForgeDraft(defaultForgeDraft);
+    setSummonedCardId(null);
+    setAgentProposal(null);
+    setRoomMessage('上一位夥伴的卡片與記憶都保留著。現在來創造下一位夥伴。');
+    setDialogueOpen(false);
+    setPanel('forge');
+    setMobileConsoleOpen(true);
+    setToast('卡片與記憶已保留，新的創角週期開始');
   };
 
   const exportCompanion = async () => {
@@ -1183,10 +1232,10 @@ export default function Home() {
           </div>
 
           <div className="mission-hud">
-            <span className="mission-kicker">{!forgeProfile ? 'AOZU COMPANION FORGE' : activeForgeProfile ? `ORIGIN QUEST ・ ${activeForgeProfile.progress}/${activeForgeProfile.steps.length}` : `${activeModule.category} ・ TODAY QUEST`}</span>
-            <strong>{!forgeProfile ? '創造一位能陪你完成任務的夥伴' : activeForgeProfile ? activeForgeProfile.questGoal : `${activeModule.label}｜${activeModule.value}`}</strong>
-            <small>{!forgeProfile ? '設定外型、個性、能力與第一場三步冒險' : activeForgeProfile ? activeForgeProfile.progress < activeForgeProfile.steps.length ? `下一步：${activeForgeProfile.steps[activeForgeProfile.progress]}` : 'Origin Card 已封存，可以隨時召喚' : activeModule.note}</small>
-            <button type="button" disabled={!runtime || busy} onClick={!forgeProfile ? () => openPanel('forge') : activeForgeProfile ? activeForgeProfile.progress < activeForgeProfile.steps.length ? continueForgeQuest : () => openPanel('cards') : activeModule.id === 'travel' ? openTravelChat : () => runAction(activeModule.id, `${activeModule.label}已寫進共同記憶`)}>{busy ? '處理中…' : !forgeProfile ? '開始創角' : activeForgeProfile ? activeForgeProfile.progress < activeForgeProfile.steps.length ? '繼續冒險' : '查看卡片' : activeModule.id === 'travel' ? '開始對話' : activeModule.action}</button>
+            <span className="mission-kicker">{summonedCard ? 'ORIGIN CARD ・ RECALL' : !forgeProfile ? 'AOZU COMPANION FORGE' : activeForgeProfile ? `ORIGIN QUEST ・ ${activeForgeProfile.progress}/${activeForgeProfile.steps.length}` : `${activeModule.category} ・ TODAY QUEST`}</span>
+            <strong>{summonedCard ? `${summonedCard.ability}已召喚` : !forgeProfile ? '創造一位能陪你完成任務的夥伴' : activeForgeProfile ? activeForgeProfile.questGoal : `${activeModule.label}｜${activeModule.value}`}</strong>
+            <small>{summonedCard ? '告訴夥伴下一件事；完成後會留下新的共同記憶' : !forgeProfile ? '設定外型、個性、能力與第一場三步冒險' : activeForgeProfile ? activeForgeProfile.progress < activeForgeProfile.steps.length ? `下一步：${activeForgeProfile.steps[activeForgeProfile.progress]}` : 'Origin Card 已封存，可以隨時召喚' : activeModule.note}</small>
+            <button type="button" disabled={!runtime || busy} onClick={summonedCard ? openPetDialogue : !forgeProfile ? () => openPanel('forge') : activeForgeProfile ? activeForgeProfile.progress < activeForgeProfile.steps.length ? continueForgeQuest : () => openPanel('cards') : activeModule.id === 'travel' ? openTravelChat : () => runAction(activeModule.id, `${activeModule.label}已寫進共同記憶`)}>{busy ? '處理中…' : summonedCard ? '告訴夥伴下一件事' : !forgeProfile ? '開始創角' : activeForgeProfile ? activeForgeProfile.progress < activeForgeProfile.steps.length ? '繼續冒險' : '查看卡片' : activeModule.id === 'travel' ? '開始對話' : activeModule.action}</button>
           </div>
 
           {!dialogueOpen && <button className="chat-launcher" type="button" onClick={() => { setDialogueIntent('module'); setRoomMessage(activeForgeProfile ? `我是${activeDisplayName}。告訴我想一起做什麼，我會把它變成下一個可完成的冒險。` : activeGuide.intro); setDialogueOpen(true); }} aria-label={`跟${activeDisplayName}對話`}><span><PartnerHeadshot partner={activePartner} decorative /></span><b>跟我說話</b></button>}
@@ -1286,9 +1335,11 @@ export default function Home() {
               return <button key={control.id} className={active ? 'is-active' : ''} style={{ '--control-tone': control.tone } as CSSProperties} type="button" onClick={() => selectLifeControl(control)} aria-pressed={active}><span>{control.mark}</span><small>{control.label}</small></button>;
             })}
           </nav>
+          <div className="forge-loop forge-loop-global" aria-label="AOZU 完整閉環">
+            {AOZU_ORIGIN_LOOP_STAGES.map((stage, index) => <span key={stage.id} className={index < originLoopStage ? 'is-done' : index === originLoopStage ? 'is-active' : ''}>{index + 1} {stage.label}</span>)}
+          </div>
           {panel === 'forge' && <>
             <div className="console-heading"><div><span>AOZU COMPANION FORGE</span><h1>創造你的虛擬夥伴</h1></div><b>P0 閉環</b></div>
-            <div className="forge-loop" aria-label="AOZU 成長閉環"><span className="is-active">1 創角</span><span>2 任務</span><span>3 成長</span><span>4 封卡</span></div>
             <form className="forge-form" onSubmit={stageForgeDraft}>
               <section className="forge-preview">
                 <PartnerHeadshot partner={AOZU_PARTNERS.find(({ id }) => id === forgeDraft.basePartnerId) ?? AOZU_PARTNERS[0]} decorative />
@@ -1301,7 +1352,7 @@ export default function Home() {
               <fieldset><legend>2. 選擇第一種能力</legend><div className="forge-quest-grid">{AOZU_FORGE_QUESTS.map((quest) => <button key={quest.id} type="button" className={forgeDraft.questKind === quest.id ? 'is-active' : ''} onClick={() => setForgeDraft((draft) => ({ ...draft, questKind: quest.id, questGoal: quest.defaultGoal }))}><strong>{quest.label}</strong><small>{quest.ability}</small></button>)}</div></fieldset>
               <label><span>第一場冒險</span><textarea required minLength={4} maxLength={120} value={forgeDraft.questGoal} onChange={(event) => setForgeDraft((draft) => ({ ...draft, questGoal: event.target.value }))} /></label>
               <label><span>誕生配件</span><select value={forgeDraft.starterItemId} onChange={(event) => setForgeDraft((draft) => ({ ...draft, starterItemId: event.target.value as WardrobeItem['id'] }))}>{AOZU_FORGE_STARTER_ITEM_IDS.map((id) => { const item = AOZU_WARDROBE_ITEMS.find((candidate) => candidate.id === id)!; return <option key={id} value={id}>{item.label}</option>; })}</select></label>
-              <div className="forge-contract"><strong>確認後才會建立</strong><p>AOZU 會套用外型、穿上誕生配件並建立三步 Origin Quest；完成後解鎖專屬配件，封存一張可再次召喚的 Origin Card。</p></div>
+              <div className="forge-contract"><strong>確認後才會建立</strong><p>AOZU 會套用外型、穿上誕生配件並建立三步 Origin Quest；完成後解鎖專屬配件，封存一張可再次召喚的 Origin Card。挑戰賽完整示範建議選「旅行規劃」。</p></div>
               <button className="forge-submit" type="submit" disabled={!runtime || busy}>預覽創角提案</button>
             </form>
           </>}
@@ -1392,10 +1443,11 @@ export default function Home() {
             <div className="console-heading"><div><span>ABILITY DECK</span><h1>夥伴卡片</h1></div><b>{3 + activeSavedCards.length} / 12</b></div>
             <div className="ability-deck">
               <article className="ability-card featured"><div className="card-art"><PartnerArt partner={activePartner} /></div><span>ACTIVE PARTNER</span><h2>{activeDisplayName}</h2><p>{activeRole}｜{activeQuote}</p><b>{activeForgeProfile ? `Origin ${activeForgeProfile.progress}/${activeForgeProfile.steps.length}` : '羈絆 76'}</b></article>
-              {activeSavedCards.map((card) => <article key={card.id} className={`ability-card summoned ${card.kind === 'origin' ? 'origin' : ''}`}><span>{card.kind === 'origin' ? 'ORIGIN CARD' : 'WEBMCP ABILITY'}</span><h2>{card.title}</h2><p>{card.ability}｜{card.summary}</p><b>{card.requiredCapabilities.length ? card.requiredCapabilities.join('・') : 'AOZU LOCAL'}</b><button type="button" onClick={() => void recallAbilityCard(card)}>{card.kind === 'origin' ? '召喚夥伴' : '召喚能力'}</button></article>)}
+              {activeSavedCards.map((card) => <article key={card.id} className={`ability-card summoned ${card.kind === 'origin' ? 'origin' : ''} ${summonedCardId === card.id ? 'is-recalled' : ''}`}><span>{card.kind === 'origin' ? 'ORIGIN CARD' : 'WEBMCP ABILITY'}</span><h2>{card.title}</h2><p>{card.ability}｜{card.summary}</p><b>{summonedCardId === card.id ? '已召喚・等待下一個任務' : card.requiredCapabilities.length ? card.requiredCapabilities.join('・') : 'AOZU LOCAL'}</b><button type="button" onClick={() => void recallAbilityCard(card)}>{summonedCardId === card.id ? '繼續使用' : card.kind === 'origin' ? '召喚夥伴' : '召喚能力'}</button></article>)}
               <article className="ability-card travel"><span>MEMORY CARD</span><h2>台南三日旅行策劃</h2><p>步行友善 ・ 飲食偏好 ・ 旅費規劃</p><b>68% 解鎖中</b></article>
               <article className="ability-card locked"><span>NEXT CARD</span><h2>七日生活節奏</h2><p>連續完成飲食、步行與記帳後取得。</p><b>還差 3 個任務</b></article>
             </div>
+            <button className="forge-next-cycle" type="button" onClick={beginNextForgeCycle}>＋ 保留卡片，創造下一位夥伴</button>
           </>}
 
           {panel === 'memories' && <>

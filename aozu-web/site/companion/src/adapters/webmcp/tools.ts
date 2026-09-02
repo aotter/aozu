@@ -1,7 +1,7 @@
 import type { AgentCapability } from '../../core/application/ports.ts'
 import { CHARACTER_VARIANT_GROUPS, type CharacterAssetTarget, type CharacterVariantGroup, type CharacterVariantLayer } from '../../core/domain/character.ts'
 import { ADVENTURE_SCORE_KEY, parseAdventureScores } from '../../../adventure.ts'
-import { AOZU_FORGE_QUESTS, AOZU_FORGE_STARTER_ITEM_IDS, AOZU_PARTNERS, AOZU_WARDROBE_ITEMS } from '../../../aozu.ts'
+import { AOZU_FORGE_QUESTS, AOZU_FORGE_STARTER_ITEM_IDS, AOZU_ORIGIN_LOOP_STAGES, AOZU_PARTNERS, AOZU_WARDROBE_ITEMS } from '../../../aozu.ts'
 
 export const AOZU_ACTIVITIES = ['meals', 'money', 'steps', 'travel', 'fitness', 'writing', 'room-shooter', 'forest-runner'] as const
 const AOZU_LIFE_ACTIVITIES = ['meals', 'money', 'steps', 'fitness'] as const
@@ -74,7 +74,7 @@ export function registerCompanionTools(document: Document, useCases: {
             forge: {
               questKinds: AOZU_FORGE_QUESTS.map(({ id, label, ability, rewardItemId }) => ({ id, label, ability, rewardItemId })),
               starterItemIds: AOZU_FORGE_STARTER_ITEM_IDS,
-              loop: ['create-companion', 'complete-three-step-origin-quest', 'equip-reward', 'seal-origin-card'],
+              loop: AOZU_ORIGIN_LOOP_STAGES,
             },
             rule: 'WebMCP stages proposals. The user confirms them in AOZU before points, journals, outfits, memories, or cards change.',
           },
@@ -91,6 +91,9 @@ export function registerCompanionTools(document: Document, useCases: {
         const storage = document.defaultView?.localStorage
         let profile: unknown = null
         try { profile = JSON.parse(storage?.getItem(AOZU_FORGE_KEY) ?? 'null') } catch { profile = null }
+        const savedProfile = profile && typeof profile === 'object' ? profile as Record<string, unknown> : null
+        const progress = typeof savedProfile?.progress === 'number' ? savedProfile.progress : 0
+        const steps = Array.isArray(savedProfile?.steps) ? savedProfile.steps : []
         return {
           status: 'ok',
           data: {
@@ -98,6 +101,12 @@ export function registerCompanionTools(document: Document, useCases: {
             partners: AOZU_PARTNERS.map(({ id, displayName, role, personality }) => ({ id, displayName, role, personality })),
             quests: AOZU_FORGE_QUESTS,
             starterItems: AOZU_WARDROBE_ITEMS.filter(({ id }) => AOZU_FORGE_STARTER_ITEM_IDS.includes(id as (typeof AOZU_FORGE_STARTER_ITEM_IDS)[number])).map(({ id, label, slot }) => ({ id, label, slot })),
+            loop: {
+              stages: AOZU_ORIGIN_LOOP_STAGES,
+              current: !savedProfile ? 'forge' : progress < steps.length ? 'quest' : 'card',
+              progress,
+              next: !savedProfile ? 'stage_aozu_companion' : progress < steps.length ? steps[progress] : 'recall the Origin Card in AOZU',
+            },
             confirmation: 'stage_aozu_companion only opens a visible review. The user must confirm in AOZU before a profile, quest, equipment, memory, or card changes.',
           },
         }
