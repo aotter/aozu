@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { strFromU8, unzipSync } from 'fflate'
+import { strFromU8, unzipSync, zipSync } from 'fflate'
 
 import { buildCharacterPack, characterDraftAtlasKey, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, stitchCharacterEditPixels, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
@@ -71,6 +71,12 @@ assert.deepEqual(restored.draft.selected, draft.selected)
 assert.deepEqual(restored.draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 2, y: -3, scale: 1.01 })
 assert.equal(await restored.draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.layers.head!.blob.text(), 'sprite')
 assert.equal(restored.experience?.id, experience.id)
+const missingAssetArchive = { ...draftArchive }
+delete missingAssetArchive['assets/expression-happy-head.png']
+await assert.rejects(
+  () => readCharacterDraftZip(new Blob([zipSync(missingAssetArchive)], { type: 'application/zip' }), async () => inspection),
+  /asset is missing or duplicated: assets\/expression-happy-head\.png/,
+)
 
 const pack = buildCharacterPack(draft)
 assert.deepEqual(pack.defaultComposition.map(({ appearanceId }) => appearanceId), ['outfit-outfit-1', 'expression-happy', 'prop-prop-1', 'prop-prop-2'])
