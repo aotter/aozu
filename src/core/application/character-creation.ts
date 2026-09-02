@@ -76,23 +76,73 @@ const boundsCenter = ({ x, y, width, height }: NonNullable<CharacterAssetInspect
   y: y + height / 2,
 })
 
+type Bounds = NonNullable<CharacterAssetInspection['visibleBounds']>
+export type CharacterEditableRegion = {
+  source: 'registration-derived'
+  basis: 'head-anchor' | 'body-bounds-fallback'
+  shape:
+    | { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
+    | { kind: 'rectangle'; x: number; y: number; width: number; height: number }
+}
+
+const regionNumber = (value: number) => Math.round(value * 100) / 100
+const editableRegions = (bodyBounds?: Bounds, headBounds?: Bounds) => {
+  if (!bodyBounds) return {}
+  const head = headBounds ?? {
+    x: bodyBounds.x + bodyBounds.width * 0.15,
+    y: bodyBounds.y,
+    width: bodyBounds.width * 0.7,
+    height: bodyBounds.height * 0.42,
+  }
+  const basis = headBounds ? 'head-anchor' as const : 'body-bounds-fallback' as const
+  const outfitTop = Math.min(bodyBounds.y + bodyBounds.height, Math.max(bodyBounds.y, head.y + head.height))
+  return {
+    expression: {
+      source: 'registration-derived' as const,
+      basis,
+      shape: {
+        kind: 'ellipse' as const,
+        cx: regionNumber(head.x + head.width * 0.5),
+        cy: regionNumber(head.y + head.height * 0.55),
+        rx: regionNumber(head.width * 0.3),
+        ry: regionNumber(head.height * 0.28),
+      },
+    },
+    outfit: {
+      source: 'registration-derived' as const,
+      basis,
+      shape: {
+        kind: 'rectangle' as const,
+        x: regionNumber(Math.max(0, bodyBounds.x)),
+        y: regionNumber(outfitTop),
+        width: regionNumber(Math.min(CHARACTER_RIG.canvas.width, bodyBounds.x + bodyBounds.width) - Math.max(0, bodyBounds.x)),
+        height: regionNumber(bodyBounds.y + bodyBounds.height - outfitTop),
+      },
+    },
+  }
+}
+
 export function characterRegistrationFrame(draft: CharacterDraft) {
   const bodyBounds = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body?.inspection.visibleBounds
   const head = characterHeadRegistration(draft)
+  const headBounds = head?.asset.inspection.visibleBounds
+    ? transformCharacterBounds(head.asset.inspection.visibleBounds, head.transform)
+    : undefined
   return {
     canvas: { ...CHARACTER_RIG.canvas },
     ...(bodyBounds ? { bodyBounds: { ...bodyBounds }, bodyCenter: boundsCenter(bodyBounds), footLine: bodyBounds.y + bodyBounds.height - 1 } : {}),
-    ...(head?.asset.inspection.visibleBounds ? {
+    ...(head && headBounds ? {
       head: {
         variantId: head.variant.id,
         transform: { ...head.transform },
-        bounds: transformCharacterBounds(head.asset.inspection.visibleBounds, head.transform),
+        bounds: headBounds,
         calibration: {
           status: 'visual-required' as const,
           rebasesCurrentExpressions: true,
         },
       },
     } : {}),
+    editableRegions: editableRegions(bodyBounds, headBounds),
   }
 }
 

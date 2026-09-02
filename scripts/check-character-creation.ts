@@ -77,6 +77,16 @@ assert.deepEqual(characterRegistrationFrame(draft).footLine, 739)
 assert.equal(characterHeadRegistration(draft)?.variant.id, 'happy')
 assert.equal(characterRegistrationFrame(draft).head?.variantId, 'happy')
 assert.equal(characterRegistrationFrame(draft).head?.calibration.rebasesCurrentExpressions, true)
+assert.equal(characterRegistrationFrame(draft).editableRegions.expression?.basis, 'head-anchor')
+assert.equal(characterRegistrationFrame(draft).editableRegions.expression?.shape.kind, 'ellipse')
+assert.equal(characterRegistrationFrame(draft).editableRegions.outfit?.shape.kind, 'rectangle')
+const fallbackRegistration = characterRegistrationFrame({
+  ...draft,
+  headRegistration: undefined,
+  variants: draft.variants.filter(({ group }) => group !== 'expression'),
+})
+assert.equal(fallbackRegistration.editableRegions.expression?.basis, 'body-bounds-fallback')
+assert.ok((fallbackRegistration.editableRegions.outfit?.shape.height ?? 0) > 0)
 const preview = await reviewCharacterDraft(async () => inspection, draft)
 assert.equal(preview.source, 'character')
 assert.equal('bundleId' in preview, false)

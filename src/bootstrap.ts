@@ -49,7 +49,7 @@ import {
   reviewCharacterDraft,
 } from './core/application/character-creation.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
-import { inspectCharacterImage, readCharacterAlphaMask, readCharacterVisualSample, renderCharacterCompositeDataUrl } from './adapters/browser/character-image.ts'
+import { inspectCharacterImage, readCharacterAlphaMask, readCharacterVisualSample, renderCharacterCompositeDataUrl, renderCharacterEditMaskDataUrl } from './adapters/browser/character-image.ts'
 import { compileCharacterTextureAtlas } from './adapters/browser/character-atlas.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
@@ -665,12 +665,14 @@ export function createApplication(document: Document) {
     const asset = variant?.layers[input.layer]
     const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
     const headRegistration = characterHeadRegistration(draft)
+    const registrationFrame = characterRegistrationFrame(draft)
     const expressionReference = headRegistration?.asset
     const alignmentReference = input.group === 'expression' && headRegistration?.variant.id !== input.variantId ? expressionReference
       : input.group === 'outfit' ? canonical : undefined
     const referenceTransform = input.group === 'expression' ? headRegistration?.transform : undefined
     const editSource = input.group === 'expression' ? expressionReference ?? canonical
       : input.group === 'outfit' ? canonical : undefined
+    const editSourceTransform = input.group === 'expression' && expressionReference ? headRegistration?.transform : undefined
     const transform = variant?.transform ?? { x: 0, y: 0, scale: 1 }
     const measurement = asset ? measureCharacterMaskAlignment(
       input.group,
@@ -699,6 +701,8 @@ export function createApplication(document: Document) {
     const visualFit = asset && canonical && input.group === 'expression' && headRegistration?.variant.id === input.variantId
       ? suggestCharacterVisualRegistration(await readCharacterVisualSample(canonical.blob), await readCharacterVisualSample(asset.blob), transform)
       : null
+    const editableRegion = input.group === 'expression' ? registrationFrame.editableRegions.expression
+      : input.group === 'outfit' ? registrationFrame.editableRegions.outfit : undefined
     const nextActions = !asset || !variant || !isCharacterDraftAssetCurrent(draft, variant, input.layer) ? [{
       tool: 'submit_character_asset_candidate', required: true, reason: 'Submit the final exact-canvas RGBA target layer.', input: { draftId: draft.id, group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
     }] : suggestedTransform ? [{
@@ -736,12 +740,32 @@ export function createApplication(document: Document) {
         editSource: editSource ? {
           filename: editSource.filename,
           sha256: editSource.inspection.sha256,
-          visibleBounds: editSource.inspection.visibleBounds,
-          dataUrl: await readDataUrl(editSource.blob),
+          coordinates: 'final-canvas',
+          visibleBounds: editSource.inspection.visibleBounds && editSourceTransform
+            ? transformCharacterBounds(editSource.inspection.visibleBounds, editSourceTransform)
+            : editSource.inspection.visibleBounds,
+          dataUrl: editSourceTransform ? await renderCharacterCompositeDataUrl([{
+            id: 'edit-source',
+            blobId: 'edit-source',
+            slot: 'expression-head',
+            slotOrder: 35,
+            layerOrder: 0,
+            transform: editSourceTransform,
+            blob: editSource.blob,
+          }]) : await readDataUrl(editSource.blob),
         } : null,
         placementReference: placementLayers.length ? {
           layerCount: placementLayers.length,
           ...(placementUsesEditSource ? { useEditSource: true } : { dataUrl: await renderCharacterCompositeDataUrl(placementLayers) }),
+        } : null,
+        editableRegion: editableRegion ? {
+          ...editableRegion,
+          mask: {
+            filename: `${input.group}-${input.variantId}-${input.layer}-edit-mask.png`,
+            mediaType: 'image/png',
+            semantics: 'transparent-editable-opaque-protected',
+            dataUrl: renderCharacterEditMaskDataUrl(editableRegion),
+          },
         } : null,
         preserveCanvasCoordinates: true,
         output: {
@@ -815,6 +839,7 @@ export function createApplication(document: Document) {
             'An outfit replaces the character-skin slot: generate the complete dressed character, never a clothing-only overlay. Preserve pose, body center, head position, and foot line. Generate props against the returned current composite.',
             'Generate at 1024×1536 and deterministically downsample 50% to the exact 512×768 canvas. Never crop, reframe, or recenter.',
             'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
+            'When the target returns an editableRegion mask, transparent pixels are editable and opaque pixels are protected. Keep all changes inside that deterministic registration-derived region.',
             'Submit only final RGBA PNG layers. The website validates but never repairs candidate images.',
             'Expression layers replace the whole aligned head, including the same fixed hairstyle and facial hair. Hair and facial hair are not customizable slots.',
             'No expression overlay means the default face baked into the body. Optional whole-head variants include happy, sad, angry, surprised, and sleepy; additional variants are allowed.',

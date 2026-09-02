@@ -1,4 +1,5 @@
 import type { CharacterAlphaMask, CharacterVisualSample } from '../../core/application/character-alignment.ts'
+import type { CharacterEditableRegion } from '../../core/application/character-creation.ts'
 import { CHARACTER_RIG, type CharacterAssetInspection, type ResolvedCharacterLayer } from '../../core/domain/character.ts'
 
 const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
@@ -100,5 +101,24 @@ export async function renderCharacterCompositeDataUrl(
     context.restore()
     bitmap.close()
   }
+  return canvas.toDataURL('image/png')
+}
+
+export function renderCharacterEditMaskDataUrl(region: CharacterEditableRegion) {
+  const canvas = document.createElement('canvas')
+  canvas.width = CHARACTER_RIG.canvas.width
+  canvas.height = CHARACTER_RIG.canvas.height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Canvas is unavailable')
+  context.fillStyle = '#fff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.globalCompositeOperation = 'destination-out'
+  context.beginPath()
+  if (region.shape.kind === 'ellipse') {
+    context.ellipse(region.shape.cx, region.shape.cy, region.shape.rx, region.shape.ry, 0, 0, Math.PI * 2)
+  } else {
+    context.rect(region.shape.x, region.shape.y, region.shape.width, region.shape.height)
+  }
+  context.fill()
   return canvas.toDataURL('image/png')
 }
