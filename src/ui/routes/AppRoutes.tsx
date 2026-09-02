@@ -157,6 +157,7 @@ export function AppRoutes({ application }: { application: Application }) {
     <Route path="/drafts/:draftId/character/:step" element={characterDraftPage} />
     <Route path="/drafts/:draftId/create" element={draftId ? <CompanionCreationPage
       loadSummary={() => application.inspectCreation(draftId)}
+      saveProfile={(profile) => application.updateCreationProfile(draftId, profile)}
       onCreate={async () => { await application.createCompanion(draftId); await refresh(); navigate('/companion', { replace: true }) }}
     /> : <Navigate to="/start" replace />} />
     <Route path="/drafts/:draftId/review" element={review && draftId ? <CandidateReviewPage

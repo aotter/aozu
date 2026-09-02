@@ -1325,3 +1325,736 @@ button.gate-action {
     display: none;
   }
 }
+
+/* Character forge: keep the production slots from main, make the workflow legible. */
+.draft-workshop-shell {
+  min-height: calc(100svh - 3.5rem);
+}
+
+.character-spell-guide {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem 1.2rem;
+  border: 1px solid #7b4b25;
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at 88% 14%, rgb(224 176 76 / 20%), transparent 28%),
+    linear-gradient(145deg, #654128, #432a1b);
+  color: #f3dfaa;
+  box-shadow: inset 0 0 0 3px rgb(255 224 145 / 8%), 0 0.8rem 1.8rem rgb(61 32 16 / 20%);
+}
+
+.character-spell-guide h1,
+.character-spell-guide .forge-kicker {
+  color: #f0cd75 !important;
+}
+
+.character-spell-guide p:not(.forge-kicker) {
+  margin-top: 0.25rem;
+  color: #eadbb9;
+  line-height: 1.55;
+}
+
+.character-spell-guide blockquote,
+.experience-spell blockquote {
+  margin-top: 0.55rem;
+  padding: 0.55rem 0.75rem;
+  border-left: 3px solid #e1b756;
+  background: rgb(255 238 184 / 9%);
+  color: #ffe9a8;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.spell-icon {
+  display: grid;
+  width: 3.2rem;
+  height: 3.2rem;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid #d3a846;
+  border-radius: 0.75rem;
+  background: #8a5b27;
+  color: #ffe59a;
+  box-shadow: inset 0 1px rgb(255 239 185 / 40%);
+}
+
+.spell-icon svg {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+
+.spell-workflow,
+.adventure-steps {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.spell-workflow li,
+.adventure-steps li {
+  display: flex;
+  min-width: 5.8rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  color: #e8d6ab;
+  font-weight: 750;
+  text-align: center;
+}
+
+.spell-workflow svg,
+.adventure-steps svg {
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0.55rem;
+  border: 1px solid rgb(239 204 117 / 46%);
+  border-radius: 0.65rem;
+  background: rgb(255 235 172 / 8%);
+  color: #e8bd58;
+}
+
+.draft-workshop-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(22rem, 0.8fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.character-stage-panel,
+.doll-workbench {
+  min-width: 0;
+  padding: 1rem;
+}
+
+.character-stage-panel {
+  display: flex;
+  min-height: 44rem;
+  flex-direction: column;
+}
+
+.character-stage-heading,
+.workbench-heading,
+.profile-scroll-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.character-stage-heading {
+  justify-content: space-between;
+}
+
+.character-stage-heading > div,
+.workbench-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.character-stage-heading > div > span,
+.workbench-heading > span {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid #9b6929;
+  border-radius: 0.6rem;
+  background: #d8ad50;
+  color: #543219;
+  font-family: var(--font-heading);
+  font-weight: 800;
+}
+
+.character-stage-heading strong,
+.workbench-heading h2 {
+  color: #5b361b;
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.character-stage-heading > p {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid #a5722d;
+  border-radius: 0.55rem;
+  background: #6a4225;
+  color: #f5dc91;
+  font-family: var(--font-heading);
+  font-weight: 800;
+}
+
+.character-stage-canvas {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin-top: 0.75rem;
+  border: 1px dashed rgb(105 62 30 / 46%);
+  border-radius: 1rem;
+  background:
+    radial-gradient(ellipse at center 72%, rgb(120 73 35 / 12%) 0 24%, transparent 25%),
+    linear-gradient(90deg, transparent 49.8%, rgb(104 62 30 / 18%) 50%, transparent 50.2%),
+    rgb(247 228 182 / 32%);
+}
+
+.character-stage-canvas > div {
+  max-height: 35rem;
+}
+
+.character-stage-canvas [role="img"] {
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+}
+
+.character-empty-placeholder {
+  display: grid;
+  place-items: center;
+}
+
+.character-empty-placeholder img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0.62;
+  filter: sepia(0.16) saturate(0.82);
+  mix-blend-mode: screen;
+}
+
+.character-stage-panel.is-awake .character-stage-canvas > div {
+  animation: character-awake 420ms ease-out both;
+}
+
+@keyframes character-awake {
+  0% { transform: translateY(0.6rem) scale(0.985); }
+  55% { transform: translateY(-0.25rem) scale(1.008); }
+  100% { transform: none; }
+}
+
+.alignment-switch {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.character-first-dialogue {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #7d4b25;
+  border-radius: 0.8rem;
+  background: #50311f;
+  color: #f4dfaa;
+  box-shadow: inset 0 0 0 2px rgb(255 228 157 / 8%);
+}
+
+.dialogue-portrait {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid #d4aa4e;
+  border-radius: 0.65rem;
+  background: #8b5b2a;
+  color: #f8df93;
+}
+
+.character-first-dialogue label > span {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-family: var(--font-heading);
+  font-weight: 700;
+}
+
+.character-first-dialogue input {
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.45rem 0.65rem;
+  border-color: rgb(237 203 117 / 48%) !important;
+  background: rgb(255 240 196 / 10%) !important;
+  color: #fff0c1;
+}
+
+.character-first-dialogue input::placeholder {
+  color: #cbbd99;
+}
+
+.workbench-heading {
+  align-items: flex-start;
+}
+
+.workbench-heading p,
+.profile-scroll-heading p {
+  margin-top: 0.2rem;
+  color: #765133;
+  line-height: 1.45;
+}
+
+.body-foundation-card {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 1rem;
+  padding: 0.65rem;
+  border: 1px solid #9a682e;
+  border-radius: 0.75rem;
+  background: rgb(241 217 162 / 54%);
+  color: #5a361d;
+  text-align: left;
+}
+
+.body-foundation-preview {
+  display: grid;
+  aspect-ratio: 2 / 3;
+  place-items: center;
+  overflow: hidden;
+  padding: 0.25rem;
+  border: 1px dashed #98652d;
+  border-radius: 0.5rem;
+  background: rgb(255 241 202 / 40%);
+}
+
+.body-foundation-preview > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0.68;
+  filter: sepia(0.14) saturate(0.82);
+  mix-blend-mode: screen;
+}
+
+.body-foundation-card strong,
+.body-foundation-card small {
+  display: block;
+}
+
+.body-foundation-card small {
+  margin-top: 0.15rem;
+  color: #795536;
+  line-height: 1.4;
+}
+
+.body-foundation-card > svg {
+  width: 1.2rem;
+  color: #775029;
+}
+
+.workbench-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin-top: 0.8rem;
+  padding-block: 0.6rem;
+  border-block: 1px dashed rgb(107 64 31 / 42%);
+}
+
+.workbench-tabs button {
+  min-width: 0;
+  border-radius: 0.6rem;
+}
+
+.workbench-content {
+  margin-top: 0.75rem;
+}
+
+.workbench-content > h3 {
+  font-family: var(--font-heading);
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.variant-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+}
+
+.variant-card {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px dashed #93612c;
+  border-radius: 0.7rem;
+  background: rgb(248 229 182 / 45%);
+  color: #6d4927;
+}
+
+.variant-card.is-selected {
+  border-style: solid;
+  border-color: #aa7428;
+  box-shadow: 0 0 0 2px rgb(181 126 38 / 18%);
+}
+
+.variant-preview {
+  display: flex;
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0.45rem;
+  background: rgb(112 68 34 / 8%);
+}
+
+.variant-label {
+  display: block;
+  overflow: hidden;
+  padding: 0.4rem 0.3rem;
+  color: #65411f;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.variant-edit {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid #94632d;
+  border-radius: 0.5rem;
+  background: rgb(244 222 170 / 92%);
+}
+
+.add-variant {
+  display: flex;
+  flex-direction: column;
+}
+
+.variant-editor-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.variant-editor-heading input {
+  min-height: 2.5rem;
+  padding: 0.4rem 0.55rem;
+}
+
+.required-status {
+  color: #8a5c22;
+  font-size: 0.7rem !important;
+  font-weight: 800;
+}
+
+.transform-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
+
+.transform-grid input {
+  min-height: 2.5rem;
+}
+
+.asset-upload-card {
+  display: block;
+  overflow: hidden;
+  margin-top: 0.75rem;
+  border: 1px dashed #93612c;
+  border-radius: 0.8rem;
+  background: rgb(249 231 187 / 38%);
+  cursor: pointer;
+}
+
+.asset-upload-preview {
+  display: flex;
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  background: rgb(112 68 34 / 8%);
+}
+
+.asset-upload-card > span:nth-child(2) {
+  display: block;
+  padding: 0.6rem;
+  font-weight: 700;
+}
+
+.back-layer-upload {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+  padding: 0.6rem;
+  border: 1px dashed #93612c;
+  border-radius: 0.7rem;
+  cursor: pointer;
+}
+
+.workbench-footer {
+  margin-top: 0.8rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed rgb(107 64 31 / 42%);
+}
+
+/* Adventure authoring: a visual-novel preview backed by the existing experience contract. */
+.adventure-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  align-items: flex-end;
+  padding: 1.2rem 1.4rem;
+  border-block: 2px dashed rgb(106 62 30 / 42%);
+}
+
+.adventure-steps li {
+  color: #785332;
+}
+
+.adventure-steps li.is-complete svg,
+.adventure-steps li.is-active svg {
+  border-color: #9f6c29;
+  background: #6a4225;
+  color: #f1cf75;
+}
+
+.adventure-steps li.is-active {
+  color: #5d381c;
+  font-weight: 850;
+}
+
+.adventure-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(22rem, 0.8fr);
+  gap: 1rem;
+}
+
+.adventure-stage,
+.profile-scroll {
+  padding: 1rem;
+  border: 2px dashed rgb(105 62 30 / 48%);
+  border-radius: 1rem;
+  background: rgb(242 219 169 / 46%);
+  box-shadow: inset 0 0 2rem rgb(88 49 24 / 8%);
+}
+
+.adventure-scene {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  border: 2px solid #704321;
+  border-radius: 0.85rem;
+  background: #b98243;
+  box-shadow: 0 0.8rem 1.6rem rgb(59 31 16 / 20%), inset 0 0 0 4px rgb(249 222 154 / 24%);
+}
+
+.adventure-scene > [role="group"],
+.blank-adventure-world {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: auto;
+  border: 0;
+  border-radius: 0;
+}
+
+.blank-adventure-world {
+  background:
+    radial-gradient(circle at 75% 22%, rgb(255 227 137 / 78%) 0 4%, transparent 5%),
+    linear-gradient(175deg, transparent 0 54%, rgb(69 84 61 / 45%) 55% 64%, rgb(75 55 36 / 58%) 65%),
+    linear-gradient(145deg, #b9b083, #6f886e 52%, #af7945);
+}
+
+.blank-adventure-world > [role="img"] {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.adventure-nameplate {
+  position: absolute;
+  left: 1.2rem;
+  bottom: 7rem;
+  z-index: 30;
+  padding: 0.45rem 1rem;
+  border: 1px solid #e1b95f;
+  border-radius: 0.6rem 0.6rem 0 0;
+  background: #55331f;
+  color: #f7df9e;
+  font-family: var(--font-heading);
+  font-weight: 800;
+}
+
+.adventure-dialogue {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 30;
+  min-height: 6rem;
+  padding: 1.2rem 1.25rem 0.8rem;
+  border: 1px solid #d3aa54;
+  border-radius: 0.8rem;
+  background: rgb(54 34 23 / 90%);
+  color: #fff0bf;
+  box-shadow: inset 0 0 0 3px rgb(255 231 166 / 8%);
+  backdrop-filter: blur(8px);
+}
+
+.adventure-dialogue p {
+  line-height: 1.6;
+}
+
+.profile-scroll {
+  align-self: start;
+}
+
+.profile-scroll-heading svg {
+  width: 2.8rem;
+  height: 2.8rem;
+  flex: 0 0 auto;
+  padding: 0.6rem;
+  border: 1px solid #94622a;
+  border-radius: 0.65rem;
+  background: #d7ac50;
+  color: #57351b;
+}
+
+.profile-fields {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.profile-fields label > span {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: #61401f;
+  font-weight: 800;
+}
+
+.profile-fields :is(input, textarea) {
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #95632d;
+  border-radius: 0.6rem;
+  color: #4b2e1c;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.experience-spell {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 0.8rem;
+  border: 1px solid #704321;
+  border-radius: 0.8rem;
+  background: #4d301f;
+  color: #efddb1;
+}
+
+.experience-spell strong {
+  color: #f1ce72;
+  font-family: var(--font-heading);
+}
+
+.experience-spell p {
+  margin-top: 0.25rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .character-spell-guide {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .spell-workflow {
+    grid-column: 1 / -1;
+    justify-content: center;
+    padding-top: 0.75rem;
+    border-top: 1px dashed rgb(238 203 116 / 36%);
+  }
+
+  .draft-workshop-grid,
+  .adventure-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .character-stage-panel {
+    min-height: min(44rem, calc(100svh - 5rem));
+  }
+}
+
+@media (max-width: 640px) {
+  .character-spell-guide {
+    grid-template-columns: 1fr;
+  }
+
+  .character-spell-guide > .spell-icon {
+    display: none;
+  }
+
+  .spell-workflow {
+    grid-column: auto;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+
+  .spell-workflow li {
+    min-width: 6.5rem;
+  }
+
+  .character-stage-panel {
+    min-height: 38rem;
+  }
+
+  .character-stage-canvas > div {
+    max-height: 27rem;
+  }
+
+  .variant-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .adventure-heading {
+    align-items: stretch;
+    flex-direction: column;
+    padding-inline: 0.5rem;
+  }
+
+  .adventure-steps {
+    overflow-x: auto;
+  }
+
+  .adventure-steps li {
+    min-width: 6.5rem;
+  }
+
+  .adventure-scene {
+    aspect-ratio: 3 / 4;
+  }
+
+  .adventure-nameplate {
+    bottom: 8rem;
+  }
+
+  .adventure-dialogue {
+    min-height: 7rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .character-stage-panel.is-awake .character-stage-canvas > div {
+    animation: none;
+  }
+}

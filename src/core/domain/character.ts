@@ -70,6 +70,13 @@ export interface CharacterDraft {
   schemaVersion: 3
   packId: string
   name: string
+  nameConfirmed?: boolean
+  profile?: {
+    age: string
+    personality: string
+    backstory: string
+    setting: string
+  }
   variants: CharacterDraftVariant[]
   headRegistration?: { variantId: string }
   selected: {

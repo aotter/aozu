@@ -54,7 +54,7 @@ import { compileCharacterTextureAtlas } from './adapters/browser/character-atlas
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
 import { planItemEffects } from './core/application/items.ts'
-import { loadSceneProjection } from './core/application/scene.ts'
+import { loadSceneProjection, resolveStarterSceneLayers } from './core/application/scene.ts'
 import { exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
 import { exportCharacterDraftZip } from './adapters/zip/character-draft.ts'
 import {
@@ -262,7 +262,7 @@ export function createApplication(document: Document) {
       ])
       const authoringDrafts = drafts.map(({ id, character, experience }) => ({
         id,
-        name: character?.name ?? experience?.story?.direction.name ?? 'Untitled Companion',
+        name: character && (character.nameConfirmed ?? character.name !== 'My Companion') ? character.name : experience?.story?.direction.name ?? 'Untitled Companion',
         status: character?.approvedAt && experience?.character ? 'experience' as const : 'character' as const,
         destination: workspacePath(character?.approvedAt && experience?.character ? 'create' : 'character-expressions', id),
       }))
@@ -348,15 +348,25 @@ export function createApplication(document: Document) {
     compileCharacterAtlas: (draft: CharacterDraft) => compileCharacterTextureAtlas(resolveCharacterDraftAtlasSources(draft)),
     listCharacterPacks: () => listInstalledCharacterPacks(characterPacks, inspectCharacterImage),
     async inspectCreation(draftId: string) {
-      const { draft, character, candidate } = await resolveLocalCreation(draftId)
+      const { draft, story, character, candidate } = await resolveLocalCreation(draftId)
+      const characterDraft = await openCharacterDraft(draftId)
       return {
         character: character.name,
+        characterLayers: character.layers,
+        sceneLayers: draft.story && story ? resolveStarterSceneLayers(story, draft.story.direction.id) : [],
+        profile: characterDraft.profile ?? { age: '', personality: '', backstory: '', setting: '' },
         story: draft.story?.direction.name,
         stages: candidate.stages.length,
         actions: candidate.stages.reduce((count, stage) => count + stage.actions.length, 0),
         metrics: Object.keys(candidate.metrics).length,
         rules: candidate.rules.length,
       }
+    },
+    async updateCreationProfile(draftId: string, profile: NonNullable<CharacterDraft['profile']>) {
+      const draft = await openCharacterDraft(draftId)
+      const next = { ...draft, profile: structuredClone(profile), updatedAt: Math.max(Date.now(), draft.updatedAt + 1) }
+      await characterDrafts.put(next)
+      return next.profile
     },
     selectCharacterPack,
     async approveCharacterDraft(draftId: string, selectForAuthoring = false) {
@@ -453,7 +463,8 @@ export function createApplication(document: Document) {
       const draft = await openExperienceDraft(draftId)
       if (!draft) throw new Error('Choose a character and story starting point before asking the agent to author an experience')
       const story = await loadDraftStory(draft)
-      const characterDraft = draft.character ? null : await openCharacterDraft(draftId)
+      const storedCharacterDraft = await openCharacterDraft(draftId)
+      const characterDraft = draft.character ? null : storedCharacterDraft
       const character = draft.character
         ? await loadInstalledCharacterPackResources(characterPacks, inspectCharacterImage, draft.character)
         : buildCharacterDraftResources(characterDraft!)
@@ -463,6 +474,7 @@ export function createApplication(document: Document) {
           contractVersion: 2,
           draft: { id: draft.id, revision: draft.revision, characterUpdatedAt: characterDraft?.updatedAt ?? 0 },
           story: draft.story,
+          characterProfile: storedCharacterDraft.profile ?? null,
           seed: draft.story?.seed ?? null,
           selectedVisuals: {
             characterStateId: character.state.id,
@@ -802,7 +814,7 @@ export function createApplication(document: Document) {
               current: isCharacterDraftAssetCurrent(draft, variant, layer),
             })),
           })),
-          draft: { id: draft.id, name: draft.name, selected: draft.selected, updatedAt: draft.updatedAt },
+          draft: { id: draft.id, name: draft.nameConfirmed ? draft.name : '', selected: draft.selected, updatedAt: draft.updatedAt },
           registrationFrame: characterRegistrationFrame(draft),
           canonicalReference: canonical ? {
             filename: canonical.filename,
