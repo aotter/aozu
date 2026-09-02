@@ -161,7 +161,7 @@ function PartnerHeadshot({ partner, className = '', decorative = false }: { part
 
 function WardrobeSprite({ item, className = '' }: { item: WardrobeItem; className?: string }) {
   const [x, y, width, height] = item.crop;
-  return <span className={`wardrobe-sprite ${className}`} style={{ aspectRatio: `${width} / ${height}` }}><img src={item.image} alt="" style={{ width: `${(1024 / width) * 100}%`, height: `${(1536 / height) * 100}%`, left: `${-(x / width) * 100}%`, top: `${-(y / height) * 100}%` }} /></span>;
+  return <span className={`wardrobe-sprite ${className}`} style={{ aspectRatio: `${width} / ${height}` }}><img src={item.image} alt="" draggable={false} style={{ width: `${(1024 / width) * 100}%`, height: `${(1536 / height) * 100}%`, left: `${-(x / width) * 100}%`, top: `${-(y / height) * 100}%` }} /></span>;
 }
 
 const wardrobeFits: Record<string, { x: number; y: number; size: number }> = {
@@ -698,12 +698,11 @@ export default function Home() {
 
   const beginClosetDrag = (item: WardrobeItem, event: ReactPointerEvent<HTMLButtonElement>) => {
     if (!runtime || busy || !wardrobeEnabled) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
     closetDragRef.current = { pointerId: event.pointerId, item, startX: event.clientX, startY: event.clientY, moved: false, snapping: false };
     setWardrobeGhost({ item, x: event.clientX, y: event.clientY, snapping: false });
   };
 
-  const moveClosetDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const moveClosetDrag = (event: ReactPointerEvent<HTMLElement>) => {
     const drag = closetDragRef.current;
     const bounds = paperDollRef.current?.getBoundingClientRect();
     if (!drag || drag.pointerId !== event.pointerId || !bounds) return;
@@ -713,15 +712,24 @@ export default function Home() {
     setWardrobeGhost({ item: drag.item, x: event.clientX, y: event.clientY, snapping: drag.snapping });
   };
 
-  const finishClosetDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const finishClosetDrag = (event: ReactPointerEvent<HTMLElement>) => {
     const drag = closetDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const bounds = paperDollRef.current?.getBoundingClientRect();
+    const droppedOnDoll = !!bounds && event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
     closetDragRef.current = null;
     suppressWardrobeClickRef.current = true;
     setWardrobeGhost(null);
     setMagnetSlot(null);
-    if (!drag.moved || drag.snapping) equipWardrobeItem(drag.item);
+    if (!drag.moved || droppedOnDoll) equipWardrobeItem(drag.item);
+    window.setTimeout(() => { suppressWardrobeClickRef.current = false; }, 0);
+  };
+
+  const cancelClosetDrag = () => {
+    closetDragRef.current = null;
+    suppressWardrobeClickRef.current = true;
+    setWardrobeGhost(null);
+    setMagnetSlot(null);
     window.setTimeout(() => { suppressWardrobeClickRef.current = false; }, 0);
   };
 
@@ -1156,7 +1164,7 @@ export default function Home() {
       </header>
 
       <main className="game-world" style={{ '--console-width': `${consoleWidth}%` } as CSSProperties}>
-        <section className={`companion-room ${mobileToolsOpen ? 'is-tools-open' : ''} ${panel === 'wardrobe' && wardrobeEnabled && !mobileConsoleOpen ? 'is-wardrobe' : ''}`} aria-label={`${activeDisplayName}的夥伴房間`}>
+        <section className={`companion-room ${mobileToolsOpen ? 'is-tools-open' : ''} ${panel === 'wardrobe' && wardrobeEnabled && !mobileConsoleOpen ? 'is-wardrobe' : ''}`} onPointerMove={moveClosetDrag} onPointerUp={finishClosetDrag} onPointerCancel={cancelClosetDrag} aria-label={`${activeDisplayName}的夥伴房間`}>
           <picture className="room-background"><img src="/assets/mascot-club-room-v1.webp" alt="暖光夥伴房間" /></picture>
           <div className="room-light" />
           {adventureMode && <AdventureGame key={adventureMode} mode={adventureMode} partner={activePartner} onClose={() => setAdventureMode(null)} />}
@@ -1223,7 +1231,7 @@ export default function Home() {
             <header><div><span>MAGNETIC ITEMS</span><strong>把物件拖到{activeDisplayName}身上</strong></div><button type="button" onClick={() => setPanel('quests')}>完成</button></header>
             <div className="room-wardrobe-items">{AOZU_WARDROBE_ITEMS.map((item) => {
               const isEquipped = equippedWardrobeItems.some(({ id }) => id === item.id);
-              return <button key={item.id} className={`room-wardrobe-item ${isEquipped ? 'is-equipped' : ''}`} type="button" disabled={!runtime || busy} aria-pressed={isEquipped} onClick={() => { if (!suppressWardrobeClickRef.current) equipWardrobeItem(item); }} onPointerDown={(event) => beginClosetDrag(item, event)} onPointerMove={moveClosetDrag} onPointerUp={finishClosetDrag} onPointerCancel={finishClosetDrag}>
+              return <button key={item.id} className={`room-wardrobe-item ${isEquipped ? 'is-equipped' : ''}`} type="button" disabled={!runtime || busy} aria-pressed={isEquipped} onClick={() => { if (!suppressWardrobeClickRef.current) equipWardrobeItem(item); }} onPointerDown={(event) => beginClosetDrag(item, event)}>
                 <WardrobeSprite item={item} /><strong>{item.label}</strong><small>{isEquipped ? '已穿上・可拖動' : '拖到角色身上'}</small>
               </button>;
             })}</div>
@@ -1334,7 +1342,7 @@ export default function Home() {
                   <header><div><span>{slot.label}</span><strong>{equipped?.label ?? '尚未裝備'}</strong></div><button type="button" disabled={!runtime || busy || !equipped} onClick={() => void runAction(`clear-${slot.id}`, `已卸下${slot.label}物件`)}>卸下</button></header>
                   <div>{items.map((item) => {
                     const isEquipped = equipped?.id === item.id;
-                    return <button key={item.id} className={`closet-item ${isEquipped ? 'is-equipped' : ''}`} type="button" disabled={!runtime || busy} aria-pressed={isEquipped} onClick={() => { if (!suppressWardrobeClickRef.current) equipWardrobeItem(item); }} onPointerDown={(event) => beginClosetDrag(item, event)} onPointerMove={moveClosetDrag} onPointerUp={finishClosetDrag} onPointerCancel={finishClosetDrag}>
+                    return <button key={item.id} className={`closet-item ${isEquipped ? 'is-equipped' : ''}`} type="button" disabled={!runtime || busy} aria-pressed={isEquipped} onClick={() => { if (!suppressWardrobeClickRef.current) equipWardrobeItem(item); }} onPointerDown={(event) => beginClosetDrag(item, event)}>
                       <WardrobeSprite item={item} /><strong>{item.label}</strong><small>{isEquipped ? '已吸附' : '拖到角色或點一下'}</small>
                     </button>;
                   })}</div>
