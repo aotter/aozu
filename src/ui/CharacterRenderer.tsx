@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 
 import { CHARACTER_RIG, IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetInspection, type CharacterVariantTransform } from '@/core/domain/character'
-import { BlobImage } from '@/ui/BlobImage'
+import { BlobImage, CrossfadeBlobImage } from '@/ui/BlobImage'
 import { cn } from '@/ui/lib/utils'
 
 type Layer = { id: string; blob: Blob; slotOrder: number; layerOrder: number; transform?: CharacterVariantTransform }
@@ -19,8 +19,8 @@ const layerStyle = (layer: Layer, style?: CSSProperties): CSSProperties => {
   }
 }
 
-const Layers = ({ layers, style }: { layers: Layer[]; style?: CSSProperties }) => layers.map((layer) => <BlobImage
-  key={layer.id}
+const Layers = ({ layers, style }: { layers: Layer[]; style?: CSSProperties }) => layers.map((layer) => <CrossfadeBlobImage
+  key={`${layer.slotOrder}:${layer.layerOrder}`}
   blob={layer.blob}
   className="absolute size-full object-contain"
   style={layerStyle(layer, style)}

@@ -36,7 +36,7 @@ export function AppRoutes({ application }: { application: Application }) {
       console.error('Companion startup failed', error)
       setLoadError(true)
     })
-  }, [refresh])
+  }, [location.pathname, refresh])
 
   useEffect(() => {
     const onUpdate = () => void refresh()
@@ -129,6 +129,8 @@ export function AppRoutes({ application }: { application: Application }) {
       prepareImport={(blob) => prepareReview(application.prepareImport(blob))}
       pendingReview={startup.pendingReview}
       onResumeReview={() => navigate('/review', { state: { returnTo: '/start' } })}
+      authoringDraft={startup.authoringDraft}
+      onResumeDraft={(destination) => navigate(destination, { state: { returnTo: '/start' } })}
     />} />
     <Route path="/starter" element={<StarterDraftPage
       loadStarters={application.listStarters}

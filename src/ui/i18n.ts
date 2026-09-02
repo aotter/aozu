@@ -23,6 +23,12 @@ const en = {
       description: 'Validated and stored locally, but not active yet.',
       resume: 'Resume review',
     },
+    draft: {
+      title: 'Draft in progress',
+      character: 'Continue customizing this character.',
+      experience: 'The character is ready. Continue creating the Companion.',
+      resume: 'Continue editing',
+    },
     saved: {
       title: 'Saved companions',
       current: 'Current companion',

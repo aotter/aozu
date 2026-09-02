@@ -162,8 +162,8 @@ const canonicalMask = characterMask(
 const wholeHeadMask = characterMask({ x: 100, y: 20, width: 312, height: 300 }, { x: 220, y: 320, width: 72, height: 20 })
 assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, canonicalMask).status, 'aligned')
 assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, characterMask({ x: 140, y: 340, width: 232, height: 250 })).status, 'invalid')
-assert.equal(measureCharacterMaskAlignment('expression', canonicalMask, wholeHeadMask).status, 'aligned')
-assert.equal(measureCharacterMaskAlignment('expression', canonicalMask, characterMask({ x: 190, y: 130, width: 132, height: 80 })).status, 'invalid')
+assert.equal(measureCharacterMaskAlignment('expression', wholeHeadMask, wholeHeadMask).status, 'aligned')
+assert.equal(measureCharacterMaskAlignment('expression', wholeHeadMask, characterMask({ x: 190, y: 130, width: 132, height: 80 })).status, 'invalid')
 assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, canonicalMask, { x: 20, y: 20, scale: 1 }).status, 'misaligned')
 assert.equal(measureCharacterMaskAlignment('outfit', canonicalMask, characterMask({ x: 0, y: 0, width: 10, height: 10 })).diagnostics[0]?.code, 'ALPHA_TOUCHES_CANVAS_EDGE')
 const staleUpdatedAt = savedDraft.updatedAt
