@@ -73,7 +73,7 @@ general rig: there is no rotation, warping, bone animation, or attachment
 solver. A layer remains compatible only when its source dimensions and slot
 match the selected profile.
 
-Rig version 2 inserts `expression-head` between `character-skin` and
+Rig version 2 supports an optional `expression-head` between `character-skin` and
 `item-front`. An expression is a full-canvas transparent layer containing the
 complete aligned head, not cropped facial features. Hair and facial hair are
 fixed identity pixels repeated consistently in body skins and head-expression
@@ -138,21 +138,21 @@ PNG filename: `body`, `expression`, `outfit`, and `prop`. Each group contains
 named variants. A body or outfit variant owns one full-body layer, an expression
 owns one whole-head layer, and a prop may own both back and front layers. Props
 are multi-select, full-canvas overlays that may be positioned anywhere relative
-to the canonical character. The base body and neutral expression are required.
+to the canonical character. The required base body includes the default face;
+no expression overlay means that default appearance.
 
-Neutral, happy, sad, angry, surprised, and sleepy are initial expression
+Happy, sad, angry, surprised, and sleepy are initial optional expression
 variants, not a closed expression vocabulary. Users and agents may add, name,
-and populate more variants through the same contract. Draft schema changes are
-versioned and migrated in IndexedDB; candidate staging compiles the draft into
-the Character Pack appearances and qualified assets defined above.
+populate, or remove expression overlays through the same contract. Draft schema
+changes are versioned and migrated in IndexedDB; candidate staging compiles the
+draft into the Character Pack appearances and qualified assets defined above.
 
-The canonical body and approved neutral whole-head inspections project a small
-registration frame: alpha bounds, centers, and foot line. The projection reuses
-persisted inspection data rather than storing duplicate geometry that can go
-stale. Later expressions edit the approved neutral whole-head; outfits edit the
-canonical body; props use the current composite with the edited prop removed as
-their placement reference. These clean references are transient and never enter
-pack assets or ZIP exports.
+The canonical body inspection projects a small registration frame: alpha
+bounds, center, and foot line. The projection reuses persisted inspection data
+rather than storing duplicate geometry that can go stale. Expressions and
+outfits edit the canonical body; props use the current composite with the edited
+prop removed as their placement reference. These clean references are transient
+and never enter pack assets or ZIP exports.
 
 Agents may stage a candidate and visually preflight the real compositor through
 composite, onion-skin, and target-aware alignment views before asking for user

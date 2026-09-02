@@ -72,7 +72,7 @@ export interface CharacterDraft {
   name: string
   variants: CharacterDraftVariant[]
   selected: {
-    expression: string
+    expression?: string
     outfit?: string
     props: string[]
   }
@@ -235,7 +235,6 @@ export function resolveCharacterComposition(
     }
   }
   if (!layers.some(({ slot }) => slot === 'character-skin')) throw new Error('Character composition requires a skin')
-  if (rig.version >= 2 && !layers.some(({ slot }) => slot === 'expression-head')) throw new Error('Character composition requires a head expression')
   const finalOrders = new Set(layers.map(({ slot, layerOrder }) => `${slot}:${layerOrder}`))
   if (finalOrders.size !== layers.length) throw new Error('Composition layer order collision')
   return layers.sort((left, right) => left.slotOrder - right.slotOrder || left.layerOrder - right.layerOrder || left.id.localeCompare(right.id))

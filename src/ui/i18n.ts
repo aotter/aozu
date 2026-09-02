@@ -93,7 +93,7 @@ const en = {
   },
   characterDraft: {
     required: 'Required',
-    missingRequired: 'Add the base body and neutral whole-head expression to continue.',
+    missingRequired: 'Add the base character to continue.',
     validating: 'Checking…',
     variantLabel: 'Variant name',
     editVariant: 'Edit {{name}}',

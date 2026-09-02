@@ -17,9 +17,9 @@ const characterCategories: CharacterCategory[] = [
   { id: 'outfits', group: 'outfit', icon: ShirtIcon },
   { id: 'props', group: 'prop', icon: ShapesIcon },
 ]
-const expressionIcons = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'sleepy']
+const expressionIcons = ['happy', 'sad', 'angry', 'surprised', 'sleepy']
 const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
-  if (group === 'expression') return `/assets/character-slots/expression-${expressionIcons.includes(variantId) ? variantId : 'neutral'}.png`
+  if (group === 'expression') return `/assets/character-slots/expression-${expressionIcons.includes(variantId) ? variantId : 'happy'}.png`
   if (group === 'body') return '/assets/character-slots/body-base.png'
   return '/assets/character-slots/body-outfit.png'
 }
@@ -70,9 +70,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   const registration = characterRegistrationFrame(draft)
   const selectedPrimaryLayer = selectedVariant && (selectedVariant.group === 'prop' ? selectedVariant.layers.front ? 'front' : 'back' : CHARACTER_CREATION_GROUPS.find(({ group }) => group === selectedVariant.group)!.layers[0])
   const selectedAsset = selectedVariant && selectedPrimaryLayer ? selectedVariant.layers[selectedPrimaryLayer] : undefined
-  const referenceBounds = selectedVariant?.group === 'expression' && selectedVariant.id !== 'neutral'
-    ? registration.headBounds
-    : selectedVariant?.group === 'outfit' ? registration.bodyBounds : undefined
+  const referenceBounds = selectedVariant?.group === 'outfit' ? registration.bodyBounds : undefined
   const selectedTransform = selectedVariant?.transform ?? IDENTITY_CHARACTER_TRANSFORM
   const candidateBounds = selectedAsset?.inspection.visibleBounds ? transformCharacterBounds(selectedAsset.inspection.visibleBounds, selectedTransform) : undefined
   const persist = (next: CharacterDraft) => { setDraft(next); void updateDraft(next) }
@@ -91,6 +89,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   }
   const selectVariant = (variant: CharacterDraftVariant) => persist(activateVariant(draft, variant))
   const clearVariant = (group: CharacterVariantGroup) => {
+    if (group === 'expression') persist({ ...draft, selected: { ...draft.selected, expression: undefined } })
     if (group === 'outfit') persist({ ...draft, selected: { ...draft.selected, outfit: undefined } })
     if (group === 'prop') persist({ ...draft, selected: { ...draft.selected, props: [] } })
   }
@@ -177,9 +176,9 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
         {!selectedVariant && <>
           <h2 className="mt-1 truncate text-sm font-medium sm:text-lg">{t(`characterDraft.categories.${category.id}`)}</h2>
           <div className="mt-2 grid grid-cols-2 gap-1.5 sm:mt-4 sm:gap-3">
-            {category.group !== 'expression' && <button type="button" aria-label={t('characterDraft.none')} title={t('characterDraft.none')} aria-pressed={!hasSelection(category.group)} className={`relative aspect-square min-w-0 overflow-hidden rounded-xl border bg-background transition-colors hover:border-foreground/40 ${!hasSelection(category.group) ? 'border-foreground ring-1 ring-foreground' : ''}`} onClick={() => clearVariant(category.group)}>
+            <button type="button" aria-label={t('characterDraft.none')} title={t('characterDraft.none')} aria-pressed={!hasSelection(category.group)} className={`relative aspect-square min-w-0 overflow-hidden rounded-xl border bg-background transition-colors hover:border-foreground/40 ${!hasSelection(category.group) ? 'border-foreground ring-1 ring-foreground' : ''}`} onClick={() => clearVariant(category.group)}>
               <span className="flex aspect-square items-center justify-center bg-muted/40"><CircleSlash2Icon className="size-1/3 text-muted-foreground" /></span>
-            </button>}
+            </button>
             {visibleVariants.map((variant) => {
               const group = CHARACTER_CREATION_GROUPS.find(({ group }) => group === variant.group)!
               const thumbnail = variant.layers.front && isCharacterDraftAssetCurrent(draft, variant, 'front')

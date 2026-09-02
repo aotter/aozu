@@ -38,16 +38,17 @@ import {
   migrateCharacterDraft,
   hasCurrentCharacterLayer,
   isCharacterDraftAssetCurrent,
-  measureCharacterAssetAlignment,
   characterAssetPlacement,
   characterRegistrationFrame,
   resolveCharacterDraftReferenceLayers,
   setCharacterVariantTransform,
   transformCharacterBounds,
+  validateCharacterAssetInspection,
   saveCharacterDraftAsset,
   reviewCharacterDraft,
 } from './core/application/character-creation.ts'
-import { inspectCharacterImage, renderCharacterCompositeDataUrl } from './adapters/browser/character-image.ts'
+import { measureCharacterMaskAlignment } from './core/application/character-alignment.ts'
+import { inspectCharacterImage, readCharacterAlphaMask, renderCharacterCompositeDataUrl } from './adapters/browser/character-image.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
 import { planItemEffects } from './core/application/items.ts'
@@ -555,14 +556,14 @@ export function createApplication(document: Document) {
     const variant = draft.variants.find(({ group, id }) => group === input.group && id === input.variantId)
     const asset = variant?.layers[input.layer]
     const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
-    const neutralVariant = draft.variants.find(({ group, id }) => group === 'expression' && id === 'neutral')
-    const neutral = neutralVariant && isCharacterDraftAssetCurrent(draft, neutralVariant, 'head') ? neutralVariant.layers.head : undefined
-    const reference = input.group === 'expression' && input.variantId !== 'neutral' ? neutral : input.group === 'prop' || input.group === 'body' ? undefined : canonical
+    const reference = input.group === 'expression' || input.group === 'outfit' ? canonical : undefined
     const transform = variant?.transform ?? { x: 0, y: 0, scale: 1 }
-    const comparable = Boolean(asset && reference && (input.group === 'outfit' || (input.group === 'expression' && input.variantId !== 'neutral')))
-    const measurement = comparable
-      ? measureCharacterAssetAlignment(reference!.inspection, asset!.inspection, 32, transform)
-      : null
+    const measurement = asset ? measureCharacterMaskAlignment(
+      input.group,
+      reference ? await readCharacterAlphaMask(reference.blob) : null,
+      await readCharacterAlphaMask(asset.blob),
+      transform,
+    ) : null
     const currentBounds = asset?.inspection.visibleBounds ? transformCharacterBounds(asset.inspection.visibleBounds, transform) : undefined
     const overflow = currentBounds ? {
       left: Math.max(0, -currentBounds.x),
@@ -574,22 +575,20 @@ export function createApplication(document: Document) {
     const placementUsesEditSource = Boolean(reference && placementLayers.length === 1 && placementLayers[0]!.blob === reference.blob)
     const placement = characterAssetPlacement(input.group, input.layer)
     const lineage = input.group === 'body' ? 'establish-canonical'
-      : input.group === 'expression' && input.variantId !== 'neutral' ? 'edit-approved-neutral-head'
-        : input.group === 'expression' ? 'edit-canonical-body'
-          : input.group === 'outfit' ? 'edit-canonical-body'
-            : 'place-against-current-composite'
+      : input.group === 'expression' || input.group === 'outfit' ? 'edit-canonical-body'
+        : 'place-against-current-composite'
     const reviewDestination = input.group === 'expression' ? 'character-expressions'
       : input.group === 'outfit' ? 'character-outfits'
         : input.group === 'prop' ? 'character-props' : 'character-expressions'
-    const suggestedTransform = measurement?.status === 'misaligned' ? measurement.suggestedTransform : undefined
+    const suggestedTransform = measurement?.status === 'misaligned' ? measurement.suggestedTransform : null
     const transformSupported = suggestedTransform && suggestedTransform.scale >= 0.25 && suggestedTransform.scale <= 4 && Math.abs(suggestedTransform.x) <= 512 && Math.abs(suggestedTransform.y) <= 768
     const nextActions = !asset || !variant || !isCharacterDraftAssetCurrent(draft, variant, input.layer) ? [{
       tool: 'submit_character_asset_candidate', required: true, reason: 'Submit the final exact-canvas RGBA target layer.', input: { group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
-    }] : input.group === 'expression' && measurement?.status === 'misaligned' && transformSupported ? [{
-      tool: 'set_character_variant_transform', required: true, reason: 'Apply the suggested absolute transform, then inspect the rendered alignment again.',
+    }] : transformSupported ? [{
+      tool: 'set_character_variant_transform',
+      required: true,
+      reason: 'Apply the suggested absolute transform, then inspect the alpha-mask alignment again.',
       input: { group: input.group, variantId: input.variantId, expectedUpdatedAt: draft.updatedAt, ...suggestedTransform },
-    }] : input.group === 'expression' && measurement?.status === 'misaligned' ? [{
-      tool: 'submit_character_asset_candidate', required: true, reason: 'The whole-head geometry drift is too large for the safe transform range; regenerate from the approved neutral head.', input: { group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
     }] : [{
       tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, and Align before user Review.', input: { destination: reviewDestination },
     }, {
@@ -621,7 +620,14 @@ export function createApplication(document: Document) {
           ...(placementUsesEditSource ? { useEditSource: true } : { dataUrl: await renderCharacterCompositeDataUrl(placementLayers) }),
         } : null,
         preserveCanvasCoordinates: true,
-        output: { generateAt: { width: 1024, height: 1536 }, finalizeAt: { ...CHARACTER_RIG.canvas }, rgba: true, realAlpha: true, layerOnly: true },
+        output: {
+          generateAt: { width: 1024, height: 1536 },
+          finalizeAt: { ...CHARACTER_RIG.canvas },
+          rgba: true,
+          realAlpha: true,
+          content: input.group === 'body' || input.group === 'outfit' ? 'complete-character'
+            : input.group === 'expression' ? 'complete-whole-head' : 'prop-layer',
+        },
       },
       alignment: {
         mode: input.group === 'expression' ? 'whole-head-bounds'
@@ -629,7 +635,8 @@ export function createApplication(document: Document) {
             : input.group === 'prop' ? 'composite-review'
               : 'establish-frame',
         transform,
-        referenceBounds: comparable ? reference?.inspection.visibleBounds : undefined,
+        referenceBounds: measurement && 'metrics' in measurement && measurement.metrics && 'referenceBounds' in measurement.metrics
+          ? measurement.metrics.referenceBounds : undefined,
         candidateBounds: currentBounds,
         overflow,
         measurement,
@@ -667,13 +674,13 @@ export function createApplication(document: Document) {
           } : null,
           productionBrief: [
             'The first body/base/body candidate establishes the canonical character and registration frame.',
-            'Generate neutral whole-head from the canonical body. Generate every later expression by editing the approved neutral whole-head so its silhouette, hair, facial hair, and canvas coordinates stay fixed.',
-            'Generate outfits by editing the canonical body while preserving pose, body center, head position, and foot line. Generate props against the returned current composite.',
+            'The canonical body includes the default face. Generate every optional whole-head expression by editing that canonical body while keeping head silhouette, hair, facial hair, and canvas coordinates fixed.',
+            'An outfit replaces the character-skin slot: generate the complete dressed character, never a clothing-only overlay. Preserve pose, body center, head position, and foot line. Generate props against the returned current composite.',
             'Generate at 1024×1536 and deterministically downsample 50% to the exact 512×768 canvas. Never crop, reframe, or recenter.',
             'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
             'Submit only final RGBA PNG layers. The website validates but never repairs candidate images.',
             'Expression layers replace the whole aligned head, including the same fixed hairstyle and facial hair. Hair and facial hair are not customizable slots.',
-            'Expressions are variants of one whole-head slot. The canonical set is neutral, happy, sad, angry, surprised, and sleepy; additional expression variants are allowed.',
+            'No expression overlay means the default face baked into the body. Optional whole-head variants include happy, sad, angry, surprised, and sleepy; additional variants are allowed.',
             'Outfits are full-body variants. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. A prop may be positioned anywhere, including on the head or in a hand.',
           ],
           target,
@@ -710,6 +717,40 @@ export function createApplication(document: Document) {
       if (!(target.group === 'body' && target.variantId === 'base' && target.layer === 'body') && !canonical) throw new Error('Submit body/base/body before derived character assets')
       const blob = new Blob([bytes], { type: 'image/png' })
       const inspection = await inspectCharacterImage(blob)
+      validateCharacterAssetInspection(inspection)
+      const alignment = measureCharacterMaskAlignment(
+        target.group,
+        (target.group === 'expression' || target.group === 'outfit') && canonical ? await readCharacterAlphaMask(canonical.blob) : null,
+        await readCharacterAlphaMask(blob),
+      )
+      if (alignment.status === 'invalid') return {
+        status: 'ok',
+        data: {
+          accepted: false,
+          target,
+          filename,
+          inspection: {
+            width: inspection.width,
+            height: inspection.height,
+            genuineRgba: inspection.genuineRgba,
+            hasTransparentPixels: inspection.hasTransparentPixels,
+            visibleBounds: inspection.visibleBounds,
+            visiblePixelCount: inspection.visiblePixelCount,
+          },
+          alignment: {
+            mode: target.group === 'expression' ? 'whole-head-bounds'
+              : target.group === 'outfit' ? 'pose-frame'
+                : target.group === 'prop' ? 'composite-review' : 'establish-frame',
+            measurement: alignment,
+          },
+        },
+        nextActions: [{
+          tool: 'submit_character_asset_candidate',
+          required: true,
+          reason: alignment.diagnostics[0]?.message ?? 'Regenerate the rejected character asset.',
+          input: { group: target.group, variantId: target.variantId, layer: target.layer, expectedUpdatedAt: current.updatedAt },
+        }],
+      }
       const draft = await saveCharacterDraftAsset(characterDrafts, async () => inspection, current, target, blob, filename, 'agent')
       const savedVariant = draft.variants.find(({ group, id }) => group === target.group && id === target.variantId)!
       const specification = await characterTarget(draft, target)
@@ -717,6 +758,7 @@ export function createApplication(document: Document) {
       return {
         status: 'ok',
         data: {
+          accepted: true,
           target: { ...target, label: savedVariant.label },
           filename,
           byteLength: bytes.byteLength,
