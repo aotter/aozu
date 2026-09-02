@@ -48,8 +48,8 @@ import {
   saveCharacterDraftAsset,
   reviewCharacterDraft,
 } from './core/application/character-creation.ts'
-import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment } from './core/application/character-alignment.ts'
-import { inspectCharacterImage, readCharacterAlphaMask, renderCharacterCompositeDataUrl } from './adapters/browser/character-image.ts'
+import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
+import { inspectCharacterImage, readCharacterAlphaMask, readCharacterVisualSample, renderCharacterCompositeDataUrl } from './adapters/browser/character-image.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
 import { planItemEffects } from './core/application/items.ts'
@@ -293,6 +293,9 @@ export function createApplication(document: Document) {
       const layer = variant && CHARACTER_CREATION_GROUPS.find((candidate) => candidate.group === group)?.layers.find((candidate) => variant.layers[candidate])
       if (!variant || !layer) throw new Error('Character variant is empty or missing')
       const target = await characterTarget(draft, { group, variantId, layer })
+      const visualTransform = target?.alignment.visualFit?.suggestedTransform
+      if (visualTransform) return setCharacterVariantTransform(characterDrafts, group, variantId, draft.updatedAt, visualTransform)
+      if (target?.alignment.registration?.role === 'head-anchor' && target.alignment.visualFit) return draft
       if (target?.alignment.measurement?.status === 'aligned') return draft
       const transform = highConfidenceCharacterAutoFit(target?.alignment.measurement)
       if (!transform) throw new Error('No high-confidence auto-fit is available; use the visual alignment controls.')
@@ -607,6 +610,9 @@ export function createApplication(document: Document) {
       : input.group === 'outfit' ? 'character-outfits'
         : input.group === 'prop' ? 'character-props' : 'character-expressions'
     const suggestedTransform = highConfidenceCharacterAutoFit(measurement)
+    const visualFit = asset && canonical && input.group === 'expression' && headRegistration?.variant.id === input.variantId
+      ? suggestCharacterVisualRegistration(await readCharacterVisualSample(canonical.blob), await readCharacterVisualSample(asset.blob), transform)
+      : null
     const nextActions = !asset || !variant || !isCharacterDraftAssetCurrent(draft, variant, input.layer) ? [{
       tool: 'submit_character_asset_candidate', required: true, reason: 'Submit the final exact-canvas RGBA target layer.', input: { group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
     }] : suggestedTransform ? [{
@@ -614,8 +620,15 @@ export function createApplication(document: Document) {
       required: true,
       reason: 'Apply the suggested absolute transform, then inspect the alpha-mask alignment again.',
       input: { group: input.group, variantId: input.variantId, expectedUpdatedAt: draft.updatedAt, ...suggestedTransform },
+    }] : visualFit?.suggestedTransform ? [{
+      tool: 'set_character_variant_transform',
+      required: false,
+      reason: 'Try the experimental native pixel-and-edge correlation fit, then visually review the head alignment view; this never approves the draft.',
+      input: { group: input.group, variantId: input.variantId, expectedUpdatedAt: draft.updatedAt, ...visualFit.suggestedTransform },
+    }, {
+      tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, Difference, and Align before user Review.', input: { destination: reviewDestination },
     }] : [{
-      tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, and Align before user Review.', input: { destination: reviewDestination },
+      tool: 'navigate_companion', required: true, reason: 'Open the target editor and visually preflight Composite, Overlay, Difference, and Align before user Review.', input: { destination: reviewDestination },
     }, {
       tool: 'navigate_companion', required: false, reason: 'After the visual preflight is ready, open the complete Character Review.', input: { destination: 'character-review' },
     }]
@@ -666,6 +679,7 @@ export function createApplication(document: Document) {
         overflow,
         measurement,
         autoFit: suggestedTransform ? { confidence: 'high', transform: suggestedTransform } : null,
+        visualFit,
         registration: input.group === 'expression' ? {
           role: headRegistration?.variant.id === input.variantId ? 'head-anchor' : 'follower',
           anchorVariantId: headRegistration?.variant.id ?? null,

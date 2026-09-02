@@ -11,6 +11,12 @@ export interface CharacterAlphaMask {
   alpha: Uint8Array
 }
 
+export interface CharacterVisualSample {
+  width: number
+  height: number
+  rgba: Uint8ClampedArray
+}
+
 type Bounds = { x: number; y: number; width: number; height: number }
 type MaskStats = { bounds?: Bounds; visiblePixels: number; edgeTouchPixels: number; center?: { x: number; y: number } }
 
@@ -179,4 +185,108 @@ export function highConfidenceCharacterAutoFit(
   const centered = metrics.centerDelta && Math.abs(metrics.centerDelta.x) <= 4 && Math.abs(metrics.centerDelta.y) <= 4
   return centered && metrics.iou >= 0.85 && metrics.referenceCoverage >= 0.85 && metrics.candidateCoverage >= 0.85 && metrics.edgeTouchPixels === 0
     ? alignment.suggestedTransform : null
+}
+
+const correlation = (count: number, sumA: number, sumB: number, sumAA: number, sumBB: number, sumAB: number) => {
+  const denominator = Math.sqrt((count * sumAA - sumA * sumA) * (count * sumBB - sumB * sumB))
+  return denominator > 0 ? (count * sumAB - sumA * sumB) / denominator : -1
+}
+
+const visualChannels = ({ width, height, rgba }: CharacterVisualSample) => {
+  const gray = new Float32Array(width * height)
+  const alpha = new Uint8Array(width * height)
+  for (let pixel = 0, source = 0; pixel < gray.length; pixel++, source += 4) {
+    gray[pixel] = rgba[source]! * 0.2126 + rgba[source + 1]! * 0.7152 + rgba[source + 2]! * 0.0722
+    alpha[pixel] = rgba[source + 3]!
+  }
+  const edge = new Float32Array(gray.length)
+  for (let y = 1; y < height - 1; y++) for (let x = 1; x < width - 1; x++) {
+    const index = y * width + x
+    edge[index] = Math.abs(gray[index + 1]! - gray[index - 1]!) + Math.abs(gray[index + width]! - gray[index - width]!)
+  }
+  return { gray, alpha, edge }
+}
+
+export function suggestCharacterVisualRegistration(
+  body: CharacterVisualSample,
+  candidate: CharacterVisualSample,
+  current: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM,
+) {
+  // ponytail: this coarse visual correlation only suggests transforms; add semantic landmarks if cross-style failures persist.
+  if (body.width !== candidate.width || body.height !== candidate.height) return null
+  const reference = visualChannels(body)
+  const source = visualChannels(candidate)
+  const points: Array<{ x: number; y: number; gray: number; edge: number }> = []
+  let minX = candidate.width
+  let minY = candidate.height
+  let maxX = -1
+  for (let y = 0; y < candidate.height; y++) for (let x = 0; x < candidate.width; x++) if (source.alpha[y * candidate.width + x]! > 32) {
+    minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x)
+  }
+  for (let y = 1; y < candidate.height - 1; y += 2) for (let x = 1; x < candidate.width - 1; x += 2) {
+    const index = y * candidate.width + x
+    if (source.alpha[index]! <= 32) continue
+    points.push({ x, y, gray: source.gray[index]!, edge: source.edge[index]! })
+  }
+  if (points.length < 64) return null
+  let bodyMinX = body.width
+  let bodyMaxX = -1
+  for (let y = 0; y < body.height; y++) for (let x = 0; x < body.width; x++) if (reference.alpha[y * body.width + x]! > 32) {
+    bodyMinX = Math.min(bodyMinX, x); bodyMaxX = Math.max(bodyMaxX, x)
+  }
+  if (bodyMaxX < bodyMinX) return null
+  const ratioX = body.width / CHARACTER_RIG.canvas.width
+  const ratioY = body.height / CHARACTER_RIG.canvas.height
+  const score = (transform: CharacterVariantTransform) => {
+    let count = 0
+    let grayA = 0; let grayB = 0; let grayAA = 0; let grayBB = 0; let grayAB = 0
+    let edgeA = 0; let edgeB = 0; let edgeAA = 0; let edgeBB = 0; let edgeAB = 0
+    for (const point of points) {
+      const x = Math.round(transform.x * ratioX + point.x * transform.scale)
+      const y = Math.round(transform.y * ratioY + point.y * transform.scale)
+      if (x < 0 || y < 0 || x >= body.width || y >= body.height) continue
+      const index = y * body.width + x
+      const bodyGray = reference.gray[index]!
+      const bodyEdge = reference.edge[index]!
+      count++; grayA += point.gray; grayB += bodyGray; grayAA += point.gray * point.gray; grayBB += bodyGray * bodyGray; grayAB += point.gray * bodyGray
+      edgeA += point.edge; edgeB += bodyEdge; edgeAA += point.edge * point.edge; edgeBB += bodyEdge * bodyEdge; edgeAB += point.edge * bodyEdge
+    }
+    if (count < points.length * 0.8) return -1
+    return correlation(count, grayA, grayB, grayAA, grayBB, grayAB) * 0.65
+      + correlation(count, edgeA, edgeB, edgeAA, edgeBB, edgeAB) * 0.35
+  }
+  const sourceCenterX = (minX + maxX) / 2
+  const bodyCenterX = (bodyMinX + bodyMaxX) / 2
+  let best = { transform: current, score: score(current) }
+  const evaluate = (scale: number, centerX: number, topY: number) => {
+    const transform = {
+      scale: round(scale),
+      x: round((centerX - sourceCenterX * scale) / ratioX),
+      y: round((topY - minY * scale) / ratioY),
+    }
+    const value = score(transform)
+    if (value > best.score) best = { transform, score: value }
+  }
+  for (let scale = 0.25; scale <= 1.0001; scale += 0.05) {
+    for (let center = bodyCenterX - 8; center <= bodyCenterX + 8; center += 2) {
+      for (let top = 0; top <= body.height / 3; top += 2) evaluate(scale, center, top)
+    }
+  }
+  const coarse = best.transform
+  const coarseCenter = coarse.x * ratioX + sourceCenterX * coarse.scale
+  const coarseTop = coarse.y * ratioY + minY * coarse.scale
+  for (let scale = Math.max(0.25, coarse.scale - 0.04); scale <= Math.min(1, coarse.scale + 0.0401); scale += 0.01) {
+    for (let center = coarseCenter - 2; center <= coarseCenter + 2; center += 0.5) {
+      for (let top = coarseTop - 2; top <= coarseTop + 2; top += 0.5) evaluate(scale, center, top)
+    }
+  }
+  const currentScore = score(current)
+  const improvement = best.score - currentScore
+  return {
+    method: 'native-grayscale-edge-correlation' as const,
+    score: round(best.score),
+    currentScore: round(currentScore),
+    improvement: round(improvement),
+    suggestedTransform: best.score >= 0.4 && improvement >= 0.08 ? best.transform : null,
+  }
 }

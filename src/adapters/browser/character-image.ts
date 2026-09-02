@@ -1,4 +1,4 @@
-import type { CharacterAlphaMask } from '../../core/application/character-alignment.ts'
+import type { CharacterAlphaMask, CharacterVisualSample } from '../../core/application/character-alignment.ts'
 import { CHARACTER_RIG, type CharacterAssetInspection, type ResolvedCharacterLayer } from '../../core/domain/character.ts'
 
 const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
@@ -63,6 +63,18 @@ export async function readCharacterAlphaMask(blob: Blob): Promise<CharacterAlpha
   const alpha = new Uint8Array(canvas.width * canvas.height)
   for (let source = 3, target = 0; source < pixels.length; source += 4, target++) alpha[target] = pixels[source]!
   return { width: canvas.width, height: canvas.height, alpha }
+}
+
+export async function readCharacterVisualSample(blob: Blob): Promise<CharacterVisualSample> {
+  const bitmap = await createImageBitmap(blob)
+  const canvas = document.createElement('canvas')
+  canvas.width = CHARACTER_RIG.canvas.width / 8
+  canvas.height = CHARACTER_RIG.canvas.height / 8
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) throw new Error('Canvas is unavailable')
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
+  return { width: canvas.width, height: canvas.height, rgba: context.getImageData(0, 0, canvas.width, canvas.height).data }
 }
 
 export async function renderCharacterCompositeDataUrl(

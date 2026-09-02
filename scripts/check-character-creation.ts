@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 
 import { buildCharacterPack, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
-import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, type CharacterAlphaMask } from '../src/core/application/character-alignment.ts'
+import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 import type { CharacterPackLibraryRecord } from '../src/core/application/ports.ts'
@@ -192,6 +192,18 @@ const boarHeadTransform = { x: 105, y: -40, scale: 0.55 }
 const boarAlignment = measureCharacterMaskAlignment('expression', boarHeadMask, boarHeadMask, undefined, boarHeadTransform)
 assert.equal(boarAlignment.status, 'misaligned')
 assert.deepEqual(highConfidenceCharacterAutoFit(boarAlignment), boarHeadTransform)
+const visualSample = (left: number, top: number): CharacterVisualSample => {
+  const width = 64; const height = 96; const rgba = new Uint8ClampedArray(width * height * 4)
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const pixel = ((top + y) * width + left + x) * 4
+    const value = (x * 37 + y * 73 + x * y * 11) % 256
+    rgba[pixel] = value; rgba[pixel + 1] = value * 3 % 256; rgba[pixel + 2] = value * 7 % 256; rgba[pixel + 3] = 255
+  }
+  return { width, height, rgba }
+}
+const visualFit = suggestCharacterVisualRegistration(visualSample(32, 4), visualSample(8, 8))
+assert.ok(visualFit?.suggestedTransform)
+assert.deepEqual(visualFit.suggestedTransform, { x: 192, y: -32, scale: 1 })
 const staleUpdatedAt = savedDraft.updatedAt
 const transformed = await setCharacterVariantTransform(
   drafts,

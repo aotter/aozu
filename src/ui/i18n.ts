@@ -111,6 +111,7 @@ const en = {
       label: 'Alignment preview',
       composite: 'Composite',
       overlay: 'Overlay',
+      difference: 'Difference',
       diagnostic: 'Align',
     },
     transform: {
@@ -119,6 +120,7 @@ const en = {
       y: 'Vertical offset',
       scale: 'Scale',
       autoFit: 'Auto fit',
+      visualFit: 'Try visual fit',
       dragHead: 'Drag to align this head',
     },
     categories: {

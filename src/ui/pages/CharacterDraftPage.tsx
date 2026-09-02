@@ -43,7 +43,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
   const [selectedVariantKey, setSelectedVariantKey] = useState<string>()
-  const [alignmentMode, setAlignmentMode] = useState<'composite' | 'overlay' | 'diagnostic'>('overlay')
+  const [alignmentMode, setAlignmentMode] = useState<'composite' | 'overlay' | 'difference' | 'diagnostic'>('overlay')
   const drag = useRef<{
     draft: CharacterDraft
     group: CharacterVariantGroup
@@ -209,8 +209,8 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
               />
             : <CharacterRenderer label={draft.name} layers={previewLayers} />}</div>
         </div>
-        {selectedVariant && <div className="mt-2 grid grid-cols-3 gap-1" aria-label={t('characterDraft.alignment.label')}>
-          {(['composite', 'overlay', 'diagnostic'] as const).map((mode) => <Button key={mode} type="button" size="sm" variant={alignmentMode === mode ? 'secondary' : 'ghost'} className="h-7 px-1 text-[10px] sm:text-xs" onClick={() => setAlignmentMode(mode)}>{t(`characterDraft.alignment.${mode}`)}</Button>)}
+        {selectedVariant && <div className="mt-2 grid grid-cols-4 gap-1" aria-label={t('characterDraft.alignment.label')}>
+          {(['composite', 'overlay', 'difference', 'diagnostic'] as const).map((mode) => <Button key={mode} type="button" size="sm" variant={alignmentMode === mode ? 'secondary' : 'ghost'} className="h-7 px-1 text-[10px] sm:text-xs" onClick={() => setAlignmentMode(mode)}>{t(`characterDraft.alignment.${mode}`)}</Button>)}
         </div>}
         <label className="mt-2 min-w-0">
           <span className="sr-only">{t('draft.name')}</span>
@@ -308,7 +308,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                   onBlur={() => void commitTransform()}
                 />
               </label>)}
-              {(selectedVariant.group === 'outfit' || (selectedVariant.group === 'expression' && registration.head?.variantId !== selectedVariant.id)) && <Button
+              {(selectedVariant.group === 'outfit' || selectedVariant.group === 'expression') && <Button
                 type="button"
                 size="sm"
                 variant="secondary"
@@ -320,7 +320,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                   catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)) }
                   finally { setBusy(undefined) }
                 }}
-              >{t('characterDraft.transform.autoFit')}</Button>}
+              >{t(registration.head?.variantId === selectedVariant.id ? 'characterDraft.transform.visualFit' : 'characterDraft.transform.autoFit')}</Button>}
             </div>}
             <label className="mt-2 block cursor-pointer overflow-hidden rounded-xl border hover:border-foreground/40 sm:mt-4">
               <span className="flex aspect-square items-center justify-center bg-muted/40 p-2">{primaryAsset

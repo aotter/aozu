@@ -559,7 +559,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-character-contract.yaml',
     envelope('Procedure', 'inspect-character-contract', {
       title: 'Inspect Character Contract',
-      description: 'Required before generating or changing character art. Optionally name one target to receive its exact reference layer, alpha-mask diagnostics, z-order, canonical freshness, and alignment mode. Outfits are complete dressed character-skin replacements, not clothing-only overlays. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
+      description: 'Required before generating or changing character art. Optionally name one target to receive its exact reference layer, alpha-mask diagnostics, z-order, canonical freshness, and alignment mode. A registered head anchor may include an experimental native pixel-and-edge correlation suggestion; it is never applied or approved automatically. Outfits are complete dressed character-skin replacements, not clothing-only overlays. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
       input: {
         ...objectSchema({
           group: { enum: CHARACTER_VARIANT_GROUPS },
