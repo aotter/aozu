@@ -1333,10 +1333,10 @@ button.gate-action {
 
 .character-spell-guide {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 1rem;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1.2rem;
   align-items: center;
-  padding: 1rem 1.2rem;
+  padding: 0.75rem 1.1rem;
   border: 1px solid #7b4b25;
   border-radius: 1rem;
   background:
@@ -1352,21 +1352,26 @@ button.gate-action {
 }
 
 .character-spell-guide p:not(.forge-kicker) {
-  margin-top: 0.25rem;
+  margin-top: 0.15rem;
   color: #eadbb9;
-  line-height: 1.55;
+  line-height: 1.4;
 }
 
 .character-spell-guide blockquote,
 .experience-spell blockquote {
-  margin-top: 0.55rem;
-  padding: 0.55rem 0.75rem;
+  margin-top: 0.35rem;
+  padding: 0.4rem 0.65rem;
   border-left: 3px solid #e1b756;
   background: rgb(255 238 184 / 9%);
   color: #ffe9a8;
   font-family: var(--font-heading);
   font-weight: 800;
   line-height: 1.5;
+}
+
+.character-spell-guide > .spell-icon {
+  width: 5rem;
+  height: 5rem;
 }
 
 .spell-icon {

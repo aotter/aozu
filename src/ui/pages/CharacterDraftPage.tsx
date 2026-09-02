@@ -236,16 +236,11 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
       <aside className="character-spell-guide" aria-labelledby="character-spell-title">
         <div className="spell-icon"><AozuIcon name="book" /></div>
         <div className="min-w-0 flex-1">
-          <p className="forge-kicker"><AozuIcon name="book" /> {t('characterDraft.bookKicker')}</p>
+          <p className="forge-kicker">{t('characterDraft.bookKicker')}</p>
           <h1 id="character-spell-title" className="font-heading text-2xl font-semibold">{t('characterDraft.webmcpTitle')}</h1>
           <p>{t('characterDraft.webmcpInstruction')}</p>
           <blockquote>{t('characterDraft.webmcpSpell')}</blockquote>
         </div>
-        <ol className="spell-workflow">
-          <li title={t('characterDraft.webmcpBody')}><AozuIcon name="body" /><span className="sr-only">{t('characterDraft.webmcpBody')}</span></li>
-          <li title={t('characterDraft.webmcpExpressions')}><AozuIcon name="expressions" /><span className="sr-only">{t('characterDraft.webmcpExpressions')}</span></li>
-          <li title={t('characterDraft.webmcpAccessories')}><AozuIcon name="props" /><span className="sr-only">{t('characterDraft.webmcpAccessories')}</span></li>
-        </ol>
       </aside>
 
       <div className="draft-workshop-grid mt-4">
