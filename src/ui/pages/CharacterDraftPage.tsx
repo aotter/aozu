@@ -325,9 +325,8 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
               return <div key={variantKey(variant)} className={`variant-card ${selected ? 'is-selected' : ''}`}>
                 <button type="button" aria-label={variant.label} title={variant.label} aria-pressed={selected} className="block w-full" onClick={() => {
                   if (!selected) selectVariant(variant)
-                  setSelectedVariantKey(variantKey(variant))
                 }}>
-                  <span className="variant-preview">{thumbnail
+                  <span className={`variant-preview ${variant.group === 'expression' ? 'is-expression' : ''}`}>{thumbnail
                     ? atlas && atlasSrc && frameId && atlas.data.frames[frameId]
                       ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={frameId} label={variant.label} />
                       : <CharacterAssetImage blob={thumbnail.blob} label={variant.label} />

@@ -111,7 +111,13 @@ export function AppRoutes({ application }: { application: Application }) {
     onReview={(draft) => prepareCharacterReview(application.prepareCharacter(draft))}
   /> : <Navigate to="/start" replace />
   const showBack = location.pathname !== '/' && location.pathname !== '/start'
+  const openCharacterEditor = () => {
+    if (!draftId) return closeFlow()
+    setPreview(undefined)
+    navigate(workspacePath('character-expressions', draftId), { replace: true, state: location.state })
+  }
   const goBack = () => {
+    if (location.pathname.endsWith('/review') && review?.source === 'character') return openCharacterEditor()
     if (location.pathname.endsWith('/review') && review) setPreview(undefined)
     closeFlow()
   }
@@ -169,7 +175,7 @@ export function AppRoutes({ application }: { application: Application }) {
         await refresh()
         navigate(review.source === 'character' ? characterExit : '/companion', { replace: true })
       }}
-      onCancel={async () => { setPreview(undefined); await refresh(); closeFlow() }}
+      onCancel={review.source === 'character' ? async () => openCharacterEditor() : async () => { setPreview(undefined); await refresh(); closeFlow() }}
       onDiscard={review.source === 'character' ? undefined : async () => {
         await application.discardPendingReview(review.bundleId); setPreview(undefined); await refresh(); navigate('/start', { replace: true })
       }}
