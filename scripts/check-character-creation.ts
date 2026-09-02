@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { strFromU8, unzipSync, zipSync } from 'fflate'
 
-import { buildCharacterPack, characterDraftAtlasKey, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, characterDraftAtlasKey, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterAssetSources, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, stitchCharacterEditPixels, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
@@ -99,6 +99,19 @@ assert.equal(characterRegistrationFrame(draft).head?.calibration.rebasesCurrentE
 assert.equal(characterRegistrationFrame(draft).editableRegions.expression?.basis, 'head-anchor')
 assert.equal(characterRegistrationFrame(draft).editableRegions.expression?.shape.kind, 'ellipse')
 assert.equal(characterRegistrationFrame(draft).editableRegions.outfit?.shape.kind, 'outside-ellipse')
+const raincoatAsset = {
+  ...asset,
+  filename: 'raincoat.png',
+  inspection: { ...inspection, sha256: 'b'.repeat(64) },
+}
+const raincoatDraft = structuredClone(draft)
+raincoatDraft.variants.find(({ group, id }) => group === 'outfit' && id === 'outfit-1')!.layers.body = raincoatAsset
+const raincoatSources = resolveCharacterAssetSources(raincoatDraft, { group: 'outfit', variantId: 'outfit-1', layer: 'body' })
+assert.equal(raincoatSources.current, true)
+assert.equal(raincoatSources.editSource?.filename, 'raincoat.png')
+assert.equal(raincoatSources.alignmentReference?.filename, 'sprite.png')
+raincoatAsset.canonicalSha256 = 'c'.repeat(64)
+assert.equal(resolveCharacterAssetSources(raincoatDraft, { group: 'outfit', variantId: 'outfit-1', layer: 'body' }).editSource?.filename, 'sprite.png')
 const fallbackRegistration = characterRegistrationFrame({
   ...draft,
   headRegistration: undefined,

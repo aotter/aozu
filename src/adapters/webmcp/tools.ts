@@ -19,12 +19,16 @@ export async function bindMantleWebMcpTools(
   document: Document,
   plan: RuntimePlan,
   invoke: MantleToolInvoker,
+  allowedTriggers?: ReadonlySet<string>,
+  afterInvoke?: (value: unknown) => void,
 ): Promise<(() => void) | null> {
   const modelContext = (document as WebMcpDocument).modelContext
   if (!modelContext) return null
 
   const capabilities = projectCallableCapabilities(plan, { surface: 'public' })
-    .filter((capability): capability is ProcedureCallableCapability => capability.kind === 'procedure')
+    .filter((capability): capability is ProcedureCallableCapability => capability.kind === 'procedure'
+      && (!allowedTriggers || allowedTriggers.has(capability.trigger)))
+  if (allowedTriggers && capabilities.length !== allowedTriggers.size) throw new Error('WebMCP catalog is incomplete')
   const binding = await bindWebMcp({
     modelContext,
     capabilities,
@@ -33,6 +37,7 @@ export async function bindMantleWebMcpTools(
       if (capability.kind !== 'procedure') throw new Error('Unsupported WebMCP capability')
       const result = await invoke(capability.trigger, input)
       if (!result.ok) throw new Error(result.diagnostic.message, { cause: result.diagnostic })
+      afterInvoke?.(result.data)
       return result.data
     },
   })

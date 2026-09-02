@@ -13,7 +13,7 @@ assert.deepEqual(Object.keys(plan.procedures).sort(), ['inspect-companion', 'res
 assert.equal(plan.procedures["submit-companion-action"]?.manifest.spec.handler.kind, "ref")
 assert.equal(authoring.triggers["select-experience-draft"]?.target, "select-experience-draft")
 assert.equal(authoring.triggers['inspect-workspace']?.target, 'inspect-workspace')
-assert.equal(authoring.triggers['navigate-companion']?.target, 'navigate-companion')
+assert.equal(authoring.triggers['navigate-character']?.target, 'navigate-character')
 assert.equal(authoring.triggers['create-local-companion']?.target, 'create-local-companion')
 assert.equal(authoring.triggers["submit-experience-candidate"]?.target, "submit-experience-candidate")
 const validate = (collection: keyof typeof plan.schemas, data: Record<string, unknown>) =>
