@@ -178,5 +178,5 @@ export async function exportCharacterDraftZip(
     files['character.atlas.json'] = json(atlas.data)
   }
   files['README.md'] = strToU8('# Companion Authoring Draft\n\nLossless local workspace backup. A TexturePacker/Pixi-compatible atlas is included when current layers can be compiled; `character-pack.json` is included once the draft is ready to install.\n')
-  return new Blob([zipSync(files, { level: 6 })], { type: 'application/zip' })
+  return new Blob([zipSync(files, { level: 0 })], { type: 'application/zip' })
 }

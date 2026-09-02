@@ -38,6 +38,7 @@ import {
   hasCurrentCharacterLayer,
   isCharacterDraftAssetCurrent,
   characterAssetPlacement,
+  characterDraftAtlasKey,
   characterHeadRegistration,
   characterRegistrationFrame,
   resolveCharacterDraftAtlasSources,
@@ -95,6 +96,12 @@ export function createApplication(document: Document) {
     const key = `${bundleId}:${layers.map(({ id, transform }) => `${id}:${transform.x}:${transform.y}:${transform.scale}`).join('|')}`
     if (runtimeAtlas?.key !== key) runtimeAtlas = { key, value: compileCharacterTextureAtlas(layers) }
     return runtimeAtlas.value
+  }
+  let authoringAtlas: { key: string; value: ReturnType<typeof compileCharacterTextureAtlas> } | undefined
+  const compileAuthoringAtlas = (draft: CharacterDraft) => {
+    const key = characterDraftAtlasKey(draft)
+    if (authoringAtlas?.key !== key) authoringAtlas = { key, value: compileCharacterTextureAtlas(resolveCharacterDraftAtlasSources(draft)) }
+    return authoringAtlas.value
   }
   let starterPackages: ReturnType<typeof loadStarterCatalog> | undefined
   const loadStarters = () => starterPackages ??= loadStarterCatalog(
@@ -345,7 +352,7 @@ export function createApplication(document: Document) {
       return setCharacterVariantTransform(characterDrafts, draft.id, group, variantId, draft.updatedAt, transform)
     },
     prepareCharacter: (draft: CharacterDraft) => reviewCharacterDraft(inspectCharacterImage, draft),
-    compileCharacterAtlas: (draft: CharacterDraft) => compileCharacterTextureAtlas(resolveCharacterDraftAtlasSources(draft)),
+    compileCharacterAtlas: compileAuthoringAtlas,
     listCharacterPacks: () => listInstalledCharacterPacks(characterPacks, inspectCharacterImage),
     async inspectCreation(draftId: string) {
       const { draft, character, candidate } = await resolveLocalCreation(draftId)
@@ -409,7 +416,7 @@ export function createApplication(document: Document) {
       return exportCharacterDraftZip(
         current,
         await openExperienceDraft(draftId),
-        await compileCharacterTextureAtlas(resolveCharacterDraftAtlasSources(current)),
+        await compileAuthoringAtlas(current),
       )
     },
     async submitAction(actionId: string, expectedRevision: number, idempotencyKey: string = crypto.randomUUID()) {
