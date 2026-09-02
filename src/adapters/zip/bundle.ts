@@ -32,7 +32,7 @@ type Descriptor = {
 }
 
 const json = (value: unknown) => strToU8(JSON.stringify(value))
-const parseJson = <T>(bytes: Uint8Array, label: string): T => {
+export const parseZipJson = <T>(bytes: Uint8Array, label: string): T => {
   try {
     const value: unknown = JSON.parse(strFromU8(bytes))
     const pending = [{ value, depth: 0 }]
@@ -64,7 +64,13 @@ function portablePath(path: string) {
     /^assets\/[A-Za-z0-9%._~-]+$/.test(path)
 }
 
-export function preflightPortableZip(bytes: Uint8Array) {
+function draftPath(path: string) {
+  return path === 'draft.json' || path === 'experience-draft.json' || path === 'character-pack.json' ||
+    path === 'character.atlas.png' || path === 'character.atlas.json' || path === 'README.md' ||
+    /^assets\/[a-z0-9][a-z0-9_-]*\.png$/.test(path)
+}
+
+export function companionArchiveKind(bytes: Uint8Array): 'portable' | 'character-draft' {
   if (bytes.byteLength > MAX_ARCHIVE) throw new Error('Archive is too large')
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   let eocd = -1
@@ -94,13 +100,31 @@ export function preflightPortableZip(bytes: Uint8Array) {
     const end = offset + 46 + nameLength + extraLength + commentLength
     if (end > bytes.length) throw new Error('Invalid ZIP entry')
     const name = decoder.decode(bytes.subarray(offset + 46, offset + 46 + nameLength))
-    if ((flags & 1) || (method !== 0 && method !== 8) || !safePath(name) || !portablePath(name) || names.has(name) || size > MAX_FILE) throw new Error(`Unsafe ZIP entry: ${name}`)
-    names.add(name)
+    const path = name.endsWith('/') ? name.slice(0, -1) : name
+    if ((flags & 1) || (method !== 0 && method !== 8) || !safePath(path) || names.has(name) || size > MAX_FILE) throw new Error(`Unsafe ZIP entry: ${name}`)
+    if (!name.endsWith('/')) names.add(name)
     expanded += size
     if (expanded > MAX_EXPANDED) throw new Error('Expanded archive is too large')
     offset = end
   }
-  if (!names.has('bundle.json') || !names.has('integrity.json')) throw new Error('Portable bundle files are missing')
+  const portable = names.has('bundle.json') || names.has('integrity.json')
+  const draft = names.has('draft.json')
+  if (portable && draft) throw new Error('The ZIP mixes a Companion bundle with an authoring draft')
+  if (portable) {
+    if (!names.has('bundle.json')) throw new Error('The Companion bundle is incomplete: bundle.json is missing')
+    if (!names.has('integrity.json')) throw new Error('The Companion bundle is incomplete: integrity.json is missing')
+    for (const name of names) if (!portablePath(name)) throw new Error(`Unsafe ZIP entry: ${name}`)
+    return 'portable'
+  }
+  if (draft) {
+    for (const name of names) if (!draftPath(name)) throw new Error(`Unsafe ZIP entry: ${name}`)
+    return 'character-draft'
+  }
+  throw new Error('Unsupported Companion ZIP: expected bundle.json or draft.json')
+}
+
+export function preflightPortableZip(bytes: Uint8Array) {
+  if (companionArchiveKind(bytes) !== 'portable') throw new Error('Portable bundle files are missing')
 }
 
 export async function exportPortableBundle(): Promise<Blob> {
@@ -148,7 +172,8 @@ export async function stagePortableBundle(blob: Blob): Promise<StagedCandidatePr
   const archive = new Uint8Array(await blob.arrayBuffer())
   preflightPortableZip(archive)
   const files = unzipSync(archive)
-  const integrity = parseJson<{ version: number; files: IntegrityEntry[] }>(files['integrity.json']!, 'integrity manifest')
+  for (const path of Object.keys(files)) if (path.endsWith('/')) delete files[path]
+  const integrity = parseZipJson<{ version: number; files: IntegrityEntry[] }>(files['integrity.json']!, 'integrity manifest')
   if (integrity.version !== 1 || !Array.isArray(integrity.files)) throw new Error('Unsupported integrity manifest')
   const expectedPaths = new Set(Object.keys(files).filter((path) => path !== 'integrity.json'))
   const integrityByPath = new Map<string, IntegrityEntry>()
@@ -162,7 +187,7 @@ export async function stagePortableBundle(blob: Blob): Promise<StagedCandidatePr
     integrityByPath.set(item.path, item)
   }
   if (expectedPaths.size) throw new Error('Unlisted archive file')
-  const descriptor = parseJson<Descriptor>(files['bundle.json']!, 'bundle descriptor')
+  const descriptor = parseZipJson<Descriptor>(files['bundle.json']!, 'bundle descriptor')
   if (
     descriptor.version !== 1 || !Array.isArray(descriptor.assets) ||
     !descriptor.semanticFingerprint || !descriptor.identity || !descriptor.metadata
@@ -192,7 +217,7 @@ export async function stagePortableBundle(blob: Blob): Promise<StagedCandidatePr
   if (entryFiles.length !== Object.keys(validated.plan.schemas).length) throw new Error('Entry collections are incomplete')
   for (const [path, bytes] of entryFiles) {
     const collection = path.slice('entries/'.length, -'.json'.length)
-    const values = parseJson<Entry[]>(bytes, path)
+    const values = parseZipJson<Entry[]>(bytes, path)
     const schema = validated.plan.schemas[collection]?.manifest
     if (!schema || !Array.isArray(values)) throw new Error(`Unknown entry collection: ${collection}`)
     for (const entry of values) {

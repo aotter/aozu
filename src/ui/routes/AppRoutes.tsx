@@ -5,7 +5,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 
 import type { Application } from '@/bootstrap.ts'
 import type { StagedCandidatePreview } from '@/core/application/candidate.ts'
-import { activeDraftId, workspacePath, type WorkspaceDestination } from '@/core/application/workspace.ts'
+import { activeDraftId, workspacePath, workspacePhase, type WorkspaceDestination } from '@/core/application/workspace.ts'
 import { AppHeader } from '@/ui/AppHeader'
 import { AppMenu } from '@/ui/AppMenu'
 import { CandidateReviewPage } from '@/ui/pages/CandidateReviewPage'
@@ -23,6 +23,7 @@ export function AppRoutes({ application }: { application: Application }) {
   const navigate = useNavigate()
   const location = useLocation()
   const draftId = activeDraftId(location.pathname)
+  const phase = workspacePhase(location.pathname)
   const [startup, setStartup] = useState<Awaited<ReturnType<Application['loadStartup']>>>()
   const [loadError, setLoadError] = useState(false)
   const [preview, setPreview] = useState<StagedCandidatePreview>()
@@ -30,13 +31,14 @@ export function AppRoutes({ application }: { application: Application }) {
     const next = await application.loadStartup()
     flushSync(() => setStartup(next))
   }, [application])
+  const openCharacterDraft = useCallback(() => application.openCharacterDraft(draftId ?? ''), [application, draftId])
 
   useEffect(() => {
     void refresh().catch((error) => {
       console.error('Companion startup failed', error)
       setLoadError(true)
     })
-  }, [location.pathname, refresh])
+  }, [draftId, phase, refresh])
 
   useEffect(() => {
     const onUpdate = () => void refresh()
@@ -101,7 +103,7 @@ export function AppRoutes({ application }: { application: Application }) {
     navigate(workspacePath('character-review', draftId), { state: location.state })
   }
   const characterDraftPage = draftId ? <CharacterDraftPage
-    openDraft={() => application.openCharacterDraft(draftId)}
+    openDraft={openCharacterDraft}
     updateDraft={application.updateCharacterDraft}
     saveAsset={application.saveCharacterAsset}
     setVariantTransform={application.setCharacterVariantTransform}
@@ -119,7 +121,13 @@ export function AppRoutes({ application }: { application: Application }) {
     ? startup.companion.name
     : location.pathname.endsWith('/review') ? review?.name : undefined
   const importCandidate = async (blob: Blob, returnTo: FlowReturnTo) => {
-    setPreview(await application.prepareImport(blob))
+    const imported = await application.prepareImport(blob)
+    if (imported.kind === 'draft') {
+      await refresh()
+      navigate(workspacePath('character-expressions', imported.draftId), { state: { returnTo } })
+      return
+    }
+    setPreview(imported.preview)
     navigate('/review', { state: { returnTo } })
   }
   const headerActions = location.pathname === '/companion' && startup.status === 'main' ? <AppMenu

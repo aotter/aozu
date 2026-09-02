@@ -562,7 +562,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-character-contract.yaml',
     envelope('Procedure', 'inspect-character-contract', {
       title: 'Inspect Character Contract',
-      description: 'Required before generating or changing character art. Optionally name one target to receive its exact reference layer, alpha-mask diagnostics, z-order, canonical freshness, and alignment mode. A registered head anchor may include an experimental native pixel-and-edge correlation suggestion; it is never applied or approved automatically. Outfits are complete dressed character-skin replacements, not clothing-only overlays. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
+      description: 'Required before generating or changing character art. Optionally name one target to receive its exact reference layer, deterministic editable-region mask, alpha-mask diagnostics, z-order, canonical freshness, and alignment mode. Mask transparency marks editable pixels; opaque pixels are protected. Accepted expression and outfit proposals are deterministically stitched into the edit source, after which protectedRegionDelta must be 0. A registered head anchor may include an experimental native pixel-and-edge correlation suggestion; it is never applied or approved automatically. Outfits are complete dressed character-skin replacements, not clothing-only overlays. Props have no editable-region mask. The website never generates, removes backgrounds, resizes, or guesses geometry.',
       input: {
         ...objectSchema({
           draftId: { type: 'string', minLength: 1 },
@@ -587,7 +587,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/submit-character-asset-candidate.yaml',
     envelope('Procedure', 'submit-character-asset-candidate', {
       title: 'Submit Character Asset Candidate',
-      description: 'Fill one layer of a character variant with a final PNG candidate. Inspect the contract first. Outfits must contain the complete dressed character because they replace character-skin; clothing-only images are rejected. Whole-head expressions include the complete aligned head, hairstyle, and facial hair. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. Send an exact 512×768 RGBA data:image/png;base64 URL with real transparency. Alpha-mask preflight rejects structurally invalid candidates without mutating the draft. A valid candidate is staged only and is never approved or activated.',
+      description: 'Fill one layer of a character variant with a final PNG proposal. Inspect the contract first. Outfits must contain the complete dressed character because they replace character-skin; clothing-only images are rejected. Whole-head expressions include the complete aligned head, hairstyle, and facial hair. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. Send an exact 512×768 RGBA data:image/png;base64 URL with real transparency. Alpha-mask preflight rejects structurally invalid candidates without mutating the draft. When an edit source and editable region exist, the website deterministically stitches only authorized proposal pixels before staging. A valid result is never approved or activated automatically.',
       input: objectSchema({
         draftId: { type: 'string', minLength: 1 },
         group: { enum: CHARACTER_VARIANT_GROUPS },

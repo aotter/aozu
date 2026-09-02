@@ -48,15 +48,15 @@ import {
   saveCharacterDraftAsset,
   reviewCharacterDraft,
 } from './core/application/character-creation.ts'
-import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
-import { inspectCharacterImage, readCharacterAlphaMask, readCharacterVisualSample, renderCharacterCompositeDataUrl } from './adapters/browser/character-image.ts'
+import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
+import { inspectCharacterImage, readCharacterAlphaMask, readCharacterPixels, readCharacterVisualSample, renderCharacterCompositeDataUrl, renderCharacterEditMaskDataUrl, renderStitchedCharacterEditBlob } from './adapters/browser/character-image.ts'
 import { compileCharacterTextureAtlas } from './adapters/browser/character-atlas.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
 import { planItemEffects } from './core/application/items.ts'
 import { loadSceneProjection } from './core/application/scene.ts'
-import { exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
-import { exportCharacterDraftZip } from './adapters/zip/character-draft.ts'
+import { companionArchiveKind, exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
+import { exportCharacterDraftZip, readCharacterDraftZip } from './adapters/zip/character-draft.ts'
 import {
   createBlankExperienceDraftData,
   createExperienceDraftData,
@@ -321,7 +321,7 @@ export function createApplication(document: Document) {
     },
     openCharacterDraft,
     async updateCharacterDraft(draft: CharacterDraft) {
-      const next = { ...draft, approvedAt: undefined, updatedAt: Date.now() }
+      const next = { ...draft, approvedAt: undefined, updatedAt: Math.max(Date.now(), draft.updatedAt + 1) }
       await characterDrafts.put(next)
       return next
     },
@@ -433,7 +433,34 @@ export function createApplication(document: Document) {
       return { path: 'cold' as const, turn }
     },
     exportData: exportPortableBundle,
-    prepareImport: stagePortableBundle,
+    async prepareImport(blob: Blob) {
+      const kind = companionArchiveKind(new Uint8Array(await blob.arrayBuffer()))
+      if (kind === 'portable') return { kind: 'candidate' as const, preview: await stagePortableBundle(blob) }
+      const imported = await readCharacterDraftZip(blob, inspectCharacterImage)
+      const experience = imported.experience
+        ? { schemaVersion: 1 as const, revision: 0, character: null, story: structuredClone(imported.experience.story) }
+        : createBlankExperienceDraftData()
+      const result = await (await getAuthoringRuntime()).invokeTrigger<Entry>({
+        trigger: 'select-experience-draft',
+        input: experience,
+        ctx: { user: null, staff: null, env: {} },
+      })
+      if (!result.ok) throw new Error(result.diagnostic.message ?? 'Experience Draft could not be restored')
+      const savedExperience = toExperienceDraft(result.data)
+      try {
+        await characterDrafts.put({ ...imported.draft, id: savedExperience.id, updatedAt: Date.now() })
+      } catch (error) {
+        await createIndexedDbEntryRepository(AUTHORING_NAMESPACE).delete({
+          id: savedExperience.id,
+          collection: 'experience-drafts',
+          expectedVersion: result.data.version,
+          expectedStatus: result.data.status,
+        })
+        throw error
+      }
+      await requestPersistentStorage(browser?.navigator.storage)
+      return { kind: 'draft' as const, draftId: savedExperience.id }
+    },
   }
   async function createLocalCompanion(rawInput: unknown) {
     const { draftId } = rawInput as { draftId: string }
@@ -665,12 +692,14 @@ export function createApplication(document: Document) {
     const asset = variant?.layers[input.layer]
     const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
     const headRegistration = characterHeadRegistration(draft)
+    const registrationFrame = characterRegistrationFrame(draft)
     const expressionReference = headRegistration?.asset
     const alignmentReference = input.group === 'expression' && headRegistration?.variant.id !== input.variantId ? expressionReference
       : input.group === 'outfit' ? canonical : undefined
     const referenceTransform = input.group === 'expression' ? headRegistration?.transform : undefined
     const editSource = input.group === 'expression' ? expressionReference ?? canonical
       : input.group === 'outfit' ? canonical : undefined
+    const editSourceTransform = input.group === 'expression' && expressionReference ? headRegistration?.transform : undefined
     const transform = variant?.transform ?? { x: 0, y: 0, scale: 1 }
     const measurement = asset ? measureCharacterMaskAlignment(
       input.group,
@@ -698,6 +727,15 @@ export function createApplication(document: Document) {
     const suggestedTransform = highConfidenceCharacterAutoFit(measurement)
     const visualFit = asset && canonical && input.group === 'expression' && headRegistration?.variant.id === input.variantId
       ? suggestCharacterVisualRegistration(await readCharacterVisualSample(canonical.blob), await readCharacterVisualSample(asset.blob), transform)
+      : null
+    const editableRegion = input.group === 'expression' ? registrationFrame.editableRegions.expression
+      : input.group === 'outfit' ? registrationFrame.editableRegions.outfit : undefined
+    const protectedRegionDelta = asset && alignmentReference && editableRegion
+      ? measureProtectedRegionDelta(
+          await readCharacterPixels(alignmentReference.blob, referenceTransform),
+          await readCharacterPixels(asset.blob, transform),
+          editableRegion,
+        )
       : null
     const nextActions = !asset || !variant || !isCharacterDraftAssetCurrent(draft, variant, input.layer) ? [{
       tool: 'submit_character_asset_candidate', required: true, reason: 'Submit the final exact-canvas RGBA target layer.', input: { draftId: draft.id, group: input.group, variantId: input.variantId, layer: input.layer, expectedUpdatedAt: draft.updatedAt },
@@ -736,12 +774,32 @@ export function createApplication(document: Document) {
         editSource: editSource ? {
           filename: editSource.filename,
           sha256: editSource.inspection.sha256,
-          visibleBounds: editSource.inspection.visibleBounds,
-          dataUrl: await readDataUrl(editSource.blob),
+          coordinates: 'final-canvas',
+          visibleBounds: editSource.inspection.visibleBounds && editSourceTransform
+            ? transformCharacterBounds(editSource.inspection.visibleBounds, editSourceTransform)
+            : editSource.inspection.visibleBounds,
+          dataUrl: editSourceTransform ? await renderCharacterCompositeDataUrl([{
+            id: 'edit-source',
+            blobId: 'edit-source',
+            slot: 'expression-head',
+            slotOrder: 35,
+            layerOrder: 0,
+            transform: editSourceTransform,
+            blob: editSource.blob,
+          }]) : await readDataUrl(editSource.blob),
         } : null,
         placementReference: placementLayers.length ? {
           layerCount: placementLayers.length,
           ...(placementUsesEditSource ? { useEditSource: true } : { dataUrl: await renderCharacterCompositeDataUrl(placementLayers) }),
+        } : null,
+        editableRegion: editableRegion ? {
+          ...editableRegion,
+          mask: {
+            filename: `${input.group}-${input.variantId}-${input.layer}-edit-mask.png`,
+            mediaType: 'image/png',
+            semantics: 'transparent-editable-opaque-protected',
+            dataUrl: renderCharacterEditMaskDataUrl(editableRegion),
+          },
         } : null,
         preserveCanvasCoordinates: true,
         output: {
@@ -764,6 +822,7 @@ export function createApplication(document: Document) {
         candidateBounds: currentBounds,
         overflow,
         measurement,
+        protectedRegionDelta,
         autoFit: suggestedTransform ? { confidence: 'high', transform: suggestedTransform } : null,
         visualFit,
         registration: input.group === 'expression' ? {
@@ -815,7 +874,8 @@ export function createApplication(document: Document) {
             'An outfit replaces the character-skin slot: generate the complete dressed character, never a clothing-only overlay. Preserve pose, body center, head position, and foot line. Generate props against the returned current composite.',
             'Generate at 1024×1536 and deterministically downsample 50% to the exact 512×768 canvas. Never crop, reframe, or recenter.',
             'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
-            'Submit only final RGBA PNG layers. The website validates but never repairs candidate images.',
+            'When the target returns an editableRegion mask, transparent pixels are editable and opaque pixels are protected. The website deterministically stitches accepted expression and outfit proposals into their edit source; protectedRegionDelta must then be 0.',
+            'Submit only full-canvas RGBA PNG proposals. The website never generates, removes backgrounds, or guesses geometry; it only compiles pixels authorized by the deterministic editable region.',
             'Expression layers replace the whole aligned head, including the same fixed hairstyle and facial hair. Hair and facial hair are not customizable slots.',
             'No expression overlay means the default face baked into the body. Optional whole-head variants include happy, sad, angry, surprised, and sleepy; additional variants are allowed.',
             'Outfits are full-body variants. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. A prop may be positioned anywhere, including on the head or in a hand.',
@@ -894,9 +954,25 @@ export function createApplication(document: Document) {
           input: { draftId: current.id, group: target.group, variantId: target.variantId, layer: target.layer, expectedUpdatedAt: current.updatedAt },
         }],
       }
-      let draft = await saveCharacterDraftAsset(characterDrafts, async () => inspection, current, target, blob, filename, 'agent')
       const autoFit = highConfidenceCharacterAutoFit(alignment)
-      if (autoFit && target.group !== 'body') {
+      const registrationFrame = characterRegistrationFrame(current)
+      const editableRegion = target.group === 'expression' ? registrationFrame.editableRegions.expression
+        : target.group === 'outfit' ? registrationFrame.editableRegions.outfit : undefined
+      const stitchReference = target.group === 'expression' ? expressionReference
+        : target.group === 'outfit' ? canonical : undefined
+      const stitchedBlob = stitchReference && editableRegion
+        ? await renderStitchedCharacterEditBlob(
+            stitchReference.blob,
+            blob,
+            editableRegion,
+            target.group === 'expression' ? headRegistration?.transform : undefined,
+            autoFit ?? undefined,
+          )
+        : null
+      const savedBlob = stitchedBlob ?? blob
+      const savedInspection = stitchedBlob ? await inspectCharacterImage(stitchedBlob) : inspection
+      let draft = await saveCharacterDraftAsset(characterDrafts, async () => savedInspection, current, target, savedBlob, filename, 'agent')
+      if (!stitchedBlob && autoFit && target.group !== 'body') {
         draft = await setCharacterVariantTransform(characterDrafts, current.id, target.group, target.variantId, draft.updatedAt, autoFit)
       }
       const savedVariant = draft.variants.find(({ group, id }) => group === target.group && id === target.variantId)!
@@ -908,17 +984,18 @@ export function createApplication(document: Document) {
           accepted: true,
           target: { ...target, label: savedVariant.label },
           filename,
-          byteLength: bytes.byteLength,
+          byteLength: savedBlob.size,
           inspection: {
-            width: inspection.width,
-            height: inspection.height,
-            genuineRgba: inspection.genuineRgba,
-            hasTransparentPixels: inspection.hasTransparentPixels,
-            visibleBounds: inspection.visibleBounds,
-            visiblePixelCount: inspection.visiblePixelCount,
+            width: savedInspection.width,
+            height: savedInspection.height,
+            genuineRgba: savedInspection.genuineRgba,
+            hasTransparentPixels: savedInspection.hasTransparentPixels,
+            visibleBounds: savedInspection.visibleBounds,
+            visiblePixelCount: savedInspection.visiblePixelCount,
           },
           alignment: specification?.alignment,
-          autoFit: autoFit ? { applied: true, transform: autoFit } : { applied: false },
+          compositor: stitchedBlob ? { applied: true, protectedRegionDelta: specification?.alignment.protectedRegionDelta } : { applied: false },
+          autoFit: autoFit ? { applied: true, transform: autoFit, bakedIntoAsset: Boolean(stitchedBlob) } : { applied: false },
         },
         nextActions: specification?.nextActions ?? characterNextActions(draft),
       }

@@ -1,7 +1,32 @@
-import type { CharacterAlphaMask, CharacterVisualSample } from '../../core/application/character-alignment.ts'
-import { CHARACTER_RIG, type CharacterAssetInspection, type ResolvedCharacterLayer } from '../../core/domain/character.ts'
+import { stitchCharacterEditPixels, type CharacterAlphaMask, type CharacterVisualSample } from '../../core/application/character-alignment.ts'
+import type { CharacterEditableRegion } from '../../core/application/character-creation.ts'
+import { CHARACTER_RIG, IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetInspection, type CharacterVariantTransform, type ResolvedCharacterLayer } from '../../core/domain/character.ts'
 
 const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+const pngBlob = (canvas: HTMLCanvasElement) => new Promise<Blob>((resolve, reject) => canvas.toBlob(
+  (blob) => blob ? resolve(blob) : reject(new Error('Could not encode character image')),
+  'image/png',
+))
+
+const readCharacterPixelsAt = async (blob: Blob, width: number, height: number, transform: CharacterVariantTransform) => {
+  const bitmap = await createImageBitmap(blob)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) throw new Error('Canvas is unavailable')
+  context.setTransform(
+    transform.scale * width / CHARACTER_RIG.canvas.width,
+    0,
+    0,
+    transform.scale * height / CHARACTER_RIG.canvas.height,
+    transform.x * width / CHARACTER_RIG.canvas.width,
+    transform.y * height / CHARACTER_RIG.canvas.height,
+  )
+  context.drawImage(bitmap, 0, 0)
+  bitmap.close()
+  return { width, height, rgba: context.getImageData(0, 0, width, height).data }
+}
 
 export function characterPixelStats(pixels: Uint8ClampedArray, width: number, height: number) {
   let transparent = false
@@ -72,16 +97,39 @@ export async function readCharacterAlphaMask(blob: Blob): Promise<CharacterAlpha
   return { width: canvas.width, height: canvas.height, alpha }
 }
 
-export async function readCharacterVisualSample(blob: Blob): Promise<CharacterVisualSample> {
-  const bitmap = await createImageBitmap(blob)
+export async function readCharacterVisualSample(
+  blob: Blob,
+  transform: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM,
+): Promise<CharacterVisualSample> {
+  return readCharacterPixelsAt(blob, CHARACTER_RIG.canvas.width / 8, CHARACTER_RIG.canvas.height / 8, transform)
+}
+
+export async function readCharacterPixels(
+  blob: Blob,
+  transform: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM,
+): Promise<CharacterVisualSample> {
+  return readCharacterPixelsAt(blob, CHARACTER_RIG.canvas.width, CHARACTER_RIG.canvas.height, transform)
+}
+
+export async function renderStitchedCharacterEditBlob(
+  reference: Blob,
+  candidate: Blob,
+  region: CharacterEditableRegion,
+  referenceTransform: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM,
+  candidateTransform: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM,
+) {
+  const stitched = stitchCharacterEditPixels(
+    await readCharacterPixels(reference, referenceTransform),
+    await readCharacterPixels(candidate, candidateTransform),
+    region,
+  )
   const canvas = document.createElement('canvas')
-  canvas.width = CHARACTER_RIG.canvas.width / 8
-  canvas.height = CHARACTER_RIG.canvas.height / 8
-  const context = canvas.getContext('2d', { willReadFrequently: true })
+  canvas.width = stitched.width
+  canvas.height = stitched.height
+  const context = canvas.getContext('2d')
   if (!context) throw new Error('Canvas is unavailable')
-  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-  bitmap.close()
-  return { width: canvas.width, height: canvas.height, rgba: context.getImageData(0, 0, canvas.width, canvas.height).data }
+  context.putImageData(new ImageData(new Uint8ClampedArray(stitched.rgba), stitched.width, stitched.height), 0, 0)
+  return pngBlob(canvas)
 }
 
 export async function renderCharacterCompositeDataUrl(
@@ -100,5 +148,26 @@ export async function renderCharacterCompositeDataUrl(
     context.restore()
     bitmap.close()
   }
+  return canvas.toDataURL('image/png')
+}
+
+export function renderCharacterEditMaskDataUrl(region: CharacterEditableRegion) {
+  const canvas = document.createElement('canvas')
+  canvas.width = CHARACTER_RIG.canvas.width
+  canvas.height = CHARACTER_RIG.canvas.height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Canvas is unavailable')
+  context.fillStyle = '#fff'
+  if (region.shape.kind !== 'outside-ellipse') {
+    context.fillRect(0, 0, canvas.width, canvas.height)
+    context.globalCompositeOperation = 'destination-out'
+  }
+  context.beginPath()
+  if (region.shape.kind !== 'rectangle') {
+    context.ellipse(region.shape.cx, region.shape.cy, region.shape.rx, region.shape.ry, 0, 0, Math.PI * 2)
+  } else {
+    context.rect(region.shape.x, region.shape.y, region.shape.width, region.shape.height)
+  }
+  context.fill()
   return canvas.toDataURL('image/png')
 }

@@ -4,6 +4,7 @@ import {
   type CharacterVariantGroup,
   type CharacterVariantTransform,
 } from '../domain/character.ts'
+import type { CharacterEditableRegion } from './character-creation.ts'
 
 export interface CharacterAlphaMask {
   width: number
@@ -21,6 +22,69 @@ type Bounds = { x: number; y: number; width: number; height: number }
 type MaskStats = { bounds?: Bounds; visiblePixels: number; edgeTouchPixels: number; center?: { x: number; y: number } }
 
 const round = (value: number) => Math.round(value * 10_000) / 10_000
+
+const characterEditWeight = (region: CharacterEditableRegion, x: number, y: number) => {
+  const distance = region.shape.kind === 'rectangle'
+    ? Math.min(x - region.shape.x, region.shape.x + region.shape.width - x, y - region.shape.y, region.shape.y + region.shape.height - y)
+    : (1 - Math.hypot((x - region.shape.cx) / region.shape.rx, (y - region.shape.cy) / region.shape.ry))
+      * Math.min(region.shape.rx, region.shape.ry)
+      * (region.shape.kind === 'outside-ellipse' ? -1 : 1)
+  return Math.max(0, Math.min(1, distance / 4))
+}
+
+export function measureProtectedRegionDelta(
+  reference: CharacterVisualSample,
+  candidate: CharacterVisualSample,
+  region: CharacterEditableRegion,
+) {
+  if (reference.width !== candidate.width || reference.height !== candidate.height) return null
+  let changedPixels = 0
+  let comparedPixels = 0
+  for (let y = 0; y < reference.height; y++) for (let x = 0; x < reference.width; x++) {
+    const rigX = (x + 0.5) * CHARACTER_RIG.canvas.width / reference.width
+    const rigY = (y + 0.5) * CHARACTER_RIG.canvas.height / reference.height
+    if (characterEditWeight(region, rigX, rigY) > 0) continue
+    const index = (y * reference.width + x) * 4
+    comparedPixels++
+    if ([0, 1, 2, 3].some((channel) => reference.rgba[index + channel] !== candidate.rgba[index + channel])) changedPixels++
+  }
+  return {
+    protectedChangeRatio: round(comparedPixels ? changedPixels / comparedPixels : 0),
+    changedPixels,
+    comparedPixels,
+    sample: { width: reference.width, height: reference.height },
+  }
+}
+
+export function stitchCharacterEditPixels(
+  reference: CharacterVisualSample,
+  candidate: CharacterVisualSample,
+  region: CharacterEditableRegion,
+): CharacterVisualSample {
+  if (reference.width !== candidate.width || reference.height !== candidate.height) throw new Error('Character edit images must use the same canvas')
+  const rgba = new Uint8ClampedArray(reference.rgba)
+  for (let y = 0; y < reference.height; y++) for (let x = 0; x < reference.width; x++) {
+    const weight = characterEditWeight(
+      region,
+      (x + 0.5) * CHARACTER_RIG.canvas.width / reference.width,
+      (y + 0.5) * CHARACTER_RIG.canvas.height / reference.height,
+    )
+    if (!weight) continue
+    const index = (y * reference.width + x) * 4
+    if (weight === 1) {
+      rgba.set(candidate.rgba.subarray(index, index + 4), index)
+      continue
+    }
+    const referenceAlpha = reference.rgba[index + 3]! / 255
+    const candidateAlpha = candidate.rgba[index + 3]! / 255
+    const alpha = referenceAlpha * (1 - weight) + candidateAlpha * weight
+    for (let channel = 0; channel < 3; channel++) rgba[index + channel] = alpha
+      ? Math.round((reference.rgba[index + channel]! * referenceAlpha * (1 - weight) + candidate.rgba[index + channel]! * candidateAlpha * weight) / alpha)
+      : 0
+    rgba[index + 3] = Math.round(alpha * 255)
+  }
+  return { width: reference.width, height: reference.height, rgba }
+}
 
 const maskStats = (mask: CharacterAlphaMask): MaskStats => {
   let minX = mask.width

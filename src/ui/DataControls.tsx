@@ -20,10 +20,14 @@ export function DataControls({
 }) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle')
+  const [error, setError] = useState('')
   const downloadLabel = exportLabel ?? t('data.export')
   const run = async (task: () => Promise<void>) => {
-    setStatus('busy')
-    try { await task(); setStatus('done') } catch { setStatus('error') }
+    setStatus('busy'); setError('')
+    try { await task(); setStatus('done') } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '')
+      setStatus('error')
+    }
   }
 
   return (
@@ -48,7 +52,9 @@ export function DataControls({
           }} />
         </label>
       </Button>}
-      {status !== 'idle' && <p role="status" className={exportIconOnly ? 'sr-only' : 'px-4 text-xs text-muted-foreground'}>{t(`data.${status}`)}</p>}
+      {status !== 'idle' && <p role={status === 'error' ? 'alert' : 'status'} className={exportIconOnly ? 'sr-only' : `px-4 text-xs ${status === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>
+        {status === 'error' ? `${t('data.error')}${error ? ` ${error}` : ''}` : t(`data.${status}`)}
+      </p>}
     </div>
   )
 }

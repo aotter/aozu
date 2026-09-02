@@ -76,23 +76,73 @@ const boundsCenter = ({ x, y, width, height }: NonNullable<CharacterAssetInspect
   y: y + height / 2,
 })
 
+type Bounds = NonNullable<CharacterAssetInspection['visibleBounds']>
+export type CharacterEditableRegion = {
+  source: 'registration-derived'
+  basis: 'head-anchor' | 'body-bounds-fallback'
+  shape:
+    | { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
+    | { kind: 'outside-ellipse'; cx: number; cy: number; rx: number; ry: number }
+    | { kind: 'rectangle'; x: number; y: number; width: number; height: number }
+}
+
+const regionNumber = (value: number) => Math.round(value * 100) / 100
+const editableRegions = (bodyBounds?: Bounds, headBounds?: Bounds) => {
+  if (!bodyBounds) return {}
+  const head = headBounds ?? {
+    x: bodyBounds.x + bodyBounds.width * 0.15,
+    y: bodyBounds.y,
+    width: bodyBounds.width * 0.7,
+    height: bodyBounds.height * 0.42,
+  }
+  const basis = headBounds ? 'head-anchor' as const : 'body-bounds-fallback' as const
+  return {
+    expression: {
+      source: 'registration-derived' as const,
+      basis,
+      shape: {
+        kind: 'ellipse' as const,
+        cx: regionNumber(head.x + head.width * 0.5),
+        cy: regionNumber(head.y + head.height * 0.55),
+        rx: regionNumber(head.width * 0.3),
+        ry: regionNumber(head.height * 0.28),
+      },
+    },
+    outfit: {
+      source: 'registration-derived' as const,
+      basis,
+      shape: {
+        kind: 'outside-ellipse' as const,
+        cx: regionNumber(head.x + head.width * 0.5),
+        cy: regionNumber(head.y + head.height * 0.5),
+        rx: regionNumber(head.width * Math.SQRT1_2),
+        ry: regionNumber(head.height * Math.SQRT1_2),
+      },
+    },
+  }
+}
+
 export function characterRegistrationFrame(draft: CharacterDraft) {
   const bodyBounds = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body?.inspection.visibleBounds
   const head = characterHeadRegistration(draft)
+  const headBounds = head?.asset.inspection.visibleBounds
+    ? transformCharacterBounds(head.asset.inspection.visibleBounds, head.transform)
+    : undefined
   return {
     canvas: { ...CHARACTER_RIG.canvas },
     ...(bodyBounds ? { bodyBounds: { ...bodyBounds }, bodyCenter: boundsCenter(bodyBounds), footLine: bodyBounds.y + bodyBounds.height - 1 } : {}),
-    ...(head?.asset.inspection.visibleBounds ? {
+    ...(head && headBounds ? {
       head: {
         variantId: head.variant.id,
         transform: { ...head.transform },
-        bounds: transformCharacterBounds(head.asset.inspection.visibleBounds, head.transform),
+        bounds: headBounds,
         calibration: {
           status: 'visual-required' as const,
           rebasesCurrentExpressions: true,
         },
       },
     } : {}),
+    editableRegions: editableRegions(bodyBounds, headBounds),
   }
 }
 
@@ -376,7 +426,7 @@ export async function saveCharacterDraftAsset(
       : target.group === 'expression' && !draft.headRegistration
         ? { headRegistration: { variantId: target.variantId } }
         : {}),
-    updatedAt: Date.now(),
+    updatedAt: Math.max(Date.now(), draft.updatedAt + 1),
   }
   await drafts.put(next)
   return next
@@ -484,6 +534,14 @@ export const resolveCharacterDraftAtlasSources = (draft: CharacterDraft): Charac
     blob: asset.blob,
     transform: variant.transform ? { ...variant.transform } : { ...IDENTITY_CHARACTER_TRANSFORM },
   })))
+
+export const characterDraftAtlasKey = (draft: CharacterDraft) => JSON.stringify(
+  draft.variants.flatMap((variant) => currentLayerEntries(draft, variant).map(([layer, asset]) => ({
+    id: assetKey(variant, layer),
+    sha256: asset.inspection.sha256,
+    transform: variant.transform ?? IDENTITY_CHARACTER_TRANSFORM,
+  }))).sort((left, right) => left.id.localeCompare(right.id)),
+)
 
 export function resolveCharacterDraftReferenceLayers(
   draft: CharacterDraft,
