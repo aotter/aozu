@@ -174,7 +174,7 @@ export async function exportCharacterDraftZip(
     // An unfinished draft is still a valid backup; character-pack.json appears once it is installable.
   }
   if (atlas) {
-    files['character.atlas.png'] = new Uint8Array(await atlas.image.arrayBuffer())
+    files[atlas.data.meta.image] = new Uint8Array(await atlas.image.arrayBuffer())
     files['character.atlas.json'] = json(atlas.data)
   }
   files['README.md'] = strToU8('# Companion Authoring Draft\n\nLossless local workspace backup. A TexturePacker/Pixi-compatible atlas is included when current layers can be compiled; `character-pack.json` is included once the draft is ready to install.\n')

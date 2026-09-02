@@ -43,10 +43,10 @@ draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')
 
 const experience = { id: draft.id, schemaVersion: 1 as const, revision: 0, character: null, story: null, createdAt: 1, updatedAt: 1 }
 const atlas = {
-  image: new Blob(['atlas'], { type: 'image/png' }),
+  image: new Blob(['atlas'], { type: 'image/webp' }),
   data: {
     frames: { 'body-base-body': { frame: { x: 2, y: 2, w: 10, h: 20 }, rotated: false as const, trimmed: true as const, spriteSourceSize: { x: 40, y: 20, w: 10, h: 20 }, sourceSize: { w: 512, h: 768 } } },
-    meta: { app: 'Companion' as const, version: '1' as const, image: 'character.atlas.png' as const, format: 'RGBA8888' as const, size: { w: 14, h: 24 }, scale: '1' as const },
+    meta: { app: 'Companion' as const, version: '1' as const, image: 'character.atlas.webp' as const, format: 'RGBA8888' as const, size: { w: 14, h: 24 }, scale: '1' as const },
   },
 }
 const draftZip = await exportCharacterDraftZip(draft, experience, atlas)
@@ -60,9 +60,9 @@ assert.deepEqual(archivedDraft.headRegistration, draft.headRegistration)
 assert.deepEqual(archivedDraft.variants.find(({ group, id }: { group: string; id: string }) => group === 'expression' && id === 'happy').transform, { x: 2, y: -3, scale: 1.01 })
 assert.deepEqual(archivedPack.appearances.find(({ id }: { id: string }) => id === 'expression-happy').layers[0].transform, { x: 2, y: -3, scale: 1.01 })
 assert.equal(strFromU8(draftArchive['assets/expression-happy-head.png']!), 'sprite')
-assert.equal(strFromU8(draftArchive['character.atlas.png']!), 'atlas')
+assert.equal(strFromU8(draftArchive['character.atlas.webp']!), 'atlas')
 assert.equal(JSON.parse(strFromU8(draftArchive['character.atlas.json']!)).frames['body-base-body'].spriteSourceSize.x, 40)
-assert.equal(archivedPack.atlas.image, 'character.atlas.png')
+assert.equal(archivedPack.atlas.image, 'character.atlas.webp')
 assert.equal(archivedPack.assets.find(({ id }: { id: string }) => id === 'body-base-body').atlasFrame, 'body-base-body')
 const restored = await readCharacterDraftZip(draftZip, async () => inspection)
 assert.equal(restored.draft.id, draft.id)

@@ -147,7 +147,7 @@ export interface CharacterTextureAtlas {
     meta: {
       app: 'Companion'
       version: '1'
-      image: 'character.atlas.png'
+      image: 'character.atlas.webp'
       format: 'RGBA8888'
       size: { w: number; h: number }
       scale: '1'
