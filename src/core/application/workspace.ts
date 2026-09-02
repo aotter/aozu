@@ -12,12 +12,28 @@ export const WORKSPACE_DESTINATIONS = {
 
 export type WorkspaceDestination = keyof typeof WORKSPACE_DESTINATIONS
 
+const DRAFT_DESTINATIONS = new Set<WorkspaceDestination>([
+  'character-expressions', 'character-outfits', 'character-props', 'character-review', 'create', 'experience-review',
+])
+
+export const activeDraftId = (pathname: string) => {
+  const match = /^\/drafts\/([^/]+)(?:\/|$)/.exec(pathname)
+  if (!match) return null
+  try { return decodeURIComponent(match[1]!) } catch { return null }
+}
+
+export const workspacePath = (destination: WorkspaceDestination, draftId?: string | null) =>
+  draftId && DRAFT_DESTINATIONS.has(destination)
+    ? `/drafts/${encodeURIComponent(draftId)}${WORKSPACE_DESTINATIONS[destination]}`
+    : WORKSPACE_DESTINATIONS[destination]
+
 export const workspacePhase = (pathname: string) => {
-  if (pathname.startsWith('/character')) return 'character'
-  if (pathname === '/starter') return 'starter'
-  if (pathname === '/review') return 'review'
-  if (pathname === '/create') return 'create'
-  if (pathname === '/companion') return 'play'
+  const path = activeDraftId(pathname) ? pathname.replace(/^\/drafts\/[^/]+/, '') : pathname
+  if (path.startsWith('/character')) return 'character'
+  if (path === '/starter') return 'starter'
+  if (path === '/review') return 'review'
+  if (path === '/create') return 'create'
+  if (path === '/companion') return 'play'
   return 'start'
 }
 

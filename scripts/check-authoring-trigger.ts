@@ -66,7 +66,7 @@ assert.equal(selected.ok, true)
 assert.equal(createdEntry?.collection, 'experience-drafts')
 assert.equal((await runtime.invokeTrigger({ trigger: 'inspect-workspace', input: {}, ctx: context })).ok, true)
 assert.equal((await runtime.invokeTrigger({ trigger: 'navigate-companion', input: { destination: 'start' }, ctx: context })).ok, true)
-assert.equal((await runtime.invokeTrigger({ trigger: 'create-local-companion', input: {}, ctx: context })).ok, true)
+assert.equal((await runtime.invokeTrigger({ trigger: 'create-local-companion', input: { draftId: 'draft:triggered' }, ctx: context })).ok, true)
 const candidate = {
   name: 'Triggered', seed: (await loadFocusStudioFixture()).starter.directions[0]!.seed,
   initialStageId: 'start', metrics: { xp: 0 }, flags: {}, itemDefinitions: [],
@@ -99,9 +99,10 @@ const invalid = await runtime.invokeTrigger({
 })
 assert.equal(invalid.ok, false)
 assert.equal(submittedInput, undefined)
-assert.equal((await runtime.invokeTrigger({ trigger: 'inspect-experience-contract', input: {}, ctx: context })).ok, true)
-assert.equal((await runtime.invokeTrigger({ trigger: 'inspect-character-contract', input: {}, ctx: context })).ok, true)
+assert.equal((await runtime.invokeTrigger({ trigger: 'inspect-experience-contract', input: { draftId: 'draft:triggered' }, ctx: context })).ok, true)
+assert.equal((await runtime.invokeTrigger({ trigger: 'inspect-character-contract', input: { draftId: 'draft:triggered' }, ctx: context })).ok, true)
 const character = {
+  draftId: 'draft:triggered',
   group: 'body', variantId: 'base', label: 'Base', layer: 'body',
   expectedUpdatedAt: 1,
   filename: 'base.png', dataUrl: 'data:image/png;base64,AAAA',
@@ -113,7 +114,7 @@ assert.equal((await runtime.invokeTrigger({
   trigger: 'submit-character-asset-candidate', input: { ...character, group: 'hat' }, ctx: context,
 })).ok, false)
 assert.equal(characterInput, undefined)
-const transform = { group: 'expression', variantId: 'happy', expectedUpdatedAt: 1, x: 2, y: -3, scale: 1.01 }
+const transform = { draftId: 'draft:triggered', group: 'expression', variantId: 'happy', expectedUpdatedAt: 1, x: 2, y: -3, scale: 1.01 }
 assert.equal((await runtime.invokeTrigger({ trigger: 'set-character-variant-transform', input: transform, ctx: context })).ok, true)
 assert.deepEqual(transformInput, transform)
 console.log('authoring triggers: ok')

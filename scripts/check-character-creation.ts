@@ -25,9 +25,12 @@ draft.selected = { expression: 'happy', outfit: 'outfit-1', props: ['prop-1', 'p
 draft.headRegistration = { variantId: 'happy' }
 draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.transform = { x: 2, y: -3, scale: 1.01 }
 
-const draftArchive = unzipSync(new Uint8Array(await (await exportCharacterDraftZip(draft)).arrayBuffer()))
+const experience = { id: draft.id, schemaVersion: 1 as const, revision: 0, character: null, story: null, createdAt: 1, updatedAt: 1 }
+const draftArchive = unzipSync(new Uint8Array(await (await exportCharacterDraftZip(draft, experience)).arrayBuffer()))
 const archivedDraft = JSON.parse(strFromU8(draftArchive['draft.json']!))
 const archivedPack = JSON.parse(strFromU8(draftArchive['character-pack.json']!))
+assert.equal(archivedDraft.id, draft.id)
+assert.equal(JSON.parse(strFromU8(draftArchive['experience-draft.json']!)).id, draft.id)
 assert.deepEqual(archivedDraft.selected, draft.selected)
 assert.deepEqual(archivedDraft.headRegistration, draft.headRegistration)
 assert.deepEqual(archivedDraft.variants.find(({ group, id }: { group: string; id: string }) => group === 'expression' && id === 'happy').transform, { x: 2, y: -3, scale: 1.01 })
@@ -139,7 +142,12 @@ const loaded = await loadCharacterProjection(
 assert.deepEqual(loaded?.map(({ slot }) => slot), ['character-skin', 'expression-head'])
 
 let savedDraft = structuredClone(draft)
-const drafts = { async get() { return savedDraft }, async put(next: typeof savedDraft) { savedDraft = structuredClone(next) }, async clear() {} }
+const drafts = {
+  async list() { return [savedDraft] },
+  async get(id: string) { return id === savedDraft.id ? savedDraft : null },
+  async put(next: typeof savedDraft) { savedDraft = structuredClone(next) },
+  async delete() {},
+}
 const replacementInspection = { ...inspection, sha256: 'b'.repeat(64), visibleBounds: { x: 40, y: 10, width: 430, height: 730 }, visiblePixelCount: 100 }
 savedDraft = await saveCharacterDraftAsset(
   drafts,
@@ -221,6 +229,7 @@ assert.deepEqual(visualFit.suggestedTransform, { x: 192, y: -32, scale: 1 })
 const staleUpdatedAt = savedDraft.updatedAt
 const transformed = await setCharacterVariantTransform(
   drafts,
+  savedDraft.id,
   'expression',
   'happy',
   staleUpdatedAt,
@@ -228,5 +237,5 @@ const transformed = await setCharacterVariantTransform(
 )
 assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 2, y: -3, scale: 0.505 })
 assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'angry')?.transform, { x: 2, y: -3, scale: 0.505 })
-await assert.rejects(() => setCharacterVariantTransform(drafts, 'expression', 'happy', staleUpdatedAt, { x: 0, y: 0, scale: 1 }), /changed/)
+await assert.rejects(() => setCharacterVariantTransform(drafts, savedDraft.id, 'expression', 'happy', staleUpdatedAt, { x: 0, y: 0, scale: 1 }), /changed/)
 console.log('character creation: ok')

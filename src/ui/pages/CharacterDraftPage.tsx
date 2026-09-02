@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
 
 import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterRegistrationFrame, hasCurrentCharacterLayer, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, transformCharacterBounds } from '@/core/application/character-creation.ts'
+import { workspacePath, type WorkspaceDestination } from '@/core/application/workspace.ts'
 import { IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetTarget, type CharacterDraft, type CharacterDraftVariant, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
 import { CharacterAlignmentRenderer, CharacterAssetImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
@@ -18,6 +19,9 @@ const characterCategories: CharacterCategory[] = [
   { id: 'outfits', group: 'outfit', icon: ShirtIcon },
   { id: 'props', group: 'prop', icon: ShapesIcon },
 ]
+const categoryDestinations: Record<CharacterCategoryId, WorkspaceDestination> = {
+  expressions: 'character-expressions', outfits: 'character-outfits', props: 'character-props',
+}
 const expressionIcons = ['happy', 'sad', 'angry', 'surprised', 'sleepy']
 const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
   if (group === 'expression') return `/assets/character-slots/expression-${expressionIcons.includes(variantId) ? variantId : 'happy'}.png`
@@ -38,7 +42,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
-  const { step } = useParams()
+  const { draftId, step } = useParams()
   const category = characterCategories.find(({ id }) => id === step)
   const [draft, setDraft] = useState<CharacterDraft>()
   const [loadError, setLoadError] = useState(false)
@@ -72,8 +76,8 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
     }
   }, [openDraft])
 
-  if (!step || step === 'identity' || step === 'accessories') return <Navigate to="/character/expressions" state={location.state} replace />
-  if (!category) return <Navigate to="/character/expressions" state={location.state} replace />
+  if (!step || step === 'identity' || step === 'accessories') return <Navigate to={workspacePath('character-expressions', draftId)} state={location.state} replace />
+  if (!category) return <Navigate to={workspacePath('character-expressions', draftId)} state={location.state} replace />
   if (loadError) return <StatusPage>{t('startup.error')}</StatusPage>
   if (!draft) return <StatusPage>{t('startup.loading')}</StatusPage>
 
@@ -229,7 +233,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
             size="icon"
             className="size-8 shrink-0 rounded-lg sm:size-9"
             aria-current={category?.id === id ? 'page' : undefined}
-            onClick={() => { setSelectedVariantKey(undefined); navigate(`/character/${id}`, { replace: true, state: location.state }) }}
+            onClick={() => { setSelectedVariantKey(undefined); navigate(workspacePath(categoryDestinations[id], draft.id), { replace: true, state: location.state }) }}
           >
             <Icon className="size-4" />
             <span className="sr-only">{t(`characterDraft.categories.${id}`)}</span>

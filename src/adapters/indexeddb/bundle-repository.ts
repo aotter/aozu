@@ -54,7 +54,7 @@ export function createIndexedDbBundleRepository() {
       if (!pointer) return null
       const record = await readBundle(database, pointer.bundleId)
       if (!record) throw new Error(`Pending review bundle missing: ${pointer.bundleId}`)
-      return { bundle: validateBundle(record), source: pointer.source, createdAt: pointer.createdAt }
+      return { bundle: validateBundle(record), source: pointer.source, draftId: pointer.draftId, createdAt: pointer.createdAt }
     },
 
     async listSaved(): Promise<BundleRecord[]> {

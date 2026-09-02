@@ -74,8 +74,10 @@ export function CandidateReviewPage({ preview, onApprove, onCancel, onDiscard }:
               <AlertDialogDescription>{t('candidate.discardDescription')}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={busy}>{t('common.close')}</AlertDialogCancel>
-              <AlertDialogAction variant="destructive" disabled={busy} onClick={() => void run(onDiscard)}>{t('candidate.discard')}</AlertDialogAction>
+              <AlertDialogCancel disabled={busy}>{t('common.cancel')}</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" disabled={busy} onClick={(event) => { event.preventDefault(); void run(onDiscard) }}>
+                {busy ? t('candidate.discarding') : t('candidate.discard')}
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>}

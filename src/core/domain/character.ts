@@ -66,7 +66,7 @@ export interface CharacterAssetTarget {
 }
 
 export interface CharacterDraft {
-  id: 'current'
+  id: string
   schemaVersion: 3
   packId: string
   name: string
