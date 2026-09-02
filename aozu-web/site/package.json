@@ -13,8 +13,9 @@
     "test:companion": "node --experimental-strip-types companion/scripts/check.ts"
   },
   "dependencies": {
-    "@aotter/mantle-runtime": "0.1.0-alpha.11",
-    "@aotter/mantle-spec": "0.1.0-alpha.11",
+    "@aotter/mantle-runtime": "0.1.0-alpha.14",
+    "@aotter/mantle-spec": "0.1.0-alpha.14",
+    "@aotter/mantle-web": "0.1.0-alpha.14",
     "fflate": "0.8.3",
     "idb": "^8.0.3",
     "next": "16.2.6",

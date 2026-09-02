@@ -1,4 +1,5 @@
 import type { AgentCapability } from '../../core/application/ports.ts'
+import type { WebMcpModelContext } from '@aotter/mantle-web/webmcp'
 import { CHARACTER_VARIANT_GROUPS, type CharacterAssetTarget, type CharacterVariantGroup, type CharacterVariantLayer } from '../../core/domain/character.ts'
 import { ADVENTURE_SCORE_KEY, parseAdventureScores } from '../../../adventure.ts'
 import { AOZU_FORGE_QUESTS, AOZU_FORGE_STARTER_ITEM_IDS, AOZU_ORIGIN_LOOP_STAGES, AOZU_PARTNERS, AOZU_WARDROBE_ITEMS } from '../../../aozu.ts'
@@ -7,6 +8,8 @@ export const AOZU_ACTIVITIES = ['meals', 'money', 'steps', 'travel', 'fitness', 
 const AOZU_LIFE_ACTIVITIES = ['meals', 'money', 'steps', 'fitness'] as const
 const AOZU_MEMORY_CATEGORIES = ['life', 'travel', 'writing', 'learning', 'bond'] as const
 const AOZU_FORGE_KEY = 'aozu:p0-forge-profile'
+const AOZU_CARD_KEY = 'aozu:p0-ability-cards'
+const AOZU_RECALL_KEY = 'aozu:p0-recalled-card'
 
 const readText = (value: unknown, label: string, maximum: number) => {
   if (typeof value !== 'string' || !value.trim() || value.length > maximum) throw new Error(`Invalid ${label}`)
@@ -20,22 +23,16 @@ const readIdempotencyKey = (value: unknown) => {
   return key
 }
 
-type ModelContext = {
-  registerTool(tool: {
-    name: string
-    title: string
-    description: string
-    inputSchema: object
-    annotations?: { readOnlyHint?: boolean }
-    execute(input: Record<string, unknown>): Promise<unknown>
-  }, options?: { signal?: AbortSignal }): Promise<void>
-}
+type WebMcpDocument = Document & { modelContext?: WebMcpModelContext }
+type LegacyWebMcpNavigator = Navigator & { modelContext?: WebMcpModelContext }
 
-type WebMcpDocument = Document & { modelContext?: ModelContext }
+const modelContextFor = (document: Document) =>
+  (document as WebMcpDocument).modelContext
+  ?? (document.defaultView?.navigator as LegacyWebMcpNavigator | undefined)?.modelContext
 
 export function createAgentCapability(document: Document): AgentCapability {
   return {
-    isAvailable: () => Boolean((document as WebMcpDocument).modelContext),
+    isAvailable: () => Boolean(modelContextFor(document)),
   }
 }
 
@@ -46,7 +43,7 @@ export function registerCompanionTools(document: Document, useCases: {
   submit(input: { actionId: string; expectedRevision: number; idempotencyKey: string }): Promise<unknown>
   resolve(input: { turnId: string; idempotencyKey: string; dialogue: string; effects: unknown }): Promise<unknown>
 }) {
-  const modelContext = (document as WebMcpDocument).modelContext
+  const modelContext = modelContextFor(document)
   if (!modelContext) return null
   const controller = new AbortController()
   const sendUiCommand = (detail: Record<string, unknown>) => {
@@ -54,7 +51,11 @@ export function registerCompanionTools(document: Document, useCases: {
   }
   const stageProposal = (proposal: Record<string, unknown>) => {
     sendUiCommand({ command: 'stage-proposal', proposal })
-    return { status: 'ok', data: { proposalId: proposal.id, state: 'awaiting-user-confirmation' } }
+    return {
+      status: 'ok',
+      data: { proposalId: proposal.id, state: 'awaiting-user-confirmation' },
+      nextActions: [{ tool: 'inspect_aozu_forge', required: true, reason: 'Call after the user confirms or rejects the visible AOZU proposal.' }],
+    }
   }
   void Promise.all([
     modelContext.registerTool({
@@ -76,6 +77,12 @@ export function registerCompanionTools(document: Document, useCases: {
               starterItemIds: AOZU_FORGE_STARTER_ITEM_IDS,
               loop: AOZU_ORIGIN_LOOP_STAGES,
             },
+            operations: {
+              dress: 'stage_aozu_outfit',
+              act: 'stage_aozu_life_event',
+              travel: ['stage_aozu_trip_plan', 'stage_aozu_checklist_completion'],
+              recall: 'stage_aozu_card_recall',
+            },
             rule: 'WebMCP stages proposals. The user confirms them in AOZU before points, journals, outfits, memories, or cards change.',
           },
         }
@@ -94,22 +101,55 @@ export function registerCompanionTools(document: Document, useCases: {
         const savedProfile = profile && typeof profile === 'object' ? profile as Record<string, unknown> : null
         const progress = typeof savedProfile?.progress === 'number' ? savedProfile.progress : 0
         const steps = Array.isArray(savedProfile?.steps) ? savedProfile.steps : []
+        const recalledCardId = storage?.getItem(AOZU_RECALL_KEY) ?? null
+        let cards: unknown[] = []
+        try {
+          const storedCards = JSON.parse(storage?.getItem(AOZU_CARD_KEY) ?? '[]')
+          cards = Array.isArray(storedCards) ? storedCards : []
+        } catch { cards = [] }
         return {
           status: 'ok',
           data: {
             profile,
+            current: await useCases.inspect(),
+            cards,
+            recalledCardId,
             partners: AOZU_PARTNERS.map(({ id, displayName, role, personality }) => ({ id, displayName, role, personality })),
             quests: AOZU_FORGE_QUESTS,
             starterItems: AOZU_WARDROBE_ITEMS.filter(({ id }) => AOZU_FORGE_STARTER_ITEM_IDS.includes(id as (typeof AOZU_FORGE_STARTER_ITEM_IDS)[number])).map(({ id, label, slot }) => ({ id, label, slot })),
             loop: {
               stages: AOZU_ORIGIN_LOOP_STAGES,
-              current: !savedProfile ? 'forge' : progress < steps.length ? 'quest' : 'card',
+              current: !savedProfile ? 'forge' : progress < steps.length ? 'quest' : recalledCardId ? 'recall' : 'card',
               progress,
-              next: !savedProfile ? 'stage_aozu_companion' : progress < steps.length ? steps[progress] : 'recall the Origin Card in AOZU',
+              next: !savedProfile ? 'stage_aozu_companion' : progress < steps.length ? steps[progress] : recalledCardId ? 'use the recalled ability for a new AOZU task' : 'stage_aozu_card_recall',
             },
             confirmation: 'stage_aozu_companion only opens a visible review. The user must confirm in AOZU before a profile, quest, equipment, memory, or card changes.',
           },
         }
+      },
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'stage_aozu_checklist_completion',
+      title: 'Stage AOZU Checklist Completion',
+      description: 'Propose completing one existing travel-journal stop. Read its entry id from inspect_aozu_forge current loadout first. User confirmation marks the stop complete, grants points, completes the final travel Origin Quest step, equips its reward, and seals the Origin Card.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          entryId: { type: 'string', minLength: 1, maxLength: 120 },
+          dialogue: { type: 'string', minLength: 1, maxLength: 800 },
+          idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' },
+        },
+        required: ['entryId', 'idempotencyKey'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      async execute(input) {
+        return stageProposal({
+          id: readIdempotencyKey(input.idempotencyKey),
+          kind: 'checklist',
+          entryId: readText(input.entryId, 'entryId', 120),
+          dialogue: readOptionalText(input.dialogue, 'dialogue', 800),
+        })
       },
     }, { signal: controller.signal }),
     modelContext.registerTool({
@@ -333,6 +373,38 @@ export function registerCompanionTools(document: Document, useCases: {
           ability: readText(input.ability, 'ability', 120),
           summary: readText(input.summary, 'summary', 500),
           requiredCapabilities: input.requiredCapabilities.map((value) => readText(value, 'capability', 80)),
+          dialogue: readOptionalText(input.dialogue, 'dialogue', 800),
+        })
+      },
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'stage_aozu_card_recall',
+      title: 'Stage AOZU Card Recall',
+      description: 'Propose recalling an existing AOZU ability or Origin Card. Read card ids from inspect_aozu_forge first. User confirmation restores the matching companion and opens the learned ability so it can perform another task.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cardId: { type: 'string', minLength: 1, maxLength: 120 },
+          dialogue: { type: 'string', minLength: 1, maxLength: 800 },
+          idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' },
+        },
+        required: ['cardId', 'idempotencyKey'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      async execute(input) {
+        const cardId = readText(input.cardId, 'cardId', 120)
+        const storage = document.defaultView?.localStorage
+        let cards: Array<{ id?: unknown }> = []
+        try {
+          const saved = JSON.parse(storage?.getItem(AOZU_CARD_KEY) ?? '[]')
+          cards = Array.isArray(saved) ? saved : []
+        } catch { cards = [] }
+        if (!cards.some(({ id }) => id === cardId)) throw new Error('Unknown AOZU cardId')
+        return stageProposal({
+          id: readIdempotencyKey(input.idempotencyKey),
+          kind: 'recall',
+          cardId,
           dialogue: readOptionalText(input.dialogue, 'dialogue', 800),
         })
       },

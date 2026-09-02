@@ -30,9 +30,11 @@ OpenAI WebMCP Challenge 以實用性、原創性、執行品質、WebMCP 使用�
 - `inspect_aozu_capabilities`：讓 Agent 理解既有生活活動、紙娃娃物件與確認規則。
 - `stage_aozu_life_event`：提案飲食、記帳、步數或健身冒險。
 - `stage_aozu_trip_plan`：把多個地點一次整理成旅行手札候選。
+- `stage_aozu_checklist_completion`：完成指定手札項目並觸發第三步、任務獎勵與 Origin Card。
 - `stage_aozu_outfit`：提案紙娃娃配件，確認後才真正重繪穿搭。
 - `stage_aozu_memory`：提出可見的長期記憶摘要，由使用者決定保存。
 - `stage_aozu_ability_card`：在 Origin Card 以外，把後續成熟技能封成可再次召喚的 Ability Card。
+- `stage_aozu_card_recall`：召回既有卡片與對應能力，完成新任務後留下再次啟用的共同記憶。
 - 每個寫入工具只建立 AOZU 內的確認介面；Agent 不可直接發點、換裝、保存記憶或封卡。
 - 沒有 WebMCP 時，原本的本機 Companion、手札、衣櫥與遊戲仍可使用。
 

@@ -52,8 +52,10 @@ type AgentProposal =
   | { id: string; kind: 'life'; activity: Exclude<ModuleId, 'travel'>; summary: string; dialogue?: string }
   | { id: string; kind: 'travel'; title: string; stops: { day: 1 | 2 | 3; kind: TravelKind; name: string; location: string }[]; dialogue?: string }
   | { id: string; kind: 'outfit'; itemId: string; dialogue?: string }
+  | { id: string; kind: 'checklist'; entryId: string; dialogue?: string }
   | { id: string; kind: 'memory'; title: string; summary: string; category: 'life' | 'travel' | 'writing' | 'learning' | 'bond'; dialogue?: string }
-  | { id: string; kind: 'card'; title: string; ability: string; summary: string; requiredCapabilities: string[]; dialogue?: string };
+  | { id: string; kind: 'card'; title: string; ability: string; summary: string; requiredCapabilities: string[]; dialogue?: string }
+  | { id: string; kind: 'recall'; cardId: string; dialogue?: string };
 type SavedMemory = { id: string; partnerId: Partner['id']; title: string; summary: string; category: 'life' | 'travel' | 'writing' | 'learning' | 'bond'; createdAt: number };
 type SavedAbilityCard = { id: string; partnerId: Partner['id']; title: string; ability: string; summary: string; requiredCapabilities: string[]; createdAt: number; kind?: 'ability' | 'origin'; originProfileId?: string };
 type SavedLifeRecord = { id: string; partnerId: Partner['id']; activity: Exclude<ModuleId, 'travel'>; summary: string; createdAt: number };
@@ -62,6 +64,7 @@ const AOZU_MEMORY_KEY = 'aozu:p0-memories';
 const AOZU_CARD_KEY = 'aozu:p0-ability-cards';
 const AOZU_LIFE_KEY = 'aozu:p0-life-records';
 const AOZU_FORGE_KEY = 'aozu:p0-forge-profile';
+const AOZU_RECALL_KEY = 'aozu:p0-recalled-card';
 const memoryCategoryLabels = { life: '生', travel: '旅', writing: '寫', learning: '學', bond: '伴' } as const;
 
 const readStoredList = <T,>(key: string): T[] => {
@@ -82,7 +85,9 @@ const agentProposalTitle = (proposal: AgentProposal) => {
   if (proposal.kind === 'life') return `${modules.find(({ id }) => id === proposal.activity)?.label ?? '生活'}冒險紀錄`;
   if (proposal.kind === 'travel') return proposal.title;
   if (proposal.kind === 'outfit') return `穿上${AOZU_WARDROBE_ITEMS.find(({ id }) => id === proposal.itemId)?.label ?? '新配件'}`;
+  if (proposal.kind === 'checklist') return '完成旅行 checklist';
   if (proposal.kind === 'memory') return proposal.title;
+  if (proposal.kind === 'recall') return '召回能力卡';
   return proposal.title;
 };
 
@@ -91,7 +96,9 @@ const agentProposalSummary = (proposal: AgentProposal) => {
   if (proposal.kind === 'life') return proposal.summary;
   if (proposal.kind === 'travel') return `${proposal.stops.length} 個地點將加入旅行手札`;
   if (proposal.kind === 'outfit') return '確認後才會替換同部位配件並重新合成角色造型。';
+  if (proposal.kind === 'checklist') return '確認後會完成這個手札項目、增加能力點數，並推進 Origin Quest。';
   if (proposal.kind === 'memory') return proposal.summary;
+  if (proposal.kind === 'recall') return '確認後會召回卡片中的夥伴、能力與任務脈絡。';
   return `${proposal.ability}｜${proposal.summary}`;
 };
 
@@ -354,6 +361,7 @@ export default function Home() {
       setSavedMemories(readStoredList<SavedMemory>(AOZU_MEMORY_KEY));
       setSavedCards(readStoredList<SavedAbilityCard>(AOZU_CARD_KEY));
       setSavedLifeRecords(readStoredList<SavedLifeRecord>(AOZU_LIFE_KEY));
+      setSummonedCardId(localStorage.getItem(AOZU_RECALL_KEY));
       try {
         const stored = JSON.parse(localStorage.getItem(AOZU_FORGE_KEY) ?? 'null') as ForgeProfile | null;
         if (stored?.id
@@ -408,7 +416,7 @@ export default function Home() {
       const detail = (event as CustomEvent<{ command?: string; activity?: string; message?: string; proposal?: unknown }>).detail ?? {};
       if (detail.command === 'stage-proposal') {
         const proposal = detail.proposal as AgentProposal | undefined;
-        if (!proposal || typeof proposal.id !== 'string' || !['forge', 'life', 'travel', 'outfit', 'memory', 'card'].includes(proposal.kind)) return;
+        if (!proposal || typeof proposal.id !== 'string' || !['forge', 'life', 'travel', 'outfit', 'checklist', 'memory', 'card', 'recall'].includes(proposal.kind)) return;
         setAgentProposal(proposal);
         if (proposal.kind === 'forge') {
           setForgeDraft({ basePartnerId: proposal.basePartnerId, name: proposal.name, personality: proposal.personality, role: proposal.role, questKind: proposal.questKind, questGoal: proposal.questGoal, starterItemId: proposal.starterItemId });
@@ -417,6 +425,8 @@ export default function Home() {
         if (proposal.kind === 'life') setActiveModuleId(proposal.activity);
         if (proposal.kind === 'travel') setActiveModuleId('travel');
         if (proposal.kind === 'outfit') setSelectedWardrobeItemId(proposal.itemId);
+        if (proposal.kind === 'checklist') setPanel('journal');
+        if (proposal.kind === 'recall') setPanel('cards');
         setDialogueIntent('module');
         setDialogueOpen(true);
         setRoomMessage(proposal.dialogue || '我和 Agent 整理出一個冒險提案。你確認以前，我不會改變紀錄、穿搭、記憶或卡片。');
@@ -635,6 +645,7 @@ export default function Home() {
       setRoomUserMessage('');
       setAgentProposal(null);
       setSummonedCardId(null);
+      localStorage.removeItem(AOZU_RECALL_KEY);
       setMobileToolsOpen(false);
       setToast(`${partner.displayName}來到房間了`);
       window.setTimeout(() => setToast(''), 1800);
@@ -986,22 +997,27 @@ export default function Home() {
     }
   };
 
-  const toggleJournalEntry = async (entryId: string) => {
+  const setJournalEntryCompletion = async (entryId: string, checked: boolean, idempotencyKey?: string) => {
     const current = travelJournal.entries.find(({ id }) => id === entryId);
-    if (!current) return;
-    const direction = current.checked ? -1 : 1;
+    if (!current || current.checked === checked) return false;
+    const direction = checked ? 1 : -1;
     const points = { ...travelJournal.points, bond: Math.max(0, travelJournal.points.bond + direction * 3) };
     if (current.kind === 'spot') points.exploration = Math.max(0, points.exploration + direction * 8);
     else points.taste = Math.max(0, points.taste + direction * 8);
     const saved = await persistTravelJournal({
       ...travelJournal,
-      entries: travelJournal.entries.map((entry) => entry.id === entryId ? { ...entry, checked: !entry.checked } : entry),
+      entries: travelJournal.entries.map((entry) => entry.id === entryId ? { ...entry, checked } : entry),
       points,
-    });
-    if (saved) {
-      setToast(current.checked ? '已恢復為待完成' : `完成 ${current.name}，能力點數已更新`);
-      if (!current.checked && forgeProfile?.questKind === 'travel' && forgeProfile.progress >= 2) await advanceForgeQuest('travel', { targetProgress: 3 });
-    }
+    }, idempotencyKey);
+    if (saved && checked && forgeProfile?.questKind === 'travel' && forgeProfile.progress >= 2) await advanceForgeQuest('travel', { targetProgress: 3 });
+    return saved;
+  };
+
+  const toggleJournalEntry = async (entryId: string) => {
+    const current = travelJournal.entries.find(({ id }) => id === entryId);
+    if (!current) return;
+    const saved = await setJournalEntryCompletion(entryId, !current.checked);
+    if (saved) setToast(current.checked ? '已恢復為待完成' : `完成 ${current.name}，能力點數已更新`);
   };
 
   const equipTravelAccessory = async (accessoryId: (typeof AOZU_TRAVEL_ACCESSORIES)[number]['id']) => {
@@ -1038,6 +1054,11 @@ export default function Home() {
         await application.activateCompanion(saved.bundleId);
         let startup = await application.loadStartup();
         if (startup.status !== 'main') throw new Error('角色版型無法啟用');
+        for (const slot of AOZU_WARDROBE_SLOTS) {
+          await application.submitAction(`clear-${slot.id}`, startup.stage.revision, `${proposal.id}:clear:${slot.id}`);
+          startup = await application.loadStartup();
+          if (startup.status !== 'main') throw new Error('角色版型無法清理');
+        }
         await application.submitAction(`wear-${item.id}`, startup.stage.revision, `${proposal.id}:starter`);
         startup = await application.loadStartup();
         if (startup.status !== 'main') throw new Error('創角結果無法載入');
@@ -1057,6 +1078,7 @@ export default function Home() {
         };
         saveForgeProfile(profile);
         setSummonedCardId(null);
+        localStorage.removeItem(AOZU_RECALL_KEY);
         const memory: SavedMemory = { id: `forge-memory-${proposal.id}`, partnerId: partner.id, title: `${proposal.name}誕生`, summary: `${proposal.personality}的${proposal.role}，準備完成「${proposal.questGoal}」。`, category: 'bond', createdAt: Date.now() };
         setSavedMemories((current) => saveStoredList(AOZU_MEMORY_KEY, current, memory));
         setSelectedWardrobeItemId(item.id);
@@ -1101,8 +1123,23 @@ export default function Home() {
       const saved = await persistTravelJournal({ ...travelJournal, title: proposal.title, entries: [...travelJournal.entries, ...additions], points }, proposal.id);
       if (!saved) return;
       await advanceForgeQuest('travel', { targetProgress: 2 });
+      if (summonedCard) {
+        const memory: SavedMemory = { id: `recall-use-${proposal.id}`, partnerId: summonedCard.partnerId, title: `${summonedCard.ability}再次啟用`, summary: `用「${summonedCard.title}」把 ${additions.length} 個地點整理成「${proposal.title}」。`, category: 'travel', createdAt: Date.now() };
+        setSavedMemories((current) => saveStoredList(AOZU_MEMORY_KEY, current, memory));
+      }
       setPanel('journal');
       setRoomMessage(`完成！${additions.length} 個地點已寫進「${proposal.title}」，能力點數也已更新。`);
+    }
+
+    if (proposal.kind === 'checklist') {
+      const entry = travelJournal.entries.find(({ id }) => id === proposal.entryId);
+      if (!entry) {
+        setRuntimeError('找不到 Agent 指定的旅行手札項目，請重新讀取 AOZU 狀態。');
+        return;
+      }
+      const saved = await setJournalEntryCompletion(entry.id, true, proposal.id);
+      if (!saved && !entry.checked) return;
+      setRoomMessage(entry.checked ? `「${entry.name}」原本就已經完成，沒有重複加分。` : `完成「${entry.name}」！能力點數、任務獎勵與 Origin Card 都已更新。`);
     }
 
     if (proposal.kind === 'outfit') {
@@ -1131,6 +1168,16 @@ export default function Home() {
       setToast('新的能力卡已封存');
     }
 
+    if (proposal.kind === 'recall') {
+      const card = savedCards.find(({ id }) => id === proposal.cardId);
+      if (!card) {
+        setRuntimeError('找不到 Agent 指定的能力卡，請重新讀取 AOZU 狀態。');
+        return;
+      }
+      await recallAbilityCard(card);
+      setToast(`${card.title}已召回`);
+    }
+
     setAgentProposal(null);
     window.setTimeout(() => setToast(''), 2200);
   };
@@ -1146,6 +1193,7 @@ export default function Home() {
       setPanel('quests');
     }
     setSummonedCardId(card.id);
+    localStorage.setItem(AOZU_RECALL_KEY, card.id);
     setDialogueOpen(true);
     setMobileConsoleOpen(false);
     setRoomMessage(card.kind === 'origin'
@@ -1158,6 +1206,7 @@ export default function Home() {
     setForgeProfile(null);
     setForgeDraft(defaultForgeDraft);
     setSummonedCardId(null);
+    localStorage.removeItem(AOZU_RECALL_KEY);
     setAgentProposal(null);
     setRoomMessage('上一位夥伴的卡片與記憶都保留著。現在來創造下一位夥伴。');
     setDialogueOpen(false);
@@ -1457,7 +1506,7 @@ export default function Home() {
               {activeLifeRecords.map((record) => <article key={record.id}><span>{modules.find(({ id }) => id === record.activity)?.category ?? '生'}</span><div><strong>{modules.find(({ id }) => id === record.activity)?.label ?? '生活'}冒險</strong><p>{record.summary}</p><small>{new Date(record.createdAt).toLocaleDateString('zh-TW')} ・ 已完成</small></div></article>)}
               <article><span>旅</span><div><strong>台南旅行書</strong><p>一起決定第二天採步行為主，晚餐預算保留給小吃。</p><small>今天 ・ 旅行</small></div></article><article><span>食</span><div><strong>不追求完美的晚餐</strong><p>記得蔬菜和飽足感，比精算每一口更重要。</p><small>昨天 ・ 飲控</small></div></article><article><span>住</span><div><strong>旅行基金 72%</strong><p>本週咖啡支出已整理，沒有動用旅行基金。</p><small>8 月 29 日 ・ 記帳</small></div></article>
             </div>
-            <div className="webmcp-core"><span className="connection-dot" /><div><strong>{runtime?.webmcpAvailable ? 'WebMCP 已連線' : 'WebMCP Core Ready'}</strong><p>Agent 可提案生活紀錄、旅程、穿搭、記憶與能力卡；全部由你確認後才生效。</p></div><b>r{runtime?.stage.revision ?? 0}</b></div>
+            <div className="webmcp-core"><span className="connection-dot" /><div><strong>{runtime?.webmcpAvailable ? 'WebMCP 已連線' : '此瀏覽器未啟用 WebMCP'}</strong><p>{runtime?.webmcpAvailable ? 'Agent 可提案行動、旅程、穿搭、完成任務與召回卡片；全部由你確認後才生效。' : 'AOZU 本機功能仍可使用；Agent 工具需在 ChatGPT 內建瀏覽器或已啟用 WebMCP 的 Chrome 執行。'}</p></div><b>r{runtime?.stage.revision ?? 0}</b></div>
             <div className="portable-memory"><div><strong>攜帶這位夥伴的記憶</strong><small>ZIP 匯入前會驗證結構、雜湊與資產</small></div><div><button type="button" disabled={!runtime} onClick={exportCompanion}>匯出記憶</button><label>匯入記憶<input className="visually-hidden" type="file" accept=".zip,application/zip" disabled={!runtime} onChange={importCompanion} /></label></div>{dataStatus && <p role="status">{dataStatus}</p>}</div>
           </>}
 

@@ -32,9 +32,9 @@ AOZU 初版只使用本資料夾內的素材副本與示範資料。未來即使
 
 ## 參考基礎
 
-技術計劃以 [`aotter/spike-webmcp-companion`](https://github.com/aotter/spike-webmcp-companion) 的 React SPA 為基礎，盤點版本為 commit `373cbcc856642364033ef0c564189b45788ea8e1`（2026-08-31）。它已具備 WebMCP、Mantle、IndexedDB、角色／場景圖層、候選內容審核與 ZIP 可攜匯出等適合 AOZU 的能力。
+技術計劃以 [`aotter/spike-webmcp-companion`](https://github.com/aotter/spike-webmcp-companion) 的 React SPA 為基礎；`codex/aozu` 已合併 2026-09-02 的 `main`，AOZU Site 也升級到同版 Mantle `0.1.0-alpha.14` WebMCP 套件。原專案具備的 WebMCP、Mantle、IndexedDB、角色／場景圖層、候選內容審核與 ZIP 可攜匯出都保留。
 
-目前已把該 commit 的 Companion 核心與 adapters 放入 [`site/companion/`](site/companion/)，並接上 AOZU 介面。採用的框架包含 Mantle Fixed Backbone、IndexedDB 原子交易、WebMCP tools、角色／場景資產驗證、候選審核，以及可攜式 ZIP 的完整性驗證。AOZU 自己的 companion 定義放在 [`site/companion/aozu.ts`](site/companion/aozu.ts)，上游核心集中於獨立子資料夾，方便後續比較與更新。
+目前已把原始專案的 Companion 核心與 adapters 放入 [`site/companion/`](site/companion/)，並接上 AOZU 介面。採用的框架包含 Mantle Fixed Backbone、IndexedDB 原子交易、WebMCP tools、角色／場景資產驗證、候選審核，以及可攜式 ZIP 的完整性驗證。AOZU 自己的 companion 定義放在 [`site/companion/aozu.ts`](site/companion/aozu.ts)，上游核心集中於獨立子資料夾，方便後續比較與更新。
 
 ## 文件
 
@@ -50,7 +50,7 @@ AOZU 初版只使用本資料夾內的素材副本與示範資料。未來即使
 
 使用者仍可在布丁獺、泡泡海豹、夜航鯨、琥珀鼬，以及電獺少女蜜柑、Spac1、嘻嘻七張夥伴卡之間切換。桌機、平板與手機都以角色、名字、等級為視覺中心；對話和所有輔助工具預設收合，可點按或拖曳抽屜展開。物件櫃將五組高解析透明素材拆成頭部、衣服、背部與手持四個槽位、共二十件物件；可拖到角色身上磁吸就位，同類物件會直接替換，位置與裝備都寫入 Companion item state／loadout。旅遊任務會追問位置，寫入三日旅行手札與 checklist，並累積探索、品味、規劃與羈絆點數。
 
-WebMCP 可先用 `inspect_aozu_forge` 讀取創角契約，再用 `stage_aozu_companion` 提出完整的夥伴與 Origin Quest；也可使用 `open_aozu_dialogue` 喚出對話、`start_aozu_activity` 切換生活任務、共同寫作、房間射擊或森林跳躍冒險，並以 `inspect_aozu_adventure_scores` 讀取本機最高分。P0 另外保留 `inspect_aozu_capabilities`，以及生活事件、旅行手札、紙娃娃穿搭、共同記憶和 Ability Card 五種 `stage_aozu_*` 提案工具。Agent 呼叫後只會打開角色的確認介面；使用者同意後，網站才透過既有 Mantle use case 寫入資料、換裝或封卡。
+WebMCP 可先用 `inspect_aozu_forge` 讀取創角、裝備、手札、卡片與下一步，再用 `stage_aozu_companion` 建立夥伴提案。Agent 接著可用 `stage_aozu_outfit` 換裝、`stage_aozu_life_event` 行動、`stage_aozu_trip_plan` 規劃、`stage_aozu_checklist_completion` 完成任務，最後用 `stage_aozu_card_recall` 召回角色能力。每個寫入工具都只開啟可見確認介面；使用者同意後，網站才透過既有 Mantle use case 寫入、換裝、發獎勵或封卡。
 
 ```bash
 cd aozu-web/site
