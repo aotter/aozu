@@ -66,7 +66,7 @@ function portablePath(path: string) {
 
 function draftPath(path: string) {
   return path === 'draft.json' || path === 'experience-draft.json' || path === 'character-pack.json' ||
-    path === 'character.atlas.png' || path === 'character.atlas.json' || path === 'README.md' ||
+    path === 'character.atlas.webp' || path === 'character.atlas.json' || path === 'README.md' ||
     /^assets\/[a-z0-9][a-z0-9_-]*\.png$/.test(path)
 }
 
