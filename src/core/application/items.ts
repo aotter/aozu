@@ -3,7 +3,6 @@ import type { EntryReader } from '@aotter/mantle-runtime'
 
 import type { CharacterLoadout, InventoryItem, ItemDefinition, ItemEffect, LoadoutProjection } from '../domain/items.ts'
 import type { AppearanceRef } from '../domain/character.ts'
-import type { ActionRepository } from './ports.ts'
 
 const idPattern = /^[a-z0-9][a-z0-9_-]{0,80}$/
 const refKey = (value: import('../domain/character.ts').AppearanceRef) => `${value.packId}@${value.packVersion}:${value.appearanceId}`
@@ -177,27 +176,4 @@ export async function planItemEffects(entries: EntryReader, runId: string, effec
     }]),
   ]
   return { itemMutations, projection: projectLoadout(definitions, inventory, loadout) }
-}
-
-export async function commitItemAction(
-  entries: EntryReader,
-  actions: ActionRepository,
-  input: { bundleId: string; runId: string; expectedRevision: number; idempotencyKey: string; effects: ItemEffect[]; now?: number },
-) {
-  const run = await entries.readById(input.runId)
-  if (!run || run.collection !== 'runs') throw new Error(`Run not found: ${input.runId}`)
-  const plan = await planItemEffects(entries, input.runId, input.effects)
-  const now = input.now ?? Date.now()
-  await actions.commit({
-    bundleId: input.bundleId,
-    runId: input.runId,
-    expectedRevision: input.expectedRevision,
-    actionId: 'item-action',
-    idempotencyKey: input.idempotencyKey,
-    nextRunData: { ...run.data, revision: input.expectedRevision + 1 },
-    eventData: { runId: input.runId, actionId: 'item-action', idempotencyKey: input.idempotencyKey, summary: 'Item state changed', createdAtMs: now },
-    now,
-    itemMutations: plan.itemMutations,
-  })
-  return plan.projection
 }
