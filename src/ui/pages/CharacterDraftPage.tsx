@@ -31,6 +31,8 @@ const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
 }
 const CharacterVariantPlaceholder = ({ group, variantId, label }: { group: CharacterVariantGroup; variantId: string; label?: string }) => group === 'expression'
   ? <img className="expression-placeholder" src={characterSlotIcon(group, variantId)} alt={label ?? ''} />
+  : group === 'body'
+    ? <img className="character-body-placeholder" src="/assets/placeholders/companion-body-aozu.png" alt={label ?? ''} />
   : <CharacterSlotPlaceholder src={characterSlotIcon(group, variantId)} label={label} />
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
 const useBlobUrl = (blob?: Blob) => {
