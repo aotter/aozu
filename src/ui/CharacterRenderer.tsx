@@ -28,29 +28,39 @@ const Layers = ({ layers, style }: { layers: Layer[]; style?: CSSProperties }) =
 
 function AtlasLayers({ atlas, layers }: { atlas: CharacterTextureAtlas; layers: Layer[] }) {
   const host = useRef<HTMLDivElement>(null)
+  const controller = useRef<{ update(atlas: CharacterTextureAtlas, frameIds: readonly string[]): Promise<boolean>; destroy(): void }>(undefined)
+  const latest = useRef({ atlas, frameIds: layers.map(({ id }) => id) })
   const [ready, setReady] = useState(false)
   const frameIds = layers.map(({ id }) => id).join('\n')
 
   useEffect(() => {
     let disposed = false
-    let dispose = () => {}
-    // oxlint-disable-next-line react/set-state-in-effect -- Pixi owns an external canvas lifecycle.
-    setReady(false)
     void (async () => {
       const { mountCharacterTextureAtlas } = await import('@/adapters/browser/pixi-character-atlas')
       if (disposed || !host.current) return
-      const cleanup = await mountCharacterTextureAtlas(host.current, atlas, frameIds.split('\n'))
-      if (disposed) return cleanup()
-      dispose = cleanup
-      setReady(true)
+      const mounted = await mountCharacterTextureAtlas(host.current)
+      if (disposed) return mounted.destroy()
+      controller.current = mounted
+      const rendered = await mounted.update(latest.current.atlas, latest.current.frameIds)
+      if (disposed) return
+      if (rendered) setReady(true)
     })().catch((error) => {
-      dispose()
       console.error('Character atlas render failed', error)
     })
     return () => {
       disposed = true
-      dispose()
+      controller.current?.destroy()
+      controller.current = undefined
     }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    latest.current = { atlas, frameIds: frameIds.split('\n') }
+    void controller.current?.update(atlas, frameIds.split('\n')).then((rendered) => { if (active && rendered) setReady(true) }).catch((error) => {
+      console.error('Character atlas update failed', error)
+    })
+    return () => { active = false }
   }, [atlas, frameIds])
 
   return <>
