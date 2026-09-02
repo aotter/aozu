@@ -92,6 +92,7 @@ button:disabled { cursor: wait; opacity: .55; }
 
 .paper-doll { bottom: 74px; height: 78%; left: 54%; pointer-events: none; position: absolute; transform: translateX(-50%); width: 58%; z-index: 2; }
 .paper-doll.partner-human { bottom: 68px; height: 88%; width: 72%; }
+.companion-room.is-tools-open .paper-doll,.companion-room.is-tools-open .paper-doll.partner-human { bottom: 70px; height: calc(100% - 218px); }
 .paper-doll > .partner-art { height: 100%; inset: 0; object-fit: contain; object-position: center bottom; position: absolute; width: 100%; z-index: 1; }
 .paper-doll > .human-portrait { animation: human-room-idle 4.2s ease-in-out infinite; filter: drop-shadow(0 16px 12px rgba(29,25,24,.38)); inset: auto; bottom: 0; left: 50%; transform: translateX(-50%); }
 .paper-doll-canvas { filter: drop-shadow(0 16px 12px rgba(29,25,24,.34)); height: 100%; inset: 0; object-fit: contain; pointer-events: none; position: absolute; width: 100%; z-index: 2; }
@@ -499,6 +500,7 @@ button:disabled { cursor: wait; opacity: .55; }
   .room-wardrobe-item .wardrobe-sprite { max-height: 62px; max-width: 74px; }
   .companion-room.is-wardrobe .paper-doll { bottom: 174px; height: 65%; }
   .companion-room.is-wardrobe .paper-doll.partner-human { bottom: 174px; height: 72%; }
+  .companion-room.is-tools-open .paper-doll,.companion-room.is-tools-open .paper-doll.partner-human { bottom: 108px; height: calc(100% - 282px); }
   .closet-slot > div { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .closet-item { grid-template-rows: 105px auto auto; }
   .adventure-hud { gap: 8px; grid-template-columns: minmax(0,1fr) auto; left: 10px; padding: 9px; right: 10px; top: 10px; }

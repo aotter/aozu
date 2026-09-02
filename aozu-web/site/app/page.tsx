@@ -851,7 +851,7 @@ export default function Home() {
       </header>
 
       <main className="game-world" style={{ '--console-width': `${consoleWidth}%` } as CSSProperties}>
-        <section className={`companion-room ${panel === 'wardrobe' && wardrobeEnabled && !mobileConsoleOpen ? 'is-wardrobe' : ''}`} aria-label={`${activePartner.displayName}的夥伴房間`}>
+        <section className={`companion-room ${mobileToolsOpen ? 'is-tools-open' : ''} ${panel === 'wardrobe' && wardrobeEnabled && !mobileConsoleOpen ? 'is-wardrobe' : ''}`} aria-label={`${activePartner.displayName}的夥伴房間`}>
           <picture className="room-background"><img src="/assets/mascot-club-room-v1.webp" alt="暖光夥伴房間" /></picture>
           <div className="room-light" />
           {adventureMode && <AdventureGame key={adventureMode} mode={adventureMode} partner={activePartner} onClose={() => setAdventureMode(null)} />}
