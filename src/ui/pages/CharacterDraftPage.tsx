@@ -1,10 +1,9 @@
 import { ArrowLeftIcon, CircleSlash2Icon, Layers2Icon, PencilIcon, PlusIcon, ShapesIcon, ShirtIcon, SmileIcon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
+import { Navigate, useNavigate, useParams } from 'react-router'
 
 import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterDraftAtlasKey, characterRegistrationFrame, hasCurrentCharacterLayer, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, transformCharacterBounds } from '@/core/application/character-creation.ts'
-import { workspacePath, type WorkspaceDestination } from '@/core/application/workspace.ts'
 import { IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetTarget, type CharacterDraft, type CharacterDraftVariant, type CharacterTextureAtlas, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
 import { CharacterAlignmentRenderer, CharacterAssetImage, CharacterAtlasFrameImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
@@ -20,9 +19,6 @@ const characterCategories: CharacterCategory[] = [
   { id: 'outfits', group: 'outfit', icon: ShirtIcon },
   { id: 'props', group: 'prop', icon: ShapesIcon },
 ]
-const categoryDestinations: Record<CharacterCategoryId, WorkspaceDestination> = {
-  expressions: 'character-expressions', outfits: 'character-outfits', props: 'character-props',
-}
 const expressionIcons = ['happy', 'sad', 'angry', 'surprised', 'sleepy']
 const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
   if (group === 'expression') return `/assets/character-slots/expression-${expressionIcons.includes(variantId) ? variantId : 'happy'}.png`
@@ -30,7 +26,7 @@ const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
   return '/assets/character-slots/body-outfit.png'
 }
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
-export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, autoFitVariant, compileAtlas, exportDraft, onReview }: {
+export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, autoFitVariant, compileAtlas, exportDraft, onPublish }: {
   openDraft(): Promise<CharacterDraft>
   updateDraft(draft: CharacterDraft): Promise<CharacterDraft>
   saveAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string): Promise<CharacterDraft>
@@ -38,12 +34,11 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   autoFitVariant(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string): Promise<CharacterDraft>
   compileAtlas(draft: CharacterDraft): Promise<CharacterTextureAtlas | undefined>
   exportDraft(): Promise<Blob>
-  onReview(draft: CharacterDraft): Promise<void>
+  onPublish(draft: CharacterDraft): Promise<CharacterDraft>
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const location = useLocation()
-  const { draftId, step } = useParams()
+  const { characterId, step } = useParams()
   const category = characterCategories.find(({ id }) => id === step)
   const [draft, setDraft] = useState<CharacterDraft>()
   const [loadError, setLoadError] = useState(false)
@@ -101,8 +96,8 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   const atlas = compiled?.atlas
   const atlasSrc = useBlobUrl(atlas?.image)
 
-  if (!step || step === 'identity' || step === 'accessories') return <Navigate to={workspacePath('character-expressions', draftId)} state={location.state} replace />
-  if (!category) return <Navigate to={workspacePath('character-expressions', draftId)} state={location.state} replace />
+  if (!step || step === 'identity' || step === 'accessories') return <Navigate to={`/characters/${encodeURIComponent(characterId ?? '')}/expressions`} replace />
+  if (!category) return <Navigate to={`/characters/${encodeURIComponent(characterId ?? '')}/expressions`} replace />
   if (loadError) return <StatusPage>{t('startup.error')}</StatusPage>
   if (!draft) return <StatusPage>{t('startup.loading')}</StatusPage>
 
@@ -160,7 +155,6 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
     catch {}
   }
   const commitDraft = async (write: () => Promise<CharacterDraft>, optimistic?: CharacterDraft, rollback?: CharacterDraft) => {
-    // ponytail: UI boundary only; replace its backend with one revision-safe Mantle Procedure when CharacterDraft migrates to Mantle entries.
     const request = ++draftRequest.current
     setError(undefined)
     if (optimistic) setDraft(optimistic)
@@ -273,7 +267,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
             size="icon"
             className="size-8 shrink-0 rounded-lg sm:size-9"
             aria-current={category?.id === id ? 'page' : undefined}
-            onClick={() => { setSelectedVariantKey(undefined); navigate(workspacePath(categoryDestinations[id], draft.id), { replace: true, state: location.state }) }}
+            onClick={() => { setSelectedVariantKey(undefined); navigate(`/characters/${encodeURIComponent(draft.id)}/${id}`, { replace: true }) }}
           >
             <Icon className="size-4" />
             <span className="sr-only">{t(`characterDraft.categories.${id}`)}</span>
@@ -400,11 +394,12 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
           {missing.length > 0 && <p className="mb-2 text-[10px] leading-4 text-muted-foreground sm:text-xs">{t('characterDraft.missingRequired')}</p>}
           <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
           <DataControls exportData={exportDraft} exportFilename="companion-character-draft.zip" exportIconOnly exportLabel={t('draft.download')} />
-          <Button size="sm" className="w-full" disabled={Boolean(busy) || Boolean(missing.length) || !draft.name.trim()} onClick={async () => {
-            setBusy('review'); setError(undefined)
-            try { await onReview(await commitDraft(() => updateDraft(draft))) }
-            catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); setBusy(undefined) }
-          }}>{busy === 'review' ? t('characterDraft.validating') : t('common.continue')}</Button>
+          <Button size="sm" className="w-full" disabled={Boolean(busy) || Boolean(missing.length) || !draft.name.trim() || draft.published?.revision === draft.revision} onClick={async () => {
+            setBusy('publish'); setError(undefined)
+            try { await commitDraft(() => onPublish(draft)) }
+            catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)) }
+            finally { setBusy(undefined) }
+          }}>{busy === 'publish' ? t('characterDraft.publishing') : t(draft.published ? 'characterDraft.publishChanges' : 'characterDraft.publish')}</Button>
           </div>
         </div>
       </section>

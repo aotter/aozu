@@ -4,6 +4,7 @@ import { buildCharacterPack, validateCharacterAssetInspection } from '../../core
 import {
   CHARACTER_VARIANT_GROUPS,
   CHARACTER_VARIANT_LAYERS,
+  CHARACTER_RIG,
   validateCharacterVariantTransform,
   type CharacterAssetInspection,
   type CharacterDraft,
@@ -42,7 +43,7 @@ export async function readCharacterDraftZip(
   for (const path of Object.keys(files)) if (path.endsWith('/')) delete files[path]
   const raw = object(parseZipJson(files['draft.json']!, 'Character Draft manifest'), 'Character Draft manifest')
   if (raw.archiveVersion !== 1) throw new Error('Unsupported Character Draft archive version')
-  if (raw.schemaVersion !== 3) throw new Error('Unsupported Character Draft schema version')
+  if (raw.schemaVersion !== 3 && raw.schemaVersion !== 4) throw new Error('Unsupported Character Draft schema version')
   const sourceId = string(raw.id, 'Character Draft ID', 100)
   const packId = string(raw.packId, 'Character Pack ID', 64)
   if (!idPattern.test(packId)) throw new Error('Invalid Character Pack ID')
@@ -110,8 +111,10 @@ export async function readCharacterDraftZip(
   return {
     draft: {
       id: sourceId,
-      schemaVersion: 3,
+      schemaVersion: 4,
+      revision: typeof raw.revision === 'number' && Number.isSafeInteger(raw.revision) && raw.revision >= 0 ? raw.revision : 0,
       packId,
+      rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
       name,
       variants,
       ...(headRegistration ? { headRegistration: { variantId: headRegistration.variantId as string } } : {}),
@@ -158,8 +161,9 @@ export async function exportCharacterDraftZip(
     name: draft.name,
     headRegistration: draft.headRegistration,
     selected: draft.selected,
+    revision: draft.revision,
     updatedAt: draft.updatedAt,
-    approvedAt: draft.approvedAt,
+    published: draft.published,
     variants,
   })
   if (experience) files['experience-draft.json'] = json(experience)

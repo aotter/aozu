@@ -66,7 +66,7 @@ assert.equal(archivedPack.atlas.image, 'character.atlas.webp')
 assert.equal(archivedPack.assets.find(({ id }: { id: string }) => id === 'body-base-body').atlasFrame, 'body-base-body')
 const restored = await readCharacterDraftZip(draftZip, async () => inspection)
 assert.equal(restored.draft.id, draft.id)
-assert.equal(restored.draft.approvedAt, undefined)
+assert.equal(restored.draft.published, undefined)
 assert.deepEqual(restored.draft.selected, draft.selected)
 assert.deepEqual(restored.draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 2, y: -3, scale: 1.01 })
 assert.equal(await restored.draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.layers.head!.blob.text(), 'sprite')
@@ -121,11 +121,14 @@ const firstInstalled = await installCharacterDraft(library, async () => inspecti
 assert.equal(firstInstalled.id, pack.id)
 assert.equal((await listInstalledCharacterPacks(library, async () => inspection))[0]?.layers.length, 6)
 await assert.rejects(() => installCharacterDraft(library, async () => inspection, draft), /already installed/)
+const secondVersion = await installCharacterDraft(library, async () => inspection, draft, 2)
+assert.equal(secondVersion.version, 2)
+assert.equal(secondVersion.defaultComposition.every(({ packVersion }) => packVersion === 2), true)
 const secondDraft = structuredClone(draft)
 secondDraft.packId = 'test-character-two'
 secondDraft.name = 'Test Character Two'
 await installCharacterDraft(library, async () => inspection, secondDraft)
-assert.equal((await listInstalledCharacterPacks(library, async () => inspection)).length, 2)
+assert.equal((await listInstalledCharacterPacks(library, async () => inspection)).length, 3)
 const installedResources = await loadInstalledCharacterPackResources(library, async () => inspection, {
   packId: pack.id,
   packVersion: pack.version,
@@ -146,14 +149,14 @@ await assert.rejects(() => installCharacterDraft(library, async () => inspection
 const incompleteArchive = unzipSync(new Uint8Array(await (await exportCharacterDraftZip(incomplete)).arrayBuffer()))
 assert.ok(incompleteArchive['draft.json'])
 assert.equal(incompleteArchive['character-pack.json'], undefined)
-assert.equal(installed.length, 2)
+assert.equal(installed.length, 3)
 
 const migrated = migrateCharacterDraft({
   id: 'current', packId: 'legacy', name: 'Legacy', updatedAt: 1,
   assets: { 'body-base': asset, 'head-neutral': asset, 'head-happy': asset, 'prop-front': asset },
   selectedBody: 'body-base', selectedExpression: 'head-happy',
 } as unknown as Parameters<typeof migrateCharacterDraft>[0])
-assert.equal(migrated.schemaVersion, 3)
+assert.equal(migrated.schemaVersion, 4)
 assert.equal(migrated.selected.expression, 'happy')
 assert.deepEqual(migrated.selected.props, ['prop-1'])
 assert.equal(migrated.variants.find(({ group, id }) => group === 'prop' && id === 'prop-1')!.layers.front, asset as CharacterDraftAsset)
@@ -166,7 +169,7 @@ const migratedV2 = migrateCharacterDraft({
   ],
   selected: { expression: 'neutral', headwear: 'prop-1', prop: 'prop-1' },
 } as unknown as Parameters<typeof migrateCharacterDraft>[0])
-assert.equal(migratedV2.schemaVersion, 3)
+assert.equal(migratedV2.schemaVersion, 4)
 assert.deepEqual(migratedV2.variants.map(({ group, id }) => `${group}:${id}`), ['prop:hat-1', 'prop:prop-1'])
 assert.deepEqual(migratedV2.selected.props, ['hat-1', 'prop-1'])
 assert.equal(migratedV2.selected.expression, undefined)
@@ -202,7 +205,8 @@ let savedDraft = structuredClone(draft)
 const drafts = {
   async list() { return [savedDraft] },
   async get(id: string) { return id === savedDraft.id ? savedDraft : null },
-  async put(next: typeof savedDraft) { savedDraft = structuredClone(next) },
+  async create(next: typeof savedDraft) { savedDraft = structuredClone(next); return savedDraft },
+  async put(next: typeof savedDraft) { savedDraft = structuredClone(next); return savedDraft },
   async delete() {},
 }
 const replacementInspection = { ...inspection, sha256: 'b'.repeat(64), visibleBounds: { x: 40, y: 10, width: 430, height: 730 }, visiblePixelCount: 100 }

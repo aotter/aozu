@@ -10,7 +10,7 @@ import {
   PROGRESS_LOOP_IDS,
   PROGRESS_BINDING_SCHEMA,
 } from '../domain/playbook.ts'
-import { CHARACTER_VARIANT_GROUPS } from '../domain/character.ts'
+import { CHARACTER_RIG, CHARACTER_VARIANT_GROUPS } from '../domain/character.ts'
 import { WORKSPACE_DESTINATIONS } from '../application/workspace.ts'
 import { compileBundle } from '../bundle.ts'
 
@@ -158,6 +158,76 @@ const experienceDraftCreateProperties = {
   story: experienceDraftProperties.story,
 }
 
+const characterTransformSchema = objectSchema({
+  x: { type: 'number', minimum: -512, maximum: 512 },
+  y: { type: 'number', minimum: -768, maximum: 768 },
+  scale: { type: 'number', minimum: 0.25, maximum: 4 },
+}, ['x', 'y', 'scale'])
+
+const characterInspectionSchema = objectSchema({
+  width: { const: CHARACTER_RIG.canvas.width },
+  height: { const: CHARACTER_RIG.canvas.height },
+  hasTransparentPixels: { const: true },
+  hasVisiblePixels: { const: true },
+  genuineRgba: { const: true },
+  visibleBounds: objectSchema({
+    x: { type: 'integer', minimum: 0 },
+    y: { type: 'integer', minimum: 0 },
+    width: { type: 'integer', minimum: 1, maximum: CHARACTER_RIG.canvas.width },
+    height: { type: 'integer', minimum: 1, maximum: CHARACTER_RIG.canvas.height },
+  }, ['x', 'y', 'width', 'height']),
+  visiblePixelCount: { type: 'integer', minimum: 1 },
+  size: { type: 'integer', minimum: 1, maximum: 5 * 1024 * 1024 },
+  sha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+}, ['width', 'height', 'hasTransparentPixels', 'hasVisiblePixels', 'genuineRgba', 'size', 'sha256'])
+
+const characterAssetDescriptorSchema = objectSchema({
+  blobId: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+  filename: { type: 'string', minLength: 1, maxLength: 200 },
+  source: { enum: ['user', 'agent', 'starter'] },
+  inspection: characterInspectionSchema,
+  canonicalSha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+}, ['blobId', 'filename', 'source', 'inspection'])
+
+const characterWorkspaceProperties = {
+  schemaVersion: { const: 4 },
+  revision: { type: 'integer', minimum: 0 },
+  packId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' },
+  rigProfile: objectSchema({
+    id: { const: CHARACTER_RIG.id },
+    version: { const: CHARACTER_RIG.version },
+  }, ['id', 'version']),
+  name: { type: 'string', minLength: 1, maxLength: 200 },
+  variants: {
+    type: 'array',
+    minItems: 1,
+    maxItems: 100,
+    items: objectSchema({
+      id: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
+      group: { enum: CHARACTER_VARIANT_GROUPS },
+      label: { type: 'string', minLength: 1, maxLength: 80 },
+      layers: objectSchema({
+        body: characterAssetDescriptorSchema,
+        head: characterAssetDescriptorSchema,
+        back: characterAssetDescriptorSchema,
+        front: characterAssetDescriptorSchema,
+      }),
+      transform: characterTransformSchema,
+    }, ['id', 'group', 'label', 'layers']),
+  },
+  headRegistration: objectSchema({ variantId: { type: 'string', minLength: 1, maxLength: 40 } }, ['variantId']),
+  selected: objectSchema({
+    expression: { type: 'string', minLength: 1, maxLength: 40 },
+    outfit: { type: 'string', minLength: 1, maxLength: 40 },
+    props: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 40 } },
+  }, ['props']),
+  published: objectSchema({
+    version: { type: 'integer', minimum: 1 },
+    revision: { type: 'integer', minimum: 0 },
+  }, ['version', 'revision']),
+}
+const characterWorkspaceRequired = ['schemaVersion', 'revision', 'packId', 'rigProfile', 'name', 'variants', 'selected']
+
 export const FIXED_BACKBONE_VERSION = "6"
 
 const ALL_BACKBONE_SOURCES = [
@@ -302,6 +372,15 @@ const ALL_BACKBONE_SOURCES = [
         schema: objectSchema(experienceDraftProperties, experienceDraftRequired),
       },
     ),
+  ),
+  source(
+    'authoring/character-workspace.yaml',
+    envelope('Schema', 'character-workspaces', {
+      title: 'Character workspaces',
+      lifecycle: 'operational',
+      indexes: [['packId']],
+      schema: objectSchema(characterWorkspaceProperties, characterWorkspaceRequired),
+    }),
   ),
   source(
     "fixed/run.yaml",
@@ -452,6 +531,37 @@ const ALL_BACKBONE_SOURCES = [
       input: emptyReadOnlyInput,
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.inspect-workspace' },
+    }),
+  ),
+  source(
+    'authoring/create-character-workspace.yaml',
+    envelope('Procedure', 'create-character-workspace', {
+      title: 'Create Character Workspace',
+      input: objectSchema(characterWorkspaceProperties, characterWorkspaceRequired),
+      output: { type: 'object' },
+      handler: { kind: 'builtin', op: 'create', schema: 'character-workspaces' },
+    }),
+  ),
+  source(
+    'authoring/update-character-workspace.yaml',
+    envelope('Procedure', 'update-character-workspace', {
+      title: 'Update Character Workspace',
+      input: objectSchema({
+        id: { type: 'string', minLength: 1 },
+        expectedVersion: { type: 'integer', minimum: 1 },
+        ...characterWorkspaceProperties,
+      }, ['id', 'expectedVersion', ...characterWorkspaceRequired]),
+      output: { type: 'object' },
+      handler: { kind: 'builtin', op: 'update', schema: 'character-workspaces' },
+    }),
+  ),
+  source(
+    'authoring/delete-character-workspace.yaml',
+    envelope('Procedure', 'delete-character-workspace', {
+      title: 'Delete Character Workspace',
+      input: objectSchema({ id: { type: 'string', minLength: 1 } }, ['id']),
+      output: { type: 'object' },
+      handler: { kind: 'builtin', op: 'delete', schema: 'character-workspaces' },
     }),
   ),
   source(

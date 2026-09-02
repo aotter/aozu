@@ -70,6 +70,7 @@ export interface AssetRepository {
   put(id: string, blob: Blob): Promise<void>
   get(id: string): Promise<Blob | null>
   list(): Promise<Array<{ id: string; blob: Blob }>>
+  deleteAll?(): Promise<void>
 }
 
 export type AssetRepositoryFactory = (bundleId: string) => AssetRepository
@@ -77,7 +78,8 @@ export type AssetRepositoryFactory = (bundleId: string) => AssetRepository
 export interface CharacterDraftRepository {
   list(): Promise<CharacterDraft[]>
   get(id: string): Promise<CharacterDraft | null>
-  put(draft: CharacterDraft): Promise<void>
+  create(draft: CharacterDraft): Promise<CharacterDraft>
+  put(draft: CharacterDraft): Promise<CharacterDraft>
   delete(id: string): Promise<void>
 }
 

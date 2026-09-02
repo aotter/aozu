@@ -67,8 +67,10 @@ export interface CharacterAssetTarget {
 
 export interface CharacterDraft {
   id: string
-  schemaVersion: 3
+  schemaVersion: 4
+  revision: number
   packId: string
+  rigProfile: { id: string; version: number }
   name: string
   variants: CharacterDraftVariant[]
   headRegistration?: { variantId: string }
@@ -78,7 +80,13 @@ export interface CharacterDraft {
     props: string[]
   }
   updatedAt: number
-  approvedAt?: number
+  published?: { version: number; revision: number }
+}
+
+export type CharacterWorkspaceData = Omit<CharacterDraft, 'id' | 'updatedAt' | 'variants'> & {
+  variants: Array<Omit<CharacterDraftVariant, 'layers'> & {
+    layers: Partial<Record<CharacterVariantLayer, Omit<CharacterDraftAsset, 'blob'> & { blobId: string }>>
+  }>
 }
 
 export interface AppearanceRef {
