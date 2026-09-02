@@ -19,6 +19,7 @@ const characterCategories: CharacterCategory[] = [
   { id: 'outfits', group: 'outfit', icon: ShirtIcon },
   { id: 'props', group: 'prop', icon: ShapesIcon },
 ]
+const categoryForGroup = (group: CharacterVariantGroup) => characterCategories.find((category) => category.group === group)!.id
 const expressionIcons = ['happy', 'sad', 'angry', 'surprised', 'sleepy']
 const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
   if (group === 'expression') return `/assets/character-slots/expression-${expressionIcons.includes(variantId) ? variantId : 'happy'}.png`
@@ -38,14 +39,13 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { characterId, step } = useParams()
+  const { characterId, step, variantId } = useParams()
   const category = characterCategories.find(({ id }) => id === step)
   const [draft, setDraft] = useState<CharacterDraft>()
   const [loadError, setLoadError] = useState(false)
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
   const [compiled, setCompiled] = useState<{ key: string; atlas?: CharacterTextureAtlas }>()
-  const [selectedVariantKey, setSelectedVariantKey] = useState<string>()
   const [alignmentMode, setAlignmentMode] = useState<'composite' | 'overlay' | 'difference' | 'diagnostic'>('overlay')
   const atlasDraft = useRef<CharacterDraft | undefined>(undefined)
   const draftRequest = useRef(0)
@@ -103,7 +103,8 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
 
   const missing = REQUIRED_CHARACTER_TARGETS.filter((target) => !hasCurrentCharacterLayer(draft, target.group, target.variantId, target.layer))
   const visibleVariants = category ? draft.variants.filter(({ group }) => category.group === group) : []
-  const selectedVariant = visibleVariants.find((variant) => variantKey(variant) === selectedVariantKey)
+  const selectedVariant = visibleVariants.find((variant) => variant.id === variantId)
+  if (variantId && !selectedVariant) return <Navigate to={`/characters/${encodeURIComponent(draft.id)}/${category.id}`} replace />
   const previewLayers = resolveCharacterDraftLayers(draft, selectedVariant)
   const referenceLayers = selectedVariant ? resolveCharacterDraftReferenceLayers(draft, selectedVariant) : []
   const registration = characterRegistrationFrame(draft)
@@ -204,8 +205,8 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
       label: `${t(`characterDraft.groups.${group}.variantName`)} ${count}`,
       layers: {},
     }
-    setSelectedVariantKey(variantKey(variant))
     persist({ ...draft, variants: [...draft.variants, variant] })
+    navigate(`/characters/${encodeURIComponent(draft.id)}/${categoryForGroup(group)}/${encodeURIComponent(variant.id)}`)
   }
   const fileInput = (variant: CharacterDraftVariant, layer: CharacterVariantLayer) => {
     const targetKey = `${variantKey(variant)}:${layer}`
@@ -267,7 +268,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
             size="icon"
             className="size-8 shrink-0 rounded-lg sm:size-9"
             aria-current={category?.id === id ? 'page' : undefined}
-            onClick={() => { setSelectedVariantKey(undefined); navigate(`/characters/${encodeURIComponent(draft.id)}/${id}`, { replace: true }) }}
+            onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${id}`)}
           >
             <Icon className="size-4" />
             <span className="sr-only">{t(`characterDraft.categories.${id}`)}</span>
@@ -298,7 +299,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                     : variant.group === 'prop' ? <ShapesIcon className="size-1/2 text-[#7b739e]/70" />
                       : <CharacterSlotPlaceholder src={characterSlotIcon(variant.group, variant.id)} label={variant.label} />}</span>
                 </button>
-                <button type="button" title={t('characterDraft.editVariant', { name: variant.label })} className="absolute right-1 top-1 flex size-7 items-center justify-center rounded-md border bg-background/90 text-muted-foreground hover:text-foreground" aria-label={t('characterDraft.editVariant', { name: variant.label })} onClick={() => setSelectedVariantKey(variantKey(variant))}><PencilIcon className="size-3.5" /></button>
+                <button type="button" title={t('characterDraft.editVariant', { name: variant.label })} className="absolute right-1 top-1 flex size-7 items-center justify-center rounded-md border bg-background/90 text-muted-foreground hover:text-foreground" aria-label={t('characterDraft.editVariant', { name: variant.label })} onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${category.id}/${encodeURIComponent(variant.id)}`)}><PencilIcon className="size-3.5" /></button>
               </div>
             })}
             <button type="button" title={t(`characterDraft.groups.${category.group}.add`)} className="flex aspect-square items-center justify-center rounded-xl border border-dashed text-muted-foreground hover:border-foreground/40 hover:text-foreground" aria-label={t(`characterDraft.groups.${category.group}.add`)} onClick={() => addVariant(category.group)}>
@@ -332,7 +333,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
           }
           return <>
             <div className="mt-1 flex items-center gap-1 sm:gap-2">
-              <Button type="button" size="icon" variant="ghost" className="size-8 shrink-0" aria-label={t('characterDraft.backToVariants')} onClick={() => setSelectedVariantKey(undefined)}><ArrowLeftIcon /></Button>
+              <Button type="button" size="icon" variant="ghost" className="size-8 shrink-0" aria-label={t('characterDraft.backToVariants')} onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${category.id}`)}><ArrowLeftIcon /></Button>
               <input aria-label={t('characterDraft.variantLabel')} className="min-w-0 flex-1 rounded-md border-0 bg-transparent px-1 py-1 text-xs font-medium sm:text-sm" value={selectedVariant.label} onChange={(event) => setDraft({ ...draft, variants: draft.variants.map((variant) => variant === selectedVariant ? { ...variant, label: event.target.value } : variant) })} onBlur={() => void commitDraft(() => updateDraft(draft)).catch(() => {})} />
               {required && <span className="text-[9px] text-muted-foreground sm:text-xs">{t('characterDraft.required')}</span>}
             </div>

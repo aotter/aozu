@@ -34,6 +34,7 @@ export function AppRoutes({ application }: { application: Application }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
+  const [webmcp, setWebmcp] = useState(application.webmcp.getState())
   const [library, setLibrary] = useState<Awaited<ReturnType<Application['loadCharacterLibrary']>>>()
   const [loadError, setLoadError] = useState(false)
   const refresh = useCallback(async () => {
@@ -41,6 +42,11 @@ export function AppRoutes({ application }: { application: Application }) {
     setLoadError(false)
   }, [application])
 
+  useEffect(() => {
+    const disconnect = application.webmcp.setNavigate((path) => navigate(path))
+    const unsubscribe = application.webmcp.subscribe(setWebmcp)
+    return () => { unsubscribe(); disconnect() }
+  }, [application, navigate])
   useEffect(() => {
     let live = true
     void application.loadCharacterLibrary()
@@ -54,15 +60,15 @@ export function AppRoutes({ application }: { application: Application }) {
     return () => window.removeEventListener('character-draft-updated', update)
   }, [refresh])
 
-  if (loadError) return <><AppHeader webmcpAvailable={false} /><StatusPage>{t('startup.error')}</StatusPage></>
-  if (!library) return <><AppHeader webmcpAvailable={false} /><StatusPage>{t('startup.loading')}</StatusPage></>
+  if (loadError) return <><AppHeader webmcp={webmcp} /><StatusPage>{t('startup.error')}</StatusPage></>
+  if (!library) return <><AppHeader webmcp={webmcp} /><StatusPage>{t('startup.loading')}</StatusPage></>
 
   const editing = /^\/characters\/[^/]+/.test(location.pathname)
   const characterId = editing ? decodeURIComponent(location.pathname.split('/')[2] ?? '') : undefined
   const character = library.characters.find(({ id }) => id === characterId)
   return <>
     <AppHeader
-      webmcpAvailable={library.webmcpAvailable}
+      webmcp={webmcp}
       title={character?.name}
       onBack={editing ? () => navigate('/characters') : undefined}
     />
@@ -84,6 +90,7 @@ export function AppRoutes({ application }: { application: Application }) {
       />} />
       <Route path="/characters/:characterId" element={<Navigate to="expressions" replace />} />
       <Route path="/characters/:characterId/:step" element={<CharacterEditor application={application} refresh={refresh} />} />
+      <Route path="/characters/:characterId/:step/:variantId" element={<CharacterEditor application={application} refresh={refresh} />} />
       <Route path="*" element={<Navigate to="/characters" replace />} />
     </Routes>
   </>

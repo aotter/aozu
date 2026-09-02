@@ -479,6 +479,35 @@ export function isCharacterDraftAssetCurrent(
   return asset.canonicalSha256 === canonical.inspection.sha256
 }
 
+export function resolveCharacterAssetSources(
+  draft: CharacterDraft,
+  input: Pick<CharacterAssetTarget, 'group' | 'variantId' | 'layer'>,
+) {
+  const variant = findVariant(draft, input.group, input.variantId)
+  const asset = variant?.layers[input.layer]
+  const canonical = canonicalAsset(draft)
+  const headRegistration = characterHeadRegistration(draft)
+  const expressionReference = headRegistration?.asset
+  const current = Boolean(asset && variant && isCharacterDraftAssetCurrent(draft, variant, input.layer))
+  const transform = variant?.transform ?? IDENTITY_CHARACTER_TRANSFORM
+  const fallbackEditSource = input.group === 'expression' ? expressionReference ?? canonical
+    : input.group === 'outfit' ? canonical : undefined
+  return {
+    asset,
+    canonical,
+    headRegistration,
+    current,
+    transform,
+    alignmentReference: input.group === 'expression' && headRegistration?.variant.id !== input.variantId
+      ? expressionReference
+      : input.group === 'outfit' ? canonical : undefined,
+    referenceTransform: input.group === 'expression' ? headRegistration?.transform : undefined,
+    editSource: current ? asset : fallbackEditSource,
+    editSourceTransform: current ? transform
+      : input.group === 'expression' && expressionReference ? headRegistration?.transform : undefined,
+  }
+}
+
 export const hasCurrentCharacterLayer = (
   draft: CharacterDraft,
   group: CharacterVariantGroup,

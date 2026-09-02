@@ -3,16 +3,20 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/ui/components/ui/button'
+import type { WebMcpState } from '@/adapters/webmcp/controller.ts'
 
 type AppHeaderProps = {
-  webmcpAvailable: boolean
+  webmcp: WebMcpState
   title?: string
   onBack?: () => void
   actions?: ReactNode
 }
 
-export function AppHeader({ webmcpAvailable, title, onBack, actions }: AppHeaderProps) {
+export function AppHeader({ webmcp, title, onBack, actions }: AppHeaderProps) {
   const { t } = useTranslation()
+  const label = t(`main.webmcp.${webmcp.status}`, { count: webmcp.toolCount })
+  const color = webmcp.status === 'ready' ? 'bg-emerald-500' : webmcp.status === 'registering' ? 'bg-amber-500'
+    : webmcp.status === 'failed' ? 'bg-red-500' : 'bg-muted-foreground/50'
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
@@ -28,14 +32,15 @@ export function AppHeader({ webmcpAvailable, title, onBack, actions }: AppHeader
         </div>
         <div className="flex items-center gap-2">
           <span
-            aria-label={t(webmcpAvailable ? 'main.webmcpConnected' : 'main.webmcpUnavailable')}
+            aria-label={label}
+            title={webmcp.error ?? label}
             className="flex items-center gap-1.5 text-xs text-muted-foreground"
           >
             <span
-              className={`size-2 rounded-full ${webmcpAvailable ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`}
+              className={`size-2 rounded-full ${color}`}
               aria-hidden="true"
             />
-            WebMCP
+            {webmcp.status === 'ready' ? t('main.webmcp.readyShort', { count: webmcp.toolCount }) : 'WebMCP'}
           </span>
           {actions}
         </div>

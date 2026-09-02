@@ -197,8 +197,13 @@ const en = {
     },
   },
   main: {
-    webmcpConnected: 'WebMCP connected',
-    webmcpUnavailable: 'WebMCP unavailable',
+    webmcp: {
+      unsupported: 'WebMCP is not supported in this browser',
+      registering: 'Registering WebMCP site tools',
+      ready: '{{count}} WebMCP site tools ready',
+      readyShort: '{{count}} tools',
+      failed: 'WebMCP tool registration failed',
+    },
     stageTitle: '2D character and scene stage',
     sceneLabel: '{{name}} scene',
     placeholder: 'Placeholder',
