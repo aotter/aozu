@@ -1,3 +1,4 @@
+import { PackageOpenIcon, PlusIcon, ScrollTextIcon, SparklesIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -16,8 +17,6 @@ import { DataControls } from '@/ui/DataControls'
 import type { SavedCompanion } from '@/core/application/companion'
 import type { StagedCandidatePreview } from '@/core/application/candidate'
 
-const startOptions = ['starter', 'bundle'] as const
-
 export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onOpenCompanion, onDeleteCompanion, onChooseStarter, onResumeReview, onResumeDraft, onDeleteDraft, exportCharacterDraft, prepareImport }: {
   savedCompanions: SavedCompanion[]
   pendingReview: StagedCandidatePreview | null
@@ -35,6 +34,10 @@ export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onO
   const [deleting, setDeleting] = useState<string>()
   const [deleteError, setDeleteError] = useState(false)
   const [confirmation, setConfirmation] = useState<{ kind: 'draft' | 'companion'; id: string; name: string }>()
+  const cardCount = 10
+  const cardSlots = Array.from({ length: cardCount }, (_, index) => savedCompanions.slice(0, 9)[index])
+  const additionalCompanions = savedCompanions.slice(9)
+  const fanMiddle = (cardSlots.length - 1) / 2
   const deleteConfirmed = async () => {
     if (!confirmation || deleting) return
     setDeleting(confirmation.id); setDeleteError(false)
@@ -45,12 +48,19 @@ export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onO
   }
 
   return <>
-    <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-3xl flex-col justify-center px-4 py-10">
-      <h1 className="font-heading text-3xl font-semibold tracking-tight">{t('start.title')}</h1>
-      <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">{t('start.description')}</p>
+    <main className="start-page mx-auto min-h-[calc(100svh-3.5rem)] w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
+      <section className="forge-hero" aria-labelledby="start-title">
+        <div>
+          <p className="forge-kicker"><SparklesIcon aria-hidden="true" /> AOZU COMPANION FORGE</p>
+          <h1 id="start-title" className="font-heading text-4xl font-semibold tracking-tight sm:text-5xl">{t('start.title')}</h1>
+          <p className="mt-4 max-w-2xl leading-7 text-muted-foreground">{t('start.description')}</p>
+        </div>
+        <div className="forge-seal" aria-hidden="true"><span>AOZU</span><small>WEBMCP</small></div>
+      </section>
+
       {pendingReview && <section className="mt-8">
         <h2 className="font-heading text-lg font-medium">{t('start.pending.title')}</h2>
-        <article className="mt-3 flex items-center justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm">
+        <article className="parchment-notice mt-3 flex items-center justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm">
           <div className="min-w-0">
             <h3 className="truncate font-heading font-medium">{pendingReview.name}</h3>
             <p className="mt-1 text-xs text-muted-foreground">{t('start.pending.description')}</p>
@@ -60,7 +70,7 @@ export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onO
       </section>}
       {authoringDrafts.length > 0 && <section className="mt-8">
         <h2 className="font-heading text-lg font-medium">{t('start.draft.title')}</h2>
-        <div className="mt-3 grid gap-3">{authoringDrafts.map((draft) => <article key={draft.id} className="flex flex-col items-stretch justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm sm:flex-row sm:items-center">
+        <div className="mt-3 grid gap-3">{authoringDrafts.map((draft) => <article key={draft.id} className="parchment-notice flex flex-col items-stretch justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm sm:flex-row sm:items-center">
           <div className="min-w-0">
             <h3 className="truncate font-heading font-medium">{draft.name}</h3>
             <p className="mt-1 text-xs text-muted-foreground">{t(`start.draft.${draft.status}`)}</p>
@@ -73,28 +83,79 @@ export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onO
         </article>)}</div>
         {deleteError && <p role="alert" className="mt-2 text-sm text-destructive">{t('start.saved.deleteError')}</p>}
       </section>}
-      {savedCompanions.length > 0 && <section className="mt-8">
-        <h2 className="font-heading text-lg font-medium">{t('start.saved.title')}</h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {savedCompanions.map((companion) => <article key={companion.bundleId} className="flex items-center justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm">
-            <div className="min-w-0">
-              <h3 className="truncate font-heading font-medium">{companion.name}</h3>
-              {companion.active && <p className="mt-1 text-xs text-muted-foreground">{t('start.saved.current')}</p>}
-            </div>
-            <div className="flex shrink-0 gap-1">
-              <Button disabled={Boolean(deleting)} onClick={() => void onOpenCompanion(companion.bundleId)}>{t(companion.active ? 'start.saved.continue' : 'start.saved.open')}</Button>
-              <Button variant="destructive" disabled={Boolean(deleting)} onClick={() => setConfirmation({ kind: 'companion', id: companion.bundleId, name: companion.name })}>{t('start.saved.delete')}</Button>
-            </div>
-          </article>)}
+      <section className="companion-vault mt-10" aria-labelledby="saved-companions-title">
+        <div className="vault-heading">
+          <div>
+            <p className="forge-kicker"><ScrollTextIcon aria-hidden="true" /> COMPANION ARCHIVE</p>
+            <h2 id="saved-companions-title" className="font-heading text-2xl font-medium">{t('start.saved.title')}</h2>
+          </div>
+          <span className="vault-count">{t('start.saved.count', { count: savedCompanions.length })}</span>
         </div>
+
+        <div className="companion-fan-shell">
+          <div className="companion-fan" aria-label={t('start.saved.title')}>
+            {cardSlots.map((companion, index) => {
+              const offset = index - fanMiddle
+              const style = { transform: `translate(calc(-50% + ${offset * 48}px), ${Math.abs(offset) * 7}px) rotate(${offset * 4.25}deg)` }
+              if (!companion) return <button
+                key={`empty-${index}`}
+                type="button"
+                className="companion-card is-empty"
+                style={style}
+                aria-label={t('start.chooseStarter')}
+                onClick={onChooseStarter}
+              >
+                <span className="blank-card-figure" aria-hidden="true" />
+                <PlusIcon className="blank-card-plus" aria-hidden="true" />
+              </button>
+
+              return <article key={companion.bundleId} className={`companion-card is-saved${companion.active ? ' is-active' : ''}`} style={style}>
+                <button className="companion-card-open" type="button" onClick={() => void onOpenCompanion(companion.bundleId)}>
+                  <span className="companion-card-crest" aria-hidden="true">{companion.name.trim().slice(0, 2).toUpperCase()}</span>
+                  <span className="companion-card-name">{companion.name}</span>
+                  <span className="companion-card-status">{t(companion.active ? 'start.saved.current' : 'start.saved.open')}</span>
+                </button>
+                <Button className="companion-card-delete" size="icon" variant="destructive" disabled={Boolean(deleting)} aria-label={`${t('start.saved.delete')} ${companion.name}`} onClick={() => setConfirmation({ kind: 'companion', id: companion.bundleId, name: companion.name })}>
+                  <Trash2Icon aria-hidden="true" />
+                </Button>
+              </article>
+            })}
+          </div>
+        </div>
+        {additionalCompanions.length > 0 && <details className="saved-overflow">
+          <summary>{t('start.saved.more', { count: additionalCompanions.length })}</summary>
+          <div className="saved-overflow-grid">
+            {additionalCompanions.map((companion) => <article key={companion.bundleId}>
+              <button type="button" onClick={() => void onOpenCompanion(companion.bundleId)}>
+                <span className="overflow-crest" aria-hidden="true">{companion.name.trim().slice(0, 2).toUpperCase()}</span>
+                <span>{companion.name}</span>
+              </button>
+              <Button size="icon" variant="destructive" disabled={Boolean(deleting)} aria-label={`${t('start.saved.delete')} ${companion.name}`} onClick={() => setConfirmation({ kind: 'companion', id: companion.bundleId, name: companion.name })}>
+                <Trash2Icon aria-hidden="true" />
+              </Button>
+            </article>)}
+          </div>
+        </details>}
         {deleteError && <p role="alert" className="mt-2 text-sm text-destructive">{t('start.saved.deleteError')}</p>}
-      </section>}
-      <div className="mt-8 grid gap-3 sm:grid-cols-2">
-        {startOptions.map((option) => <section key={option} className="flex min-h-40 flex-col rounded-2xl border bg-background p-4 shadow-sm">
-          <h2 className="font-heading font-medium">{t(`start.options.${option}.title`)}</h2>
-          <p className="mt-2 text-sm leading-5 text-muted-foreground">{t(`start.options.${option}.description`)}</p>
-          {option === 'bundle' ? <div className="mt-auto"><DataControls prepareImport={prepareImport} /></div> : <Button className="mt-auto" onClick={onChooseStarter}>{t('start.chooseStarter')}</Button>}
-        </section>)}
+      </section>
+
+      <div className="start-gates mt-8 grid gap-4 sm:grid-cols-2">
+        <section className="start-gate rounded-2xl border bg-background p-5 shadow-sm">
+          <div className="gate-icon"><SparklesIcon aria-hidden="true" /></div>
+          <div className="min-w-0">
+            <h2 className="font-heading text-xl font-medium">{t('start.options.starter.title')}</h2>
+            <p className="mt-2 leading-6 text-muted-foreground">{t('start.options.starter.description')}</p>
+          </div>
+          <Button className="gate-action" onClick={onChooseStarter}><PlusIcon aria-hidden="true" />{t('start.chooseStarter')}</Button>
+        </section>
+        <section className="start-gate rounded-2xl border bg-background p-5 shadow-sm">
+          <div className="gate-icon"><PackageOpenIcon aria-hidden="true" /></div>
+          <div className="min-w-0">
+            <h2 className="font-heading text-xl font-medium">{t('start.options.bundle.title')}</h2>
+            <p className="mt-2 leading-6 text-muted-foreground">{t('start.options.bundle.description')}</p>
+          </div>
+          <div className="gate-action"><DataControls prepareImport={prepareImport} /></div>
+        </section>
       </div>
     </main>
     <AlertDialog open={Boolean(confirmation)} onOpenChange={(open) => { if (!open && !deleting) setConfirmation(undefined) }}>

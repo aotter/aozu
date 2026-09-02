@@ -4,7 +4,8 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { BundleRecord } from '../../core/bundle.ts'
 import type { CharacterDraft } from '../../core/domain/character.ts'
 
-const DATABASE_NAME = 'companion'
+// Keep the Design preview independent from older AOZU prototypes stored on the same origin.
+const DATABASE_NAME = 'companion-design'
 const DATABASE_VERSION = 5
 
 export const META_STORE = 'meta'
