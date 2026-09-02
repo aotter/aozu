@@ -130,7 +130,7 @@ export function CharacterSlotPlaceholder({ src, label }: { src: string; label?: 
     role={label ? 'img' : undefined}
     aria-label={label}
     aria-hidden={label ? undefined : true}
-    className="size-full bg-[#7b739e]/70"
+    className="character-slot-placeholder size-full"
     style={{
       WebkitMaskImage: `url("${src}")`,
       maskImage: `url("${src}")`,

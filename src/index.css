@@ -1640,6 +1640,11 @@ button.gate-action {
   mix-blend-mode: screen;
 }
 
+.character-slot-placeholder {
+  background: linear-gradient(145deg, #fffdf6 12%, #f7e9c6 62%, #e7c77e);
+  filter: drop-shadow(0 0 0.5rem rgb(224 174 69 / 30%));
+}
+
 .body-foundation-card strong,
 .body-foundation-card small {
   display: block;
