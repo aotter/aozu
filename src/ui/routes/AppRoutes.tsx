@@ -89,6 +89,7 @@ export function AppRoutes({ application }: { application: Application }) {
     updateDraft={application.updateCharacterDraft}
     saveAsset={application.saveCharacterAsset}
     setVariantTransform={application.setCharacterVariantTransform}
+    autoFitVariant={application.autoFitCharacterVariant}
     onReview={(draft) => prepareReview(application.prepareCharacter(draft))}
   />
   const showBack = location.pathname !== '/' && location.pathname !== '/start'

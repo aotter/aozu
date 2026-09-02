@@ -1,5 +1,5 @@
 import { ArrowLeftIcon, CircleSlash2Icon, Layers2Icon, PencilIcon, PlusIcon, ShapesIcon, ShirtIcon, SmileIcon } from 'lucide-react'
-import { useEffect, useState, type ComponentType } from 'react'
+import { useEffect, useRef, useState, type ComponentType, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
 
@@ -25,11 +25,12 @@ const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
 }
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
 
-export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, onReview }: {
+export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, autoFitVariant, onReview }: {
   openDraft(): Promise<CharacterDraft>
   updateDraft(draft: CharacterDraft): Promise<CharacterDraft>
   saveAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string): Promise<CharacterDraft>
   setVariantTransform(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string, transform: CharacterVariantTransform): Promise<CharacterDraft>
+  autoFitVariant(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string): Promise<CharacterDraft>
   onReview(draft: CharacterDraft): Promise<void>
 }) {
   const { t } = useTranslation()
@@ -43,6 +44,18 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   const [error, setError] = useState<string>()
   const [selectedVariantKey, setSelectedVariantKey] = useState<string>()
   const [alignmentMode, setAlignmentMode] = useState<'composite' | 'overlay' | 'diagnostic'>('overlay')
+  const drag = useRef<{
+    draft: CharacterDraft
+    group: CharacterVariantGroup
+    variantId: string
+    pointerId: number
+    startX: number
+    startY: number
+    width: number
+    height: number
+    origin: CharacterVariantTransform
+    current: CharacterVariantTransform
+  } | undefined>(undefined)
 
   useEffect(() => {
     let active = true
@@ -70,9 +83,51 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   const registration = characterRegistrationFrame(draft)
   const selectedPrimaryLayer = selectedVariant && (selectedVariant.group === 'prop' ? selectedVariant.layers.front ? 'front' : 'back' : CHARACTER_CREATION_GROUPS.find(({ group }) => group === selectedVariant.group)!.layers[0])
   const selectedAsset = selectedVariant && selectedPrimaryLayer ? selectedVariant.layers[selectedPrimaryLayer] : undefined
-  const referenceBounds = selectedVariant?.group === 'outfit' ? registration.bodyBounds : undefined
+  const referenceBounds = selectedVariant?.group === 'expression' ? registration.head?.bounds
+    : selectedVariant?.group === 'outfit' ? registration.bodyBounds : undefined
   const selectedTransform = selectedVariant?.transform ?? IDENTITY_CHARACTER_TRANSFORM
   const candidateBounds = selectedAsset?.inspection.visibleBounds ? transformCharacterBounds(selectedAsset.inspection.visibleBounds, selectedTransform) : undefined
+  const draggable = selectedVariant?.group === 'expression' && Boolean(selectedAsset)
+  const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!draggable || !selectedVariant) return
+    const bounds = event.currentTarget.getBoundingClientRect()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    drag.current = {
+      draft,
+      group: selectedVariant.group,
+      variantId: selectedVariant.id,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      width: bounds.width,
+      height: bounds.height,
+      origin: selectedTransform,
+      current: selectedTransform,
+    }
+  }
+  const moveDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const active = drag.current
+    if (!active || active.pointerId !== event.pointerId) return
+    const next = {
+      ...active.origin,
+      x: Math.max(-512, Math.min(512, Math.round(active.origin.x + (event.clientX - active.startX) / active.width * 512))),
+      y: Math.max(-768, Math.min(768, Math.round(active.origin.y + (event.clientY - active.startY) / active.height * 768))),
+    }
+    active.current = next
+    setDraft((current) => current && ({
+      ...current,
+      variants: current.variants.map((variant) => variant.group === active.group && variant.id === active.variantId
+        ? { ...variant, transform: next } : variant),
+    }))
+  }
+  const finishDrag = async (event: ReactPointerEvent<HTMLDivElement>) => {
+    const active = drag.current
+    if (!active || active.pointerId !== event.pointerId) return
+    drag.current = undefined
+    event.currentTarget.releasePointerCapture(event.pointerId)
+    try { setDraft(await setVariantTransform(active.draft, active.group, active.variantId, active.current)); setError(undefined) }
+    catch (caught) { setDraft(active.draft); setError(caught instanceof Error ? caught.message : String(caught)) }
+  }
   const persist = (next: CharacterDraft) => { setDraft(next); void updateDraft(next) }
   const activateVariant = (source: CharacterDraft, variant: CharacterDraftVariant) => {
     const { group, id } = variant
@@ -135,7 +190,14 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
     <main className="mx-auto grid h-[calc(100svh-3.5rem)] w-full max-w-5xl grid-cols-[minmax(0,2fr)_minmax(7rem,1fr)] gap-2 p-2 sm:w-[calc(100%-4rem)] sm:gap-4 sm:p-4 lg:w-[calc(100%-8rem)]">
       <section className="flex min-h-0 min-w-0 flex-col rounded-2xl border bg-background p-2 sm:p-4">
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
-          <div className="aspect-2/3 h-full max-h-full max-w-full">{selectedVariant
+          <div
+            className={`aspect-2/3 h-full max-h-full max-w-full ${draggable ? 'cursor-move touch-none' : ''}`}
+            title={draggable ? t('characterDraft.transform.dragHead') : undefined}
+            onPointerDown={beginDrag}
+            onPointerMove={moveDrag}
+            onPointerUp={(event) => void finishDrag(event)}
+            onPointerCancel={(event) => void finishDrag(event)}
+          >{selectedVariant
             ? <CharacterAlignmentRenderer
                 label={draft.name}
                 candidateLayers={previewLayers}
@@ -246,6 +308,19 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                   onBlur={() => void commitTransform()}
                 />
               </label>)}
+              {(selectedVariant.group === 'outfit' || (selectedVariant.group === 'expression' && registration.head?.variantId !== selectedVariant.id)) && <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="col-span-3 h-8"
+                disabled={Boolean(busy)}
+                onClick={async () => {
+                  setBusy('auto-fit'); setError(undefined)
+                  try { setDraft(await autoFitVariant(draft, selectedVariant.group, selectedVariant.id)) }
+                  catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)) }
+                  finally { setBusy(undefined) }
+                }}
+              >{t('characterDraft.transform.autoFit')}</Button>}
             </div>}
             <label className="mt-2 block cursor-pointer overflow-hidden rounded-xl border hover:border-foreground/40 sm:mt-4">
               <span className="flex aspect-square items-center justify-center bg-muted/40 p-2">{primaryAsset

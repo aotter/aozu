@@ -71,6 +71,7 @@ export interface CharacterDraft {
   packId: string
   name: string
   variants: CharacterDraftVariant[]
+  headRegistration?: { variantId: string }
   selected: {
     expression?: string
     outfit?: string
