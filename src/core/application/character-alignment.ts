@@ -62,27 +62,6 @@ const transformMask = (mask: CharacterAlphaMask, transform: CharacterVariantTran
   return { ...mask, alpha }
 }
 
-const headMask = (reference: CharacterAlphaMask): CharacterAlphaMask => {
-  // ponytail: infer the fixed-rig neck seam; persist an explicit head mask only if real Character Packs defeat this heuristic.
-  const bounds = maskStats(reference).bounds
-  if (!bounds) return { ...reference, alpha: new Uint8Array(reference.alpha.length) }
-  const from = Math.round(bounds.y + bounds.height * 0.35)
-  const to = Math.round(bounds.y + bounds.height * 0.55)
-  let cutoff = from
-  let smallestRow = Number.POSITIVE_INFINITY
-  for (let y = from; y <= to; y++) {
-    let count = 0
-    for (let x = bounds.x; x < bounds.x + bounds.width; x++) if (reference.alpha[y * reference.width + x]! > 16) count++
-    if (count < smallestRow) {
-      smallestRow = count
-      cutoff = y
-    }
-  }
-  const alpha = reference.alpha.slice()
-  for (let y = cutoff + 1; y < reference.height; y++) alpha.fill(0, y * reference.width, (y + 1) * reference.width)
-  return { ...reference, alpha }
-}
-
 const compareMasks = (reference: CharacterAlphaMask, candidate: CharacterAlphaMask) => {
   let intersection = 0
   let union = 0
@@ -150,7 +129,7 @@ export function measureCharacterMaskAlignment(
       diagnostics: rawStats.edgeTouchPixels ? [{ code: 'ALPHA_TOUCHES_CANVAS_EDGE', severity: 'warning' as const, message: `${rawStats.edgeTouchPixels} visible alpha pixels touch the canvas edge; verify that this is intentional.` }] : [],
     }
   }
-  const expected = group === 'expression' ? headMask(reference) : reference
+  const expected = reference
   const current = compareMasks(expected, transformMask(candidate, transform))
   const suggestion = suggestedTransform(expected, candidate)
   const suggested = suggestion ? compareMasks(expected, transformMask(candidate, suggestion)) : current

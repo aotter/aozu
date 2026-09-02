@@ -206,7 +206,7 @@ export function createApplication(document: Document) {
   }
   const application = {
     async loadStartup() {
-      const [startup, pendingReview] = await Promise.all([
+      const [startup, pendingReview, storedCharacter, experience] = await Promise.all([
         loadCompanionStartup(agent, bundles, createIndexedDbEntryRepository),
         loadPendingCandidatePreview(
           bundles,
@@ -215,13 +215,21 @@ export function createApplication(document: Document) {
           inspectCharacterImage,
           inspectSceneImage,
         ),
+        characterDrafts.get(),
+        openExperienceDraft(),
       ])
+      const character = storedCharacter ? migrateCharacterDraft(storedCharacter) : null
+      const authoringDraft = character || experience ? {
+        characterName: character?.name ?? null,
+        destination: character?.approvedAt && experience?.character ? '/create' as const : '/character/expressions' as const,
+      } : null
       if (startup.savedCompanions.length) void requestPersistentStorage(document.defaultView?.navigator.storage)
-      if (startup.status !== 'main') return { ...startup, pendingReview }
+      if (startup.status !== 'main') return { ...startup, pendingReview, authoringDraft }
       const entries = createIndexedDbEntryRepository(startup.bundleId)
       return {
         ...startup,
         pendingReview,
+        authoringDraft,
         character: await loadCharacterProjection(
           entries,
           createIndexedDbAssetRepository,
@@ -556,11 +564,16 @@ export function createApplication(document: Document) {
     const variant = draft.variants.find(({ group, id }) => group === input.group && id === input.variantId)
     const asset = variant?.layers[input.layer]
     const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
-    const reference = input.group === 'expression' || input.group === 'outfit' ? canonical : undefined
+    const expressionReference = draft.variants.find((candidate) =>
+      candidate.group === 'expression' && candidate.layers.head && isCharacterDraftAssetCurrent(draft, candidate, 'head')
+    )?.layers.head
+    const alignmentReference = input.group === 'expression' ? expressionReference : input.group === 'outfit' ? canonical : undefined
+    const editSource = input.group === 'expression' ? expressionReference ?? canonical
+      : input.group === 'outfit' ? canonical : undefined
     const transform = variant?.transform ?? { x: 0, y: 0, scale: 1 }
     const measurement = asset ? measureCharacterMaskAlignment(
       input.group,
-      reference ? await readCharacterAlphaMask(reference.blob) : null,
+      alignmentReference ? await readCharacterAlphaMask(alignmentReference.blob) : null,
       await readCharacterAlphaMask(asset.blob),
       transform,
     ) : null
@@ -572,7 +585,7 @@ export function createApplication(document: Document) {
       bottom: Math.max(0, currentBounds.y + currentBounds.height - CHARACTER_RIG.canvas.height),
     } : undefined
     const placementLayers = resolveCharacterDraftReferenceLayers(draft, { group: input.group, id: input.variantId })
-    const placementUsesEditSource = Boolean(reference && placementLayers.length === 1 && placementLayers[0]!.blob === reference.blob)
+    const placementUsesEditSource = Boolean(editSource && placementLayers.length === 1 && placementLayers[0]!.blob === editSource.blob)
     const placement = characterAssetPlacement(input.group, input.layer)
     const lineage = input.group === 'body' ? 'establish-canonical'
       : input.group === 'expression' || input.group === 'outfit' ? 'edit-canonical-body'
@@ -609,11 +622,11 @@ export function createApplication(document: Document) {
       generationRecipe: {
         lineage,
         method: input.group === 'prop' ? 'reference-guided-generation' : 'reference-image-edit',
-        editSource: reference ? {
-          filename: reference.filename,
-          sha256: reference.inspection.sha256,
-          visibleBounds: reference.inspection.visibleBounds,
-          dataUrl: await readDataUrl(reference.blob),
+        editSource: editSource ? {
+          filename: editSource.filename,
+          sha256: editSource.inspection.sha256,
+          visibleBounds: editSource.inspection.visibleBounds,
+          dataUrl: await readDataUrl(editSource.blob),
         } : null,
         placementReference: placementLayers.length ? {
           layerCount: placementLayers.length,
@@ -674,7 +687,7 @@ export function createApplication(document: Document) {
           } : null,
           productionBrief: [
             'The first body/base/body candidate establishes the canonical character and registration frame.',
-            'The canonical body includes the default face. Generate every optional whole-head expression by editing that canonical body while keeping head silhouette, hair, facial hair, and canvas coordinates fixed.',
+            'The canonical body includes the default face. The first accepted whole-head expression establishes head registration; visually preflight it, then edit that returned expression reference for later expressions.',
             'An outfit replaces the character-skin slot: generate the complete dressed character, never a clothing-only overlay. Preserve pose, body center, head position, and foot line. Generate props against the returned current composite.',
             'Generate at 1024×1536 and deterministically downsample 50% to the exact 512×768 canvas. Never crop, reframe, or recenter.',
             'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
@@ -718,9 +731,13 @@ export function createApplication(document: Document) {
       const blob = new Blob([bytes], { type: 'image/png' })
       const inspection = await inspectCharacterImage(blob)
       validateCharacterAssetInspection(inspection)
+      const expressionReference = current.variants.find((variant) =>
+        variant.group === 'expression' && variant.layers.head && isCharacterDraftAssetCurrent(current, variant, 'head')
+      )?.layers.head
       const alignment = measureCharacterMaskAlignment(
         target.group,
-        (target.group === 'expression' || target.group === 'outfit') && canonical ? await readCharacterAlphaMask(canonical.blob) : null,
+        target.group === 'expression' && expressionReference ? await readCharacterAlphaMask(expressionReference.blob)
+          : target.group === 'outfit' && canonical ? await readCharacterAlphaMask(canonical.blob) : null,
         await readCharacterAlphaMask(blob),
       )
       if (alignment.status === 'invalid') return {
