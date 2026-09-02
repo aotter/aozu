@@ -1,11 +1,12 @@
 import type { AgentCapability } from '../../core/application/ports.ts'
 import { CHARACTER_VARIANT_GROUPS, type CharacterAssetTarget, type CharacterVariantGroup, type CharacterVariantLayer } from '../../core/domain/character.ts'
 import { ADVENTURE_SCORE_KEY, parseAdventureScores } from '../../../adventure.ts'
-import { AOZU_PARTNERS, AOZU_WARDROBE_ITEMS } from '../../../aozu.ts'
+import { AOZU_FORGE_QUESTS, AOZU_FORGE_STARTER_ITEM_IDS, AOZU_PARTNERS, AOZU_WARDROBE_ITEMS } from '../../../aozu.ts'
 
 export const AOZU_ACTIVITIES = ['meals', 'money', 'steps', 'travel', 'fitness', 'writing', 'room-shooter', 'forest-runner'] as const
 const AOZU_LIFE_ACTIVITIES = ['meals', 'money', 'steps', 'fitness'] as const
 const AOZU_MEMORY_CATEGORIES = ['life', 'travel', 'writing', 'learning', 'bond'] as const
+const AOZU_FORGE_KEY = 'aozu:p0-forge-profile'
 
 const readText = (value: unknown, label: string, maximum: number) => {
   if (typeof value !== 'string' || !value.trim() || value.length > maximum) throw new Error(`Invalid ${label}`)
@@ -59,7 +60,7 @@ export function registerCompanionTools(document: Document, useCases: {
     modelContext.registerTool({
       name: 'inspect_aozu_capabilities',
       title: 'Inspect AOZU Adventure Capabilities',
-      description: 'Inspect the active AOZU Companion plus the activities, partners, wardrobe items, and human-confirmation rules available for an agent-led adventure. Use this before proposing life records, trips, outfits, memories, or ability cards.',
+      description: 'Inspect the active AOZU Companion plus the activities, partners, wardrobe items, Companion Forge options, and human-confirmation rules available for an agent-led adventure. Use this before proposing character creation, life records, trips, outfits, memories, or ability cards.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true },
       async execute() {
@@ -70,9 +71,81 @@ export function registerCompanionTools(document: Document, useCases: {
             activities: AOZU_ACTIVITIES,
             partners: AOZU_PARTNERS.map(({ id, displayName, role }) => ({ id, displayName, role })),
             wardrobe: AOZU_WARDROBE_ITEMS.map(({ id, label, theme, slot }) => ({ id, label, theme, slot })),
+            forge: {
+              questKinds: AOZU_FORGE_QUESTS.map(({ id, label, ability, rewardItemId }) => ({ id, label, ability, rewardItemId })),
+              starterItemIds: AOZU_FORGE_STARTER_ITEM_IDS,
+              loop: ['create-companion', 'complete-three-step-origin-quest', 'equip-reward', 'seal-origin-card'],
+            },
             rule: 'WebMCP stages proposals. The user confirms them in AOZU before points, journals, outfits, memories, or cards change.',
           },
         }
+      },
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'inspect_aozu_forge',
+      title: 'Inspect AOZU Companion Forge',
+      description: 'Read the current local Companion Forge profile and the exact creation options. Call this before staging a new companion. The normal AOZU form remains available when WebMCP is unavailable.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true },
+      async execute() {
+        const storage = document.defaultView?.localStorage
+        let profile: unknown = null
+        try { profile = JSON.parse(storage?.getItem(AOZU_FORGE_KEY) ?? 'null') } catch { profile = null }
+        return {
+          status: 'ok',
+          data: {
+            profile,
+            partners: AOZU_PARTNERS.map(({ id, displayName, role, personality }) => ({ id, displayName, role, personality })),
+            quests: AOZU_FORGE_QUESTS,
+            starterItems: AOZU_WARDROBE_ITEMS.filter(({ id }) => AOZU_FORGE_STARTER_ITEM_IDS.includes(id as (typeof AOZU_FORGE_STARTER_ITEM_IDS)[number])).map(({ id, label, slot }) => ({ id, label, slot })),
+            confirmation: 'stage_aozu_companion only opens a visible review. The user must confirm in AOZU before a profile, quest, equipment, memory, or card changes.',
+          },
+        }
+      },
+    }, { signal: controller.signal }),
+    modelContext.registerTool({
+      name: 'stage_aozu_companion',
+      title: 'Stage AOZU Companion',
+      description: 'Propose one AOZU companion identity and its first three-step Origin Quest. Use only IDs returned by inspect_aozu_forge. This stages a visible preview; creation, initial equipment, and quest activation require explicit user confirmation in AOZU.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          basePartnerId: { type: 'string', enum: AOZU_PARTNERS.map(({ id }) => id) },
+          name: { type: 'string', minLength: 1, maxLength: 24 },
+          personality: { type: 'string', minLength: 2, maxLength: 120 },
+          role: { type: 'string', minLength: 2, maxLength: 60 },
+          questKind: { type: 'string', enum: AOZU_FORGE_QUESTS.map(({ id }) => id) },
+          questGoal: { type: 'string', minLength: 4, maxLength: 120 },
+          steps: { type: 'array', minItems: 3, maxItems: 3, items: { type: 'string', minLength: 2, maxLength: 80 } },
+          starterItemId: { type: 'string', enum: AOZU_FORGE_STARTER_ITEM_IDS },
+          dialogue: { type: 'string', minLength: 1, maxLength: 800 },
+          idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' },
+        },
+        required: ['basePartnerId', 'name', 'personality', 'role', 'questKind', 'questGoal', 'steps', 'starterItemId', 'idempotencyKey'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      async execute(input) {
+        const basePartnerId = String(input.basePartnerId)
+        const questKind = String(input.questKind)
+        const starterItemId = String(input.starterItemId)
+        if (!AOZU_PARTNERS.some(({ id }) => id === basePartnerId)) throw new Error('Unknown basePartnerId')
+        if (!AOZU_FORGE_QUESTS.some(({ id }) => id === questKind)) throw new Error('Unknown questKind')
+        if (!AOZU_FORGE_STARTER_ITEM_IDS.includes(starterItemId as (typeof AOZU_FORGE_STARTER_ITEM_IDS)[number])) throw new Error('Unknown starterItemId')
+        if (!Array.isArray(input.steps) || input.steps.length !== 3) throw new Error('Origin Quest needs exactly three steps')
+        return stageProposal({
+          id: readIdempotencyKey(input.idempotencyKey),
+          kind: 'forge',
+          basePartnerId,
+          name: readText(input.name, 'name', 24),
+          personality: readText(input.personality, 'personality', 120),
+          role: readText(input.role, 'role', 60),
+          questKind,
+          questGoal: readText(input.questGoal, 'questGoal', 120),
+          steps: input.steps.map((value) => readText(value, 'step', 80)),
+          starterItemId,
+          dialogue: readOptionalText(input.dialogue, 'dialogue', 800),
+        })
       },
     }, { signal: controller.signal }),
     modelContext.registerTool({
@@ -109,7 +182,13 @@ export function registerCompanionTools(document: Document, useCases: {
       async execute(input) {
         const activity = String(input.activity)
         if (!AOZU_LIFE_ACTIVITIES.includes(activity as (typeof AOZU_LIFE_ACTIVITIES)[number])) throw new Error('Unknown life activity')
-        return stageProposal({ id: readIdempotencyKey(input.idempotencyKey), kind: 'life', activity, summary: readText(input.summary, 'summary', 300), dialogue: readOptionalText(input.dialogue, 'dialogue', 800) })
+        return stageProposal({
+          id: readIdempotencyKey(input.idempotencyKey),
+          kind: 'life',
+          activity,
+          summary: readText(input.summary, 'summary', 300),
+          dialogue: readOptionalText(input.dialogue, 'dialogue', 800),
+        })
       },
     }, { signal: controller.signal }),
     modelContext.registerTool({
@@ -120,7 +199,22 @@ export function registerCompanionTools(document: Document, useCases: {
         type: 'object',
         properties: {
           title: { type: 'string', minLength: 1, maxLength: 80 },
-          stops: { type: 'array', minItems: 1, maxItems: 12, items: { type: 'object', properties: { day: { type: 'integer', minimum: 1, maximum: 3 }, kind: { type: 'string', enum: ['spot', 'food'] }, name: { type: 'string', minLength: 1, maxLength: 80 }, location: { type: 'string', minLength: 1, maxLength: 120 } }, required: ['day', 'kind', 'name', 'location'], additionalProperties: false } },
+          stops: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 12,
+            items: {
+              type: 'object',
+              properties: {
+                day: { type: 'integer', minimum: 1, maximum: 3 },
+                kind: { type: 'string', enum: ['spot', 'food'] },
+                name: { type: 'string', minLength: 1, maxLength: 80 },
+                location: { type: 'string', minLength: 1, maxLength: 120 },
+              },
+              required: ['day', 'kind', 'name', 'location'],
+              additionalProperties: false,
+            },
+          },
           dialogue: { type: 'string', minLength: 1, maxLength: 800 },
           idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' },
         },
@@ -138,42 +232,100 @@ export function registerCompanionTools(document: Document, useCases: {
           if (![1, 2, 3].includes(day) || !['spot', 'food'].includes(kind)) throw new Error('Invalid stop')
           return { day, kind, name: readText(stop.name, 'stop name', 80), location: readText(stop.location, 'stop location', 120) }
         })
-        return stageProposal({ id: readIdempotencyKey(input.idempotencyKey), kind: 'travel', title: readText(input.title, 'title', 80), stops, dialogue: readOptionalText(input.dialogue, 'dialogue', 800) })
+        return stageProposal({
+          id: readIdempotencyKey(input.idempotencyKey),
+          kind: 'travel',
+          title: readText(input.title, 'title', 80),
+          stops,
+          dialogue: readOptionalText(input.dialogue, 'dialogue', 800),
+        })
       },
     }, { signal: controller.signal }),
     modelContext.registerTool({
       name: 'stage_aozu_outfit',
       title: 'Stage AOZU Outfit',
       description: 'Propose one owned paper-doll item for the active Companion. AOZU opens the wardrobe preview and waits for the user before the item is magnetically equipped and the character composite changes.',
-      inputSchema: { type: 'object', properties: { itemId: { type: 'string', enum: AOZU_WARDROBE_ITEMS.map(({ id }) => id) }, dialogue: { type: 'string', minLength: 1, maxLength: 800 }, idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' } }, required: ['itemId', 'idempotencyKey'], additionalProperties: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          itemId: { type: 'string', enum: AOZU_WARDROBE_ITEMS.map(({ id }) => id) },
+          dialogue: { type: 'string', minLength: 1, maxLength: 800 },
+          idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' },
+        },
+        required: ['itemId', 'idempotencyKey'],
+        additionalProperties: false,
+      },
       annotations: { readOnlyHint: false },
       async execute(input) {
         const itemId = String(input.itemId)
         if (!AOZU_WARDROBE_ITEMS.some(({ id }) => id === itemId)) throw new Error('Unknown wardrobe item')
-        return stageProposal({ id: readIdempotencyKey(input.idempotencyKey), kind: 'outfit', itemId, dialogue: readOptionalText(input.dialogue, 'dialogue', 800) })
+        return stageProposal({
+          id: readIdempotencyKey(input.idempotencyKey),
+          kind: 'outfit',
+          itemId,
+          dialogue: readOptionalText(input.dialogue, 'dialogue', 800),
+        })
       },
     }, { signal: controller.signal }),
     modelContext.registerTool({
       name: 'stage_aozu_memory',
       title: 'Stage AOZU Memory',
       description: 'Propose a short shared memory for the active Companion. AOZU shows the title, summary, and category; nothing becomes long-term memory until the user confirms it.',
-      inputSchema: { type: 'object', properties: { title: { type: 'string', minLength: 1, maxLength: 80 }, summary: { type: 'string', minLength: 1, maxLength: 500 }, category: { type: 'string', enum: AOZU_MEMORY_CATEGORIES }, dialogue: { type: 'string', minLength: 1, maxLength: 800 }, idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' } }, required: ['title', 'summary', 'category', 'idempotencyKey'], additionalProperties: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', minLength: 1, maxLength: 80 },
+          summary: { type: 'string', minLength: 1, maxLength: 500 },
+          category: { type: 'string', enum: AOZU_MEMORY_CATEGORIES },
+          dialogue: { type: 'string', minLength: 1, maxLength: 800 },
+          idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' },
+        },
+        required: ['title', 'summary', 'category', 'idempotencyKey'],
+        additionalProperties: false,
+      },
       annotations: { readOnlyHint: false },
       async execute(input) {
         const category = String(input.category)
         if (!AOZU_MEMORY_CATEGORIES.includes(category as (typeof AOZU_MEMORY_CATEGORIES)[number])) throw new Error('Unknown memory category')
-        return stageProposal({ id: readIdempotencyKey(input.idempotencyKey), kind: 'memory', title: readText(input.title, 'title', 80), summary: readText(input.summary, 'summary', 500), category, dialogue: readOptionalText(input.dialogue, 'dialogue', 800) })
+        return stageProposal({
+          id: readIdempotencyKey(input.idempotencyKey),
+          kind: 'memory',
+          title: readText(input.title, 'title', 80),
+          summary: readText(input.summary, 'summary', 500),
+          category,
+          dialogue: readOptionalText(input.dialogue, 'dialogue', 800),
+        })
       },
     }, { signal: controller.signal }),
     modelContext.registerTool({
       name: 'stage_aozu_ability_card',
       title: 'Stage AOZU Ability Card',
       description: 'Propose a callable card that packages one learned Companion ability and a minimal memory summary. AOZU presents the card contract for user confirmation and never includes credentials or raw private history.',
-      inputSchema: { type: 'object', properties: { title: { type: 'string', minLength: 1, maxLength: 80 }, ability: { type: 'string', minLength: 1, maxLength: 120 }, summary: { type: 'string', minLength: 1, maxLength: 500 }, requiredCapabilities: { type: 'array', maxItems: 10, items: { type: 'string', minLength: 1, maxLength: 80 } }, dialogue: { type: 'string', minLength: 1, maxLength: 800 }, idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' } }, required: ['title', 'ability', 'summary', 'requiredCapabilities', 'idempotencyKey'], additionalProperties: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', minLength: 1, maxLength: 80 },
+          ability: { type: 'string', minLength: 1, maxLength: 120 },
+          summary: { type: 'string', minLength: 1, maxLength: 500 },
+          requiredCapabilities: { type: 'array', maxItems: 10, items: { type: 'string', minLength: 1, maxLength: 80 } },
+          dialogue: { type: 'string', minLength: 1, maxLength: 800 },
+          idempotencyKey: { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]*$' },
+        },
+        required: ['title', 'ability', 'summary', 'requiredCapabilities', 'idempotencyKey'],
+        additionalProperties: false,
+      },
       annotations: { readOnlyHint: false },
       async execute(input) {
         if (!Array.isArray(input.requiredCapabilities) || input.requiredCapabilities.length > 10) throw new Error('Invalid requiredCapabilities')
-        return stageProposal({ id: readIdempotencyKey(input.idempotencyKey), kind: 'card', title: readText(input.title, 'title', 80), ability: readText(input.ability, 'ability', 120), summary: readText(input.summary, 'summary', 500), requiredCapabilities: input.requiredCapabilities.map((value) => readText(value, 'capability', 80)), dialogue: readOptionalText(input.dialogue, 'dialogue', 800) })
+        return stageProposal({
+          id: readIdempotencyKey(input.idempotencyKey),
+          kind: 'card',
+          title: readText(input.title, 'title', 80),
+          ability: readText(input.ability, 'ability', 120),
+          summary: readText(input.summary, 'summary', 500),
+          requiredCapabilities: input.requiredCapabilities.map((value) => readText(value, 'capability', 80)),
+          dialogue: readOptionalText(input.dialogue, 'dialogue', 800),
+        })
       },
     }, { signal: controller.signal }),
     modelContext.registerTool({

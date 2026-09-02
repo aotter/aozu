@@ -43,6 +43,17 @@ export const AOZU_WARDROBE_ITEMS = [
   { id: 'voyage-passport', label: '掌上航海證', theme: '遠航', slot: 'wardrobe-hand', image: '/assets/otter-voyage-accessories-v1.png', crop: [30, 340, 230, 310] },
 ] as const satisfies ReadonlyArray<{ id: string; label: string; theme: string; slot: AozuWardrobeSlotId; image: string; crop: readonly [number, number, number, number] }>
 
+export const AOZU_FORGE_STARTER_ITEM_IDS = ['explorer-bandana', 'coffee-scarf', 'night-moon', 'voyage-cap'] as const
+
+export const AOZU_FORGE_QUESTS = [
+  { id: 'travel', label: '旅行規劃', ability: '旅程策劃', rewardItemId: 'explorer-compass', defaultGoal: '一起完成一份可以照著走的週末旅行手札', steps: ['說出想去的地方', '補上店家或景點位置', '完成一項手札 checklist'] },
+  { id: 'fitness', label: '健身', ability: '行動教練', rewardItemId: 'focus-jacket', defaultGoal: '一起完成三次適合今天狀態的運動行動', steps: ['告訴夥伴今天的體感', '完成一段可行的訓練', '回報結果並調整下一次'] },
+  { id: 'steps', label: '計步', ability: '散步陪練', rewardItemId: 'voyage-jacket', defaultGoal: '把三次散步變成能持續的生活節奏', steps: ['貼上今天的步數', '完成一段短散步', '記下一個新發現'] },
+  { id: 'meals', label: '飲控', ability: '飲食應援', rewardItemId: 'coffee-apron', defaultGoal: '用三次輕鬆紀錄找到自己的飲食節奏', steps: ['說出吃了什麼', '補上份量或飽足感', '完成下一餐的小調整'] },
+  { id: 'money', label: '記帳', ability: '日常整理', rewardItemId: 'focus-tablet', defaultGoal: '一起整理三筆支出並找出一個可行的調整', steps: ['貼上第一筆支出', '替用途完成分類', '整理成一個小目標'] },
+  { id: 'writing', label: '共同寫作', ability: '共筆創作', rewardItemId: 'focus-stylus', defaultGoal: '一起留下三段能繼續發展的共同文字', steps: ['貼上第一個想法', '一起補出下一段', '保存本次創作方向'] },
+] as const
+
 export const AOZU_TRAVEL_ACCESSORIES = [
   { id: 'route-pin', icon: '⌖', threshold: 30, skill: '規劃', names: { otter: '葉脈旅標', seal: '泡泡旅標', whale: '星航旅標', weasel: '琥珀路章', mikan: '晴橘路章', space: '星圖定位章', xixi: '元氣行程章' } },
   { id: 'compass', icon: '◇', threshold: 60, skill: '探索', names: { otter: '貝殼羅盤', seal: '潮汐羅盤', whale: '夜航羅盤', weasel: '收納羅盤', mikan: '曜橘羅盤', space: '星軌羅盤', xixi: '躍動羅盤' } },

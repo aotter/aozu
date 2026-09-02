@@ -2,14 +2,15 @@
 
 ## 產品主張
 
-AOZU 是把工具軟體包進冒險養成遊戲的 Companion OS。使用者只要告訴虛擬夥伴「想一起做什麼」，Agent 就能透過 WebMCP 提出一段冒險；使用者確認後，AOZU 才執行任務、保存成果、改變紙娃娃外觀、累積能力，最後把成熟技能封成可再次召喚的 Ability Card。
+**AOZU Companion Forge** 是一個用冒險養成遊戲創造虛擬夥伴的服務。使用者不只是選一隻既有角色，而是透過 AOZU 或 WebMCP 決定夥伴的外型版型、名字、個性、角色定位、誕生配件與第一場任務。完成任務後，夥伴會真正換上獎勵、保存共同記憶，並封成可再次召喚的 Origin Card。
 
 同一個 ADV 迴圈可以承載旅行、食譜、飲食、健身、運動、記帳、寫作與語言學習，不需要替每種工具重做一套操作模型。
 
 ```text
-說出目標 → Agent 提出結構化冒險 → 角色在 AOZU 內說明
-→ 使用者確認 → Mantle 執行確定性變更 → 成果／點數／外觀／記憶
-→ 達成里程碑 → 封成 Ability Card → 下次召喚
+描述想創造的夥伴 → Agent 提出 Companion + Origin Quest
+→ 使用者在 AOZU 確認 → Mantle 啟用版型與誕生配件
+→ 對話完成三步任務 → 累積成長並穿上獎勵
+→ 保存第一場共同記憶 → 封成 Origin Card → 下次召喚
 ```
 
 ## 活動對應
@@ -20,19 +21,25 @@ OpenAI WebMCP Challenge 以實用性、原創性、執行品質、WebMCP 使用�
 
 ## P0 — 可錄影的完整成長迴圈
 
-- `inspect_aozu_capabilities`：讓 Agent 先理解角色、活動、紙娃娃物件與確認規則。
+- `inspect_aozu_forge`：讓 Agent 先讀取可用外型版型、能力、配件、三步任務契約與目前創角狀態。
+- `stage_aozu_companion`：一次提案夥伴身分與 Origin Quest；只開啟 AOZU 內的可見預覽，不直接創角。
+- 使用者確認後才切換角色版型、裝上誕生配件、建立本機角色檔案與第一場任務。
+- 旅行、健身、計步、飲控、記帳或共同寫作都使用同一個三步 Origin Quest schema。
+- 每次真實操作推進一步；第三步完成時由既有 Mantle action 裝上獎勵，保存共同記憶並自動封存 Origin Card。
+- Origin Card 可召回角色的身分、能力與第一場冒險，形成完整服務閉環。
+- `inspect_aozu_capabilities`：讓 Agent 理解既有生活活動、紙娃娃物件與確認規則。
 - `stage_aozu_life_event`：提案飲食、記帳、步數或健身冒險。
 - `stage_aozu_trip_plan`：把多個地點一次整理成旅行手札候選。
 - `stage_aozu_outfit`：提案紙娃娃配件，確認後才真正重繪穿搭。
 - `stage_aozu_memory`：提出可見的長期記憶摘要，由使用者決定保存。
-- `stage_aozu_ability_card`：把角色能力與最小記憶封成可再次召喚的卡片。
+- `stage_aozu_ability_card`：在 Origin Card 以外，把後續成熟技能封成可再次召喚的 Ability Card。
 - 每個寫入工具只建立 AOZU 內的確認介面；Agent 不可直接發點、換裝、保存記憶或封卡。
 - 沒有 WebMCP 時，原本的本機 Companion、手札、衣櫥與遊戲仍可使用。
 
 ## P1 — 工具章節
 
 - 食譜／飲食：來源候選、食材整併、採買清單與餐食確認。
-- 健身／運動：安全目標、訓練記錄、步數匯入與恢復回顧。
+- 健身／運動：安全目標、訓練紀錄、步數匯入與恢復回顧。
 - 記帳：收據與 CSV 候選、整數金額、分類確認與預算摘要。
 - 旅行：帶 URL、擷取時間與信心標記的旅行書候選。
 - 共筆／語言：提案差異、作者標示、可回復版本與錯題摘要。
@@ -40,7 +47,7 @@ OpenAI WebMCP Challenge 以實用性、原創性、執行品質、WebMCP 使用�
 ## P2 — 送件
 
 - 用 ChatGPT 內建瀏覽器走完所有 P0 工具，建立成功／拒絕／重送的 WebMCP eval。
-- 準備三分鐘示範：一句話開始旅行 → Agent 排手札 → 使用者確認 → 完成景點 → 解鎖配件 → 穿上 → 封卡 → 召喚卡片。
+- 準備三分鐘示範：一句話描述想要的夥伴 → Agent 提案創角 → 使用者確認 → 完成三步 Origin Quest → 解鎖並穿上配件 → 封卡 → 召喚角色。
 - 補專案首頁說明、公開部署、開源授權、Devpost 文字與示範影片。
 
 ## Guyspy 架構原則

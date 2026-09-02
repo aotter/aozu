@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
 
-import { AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, AOZU_WARDROBE_ITEMS, AOZU_WARDROBE_SLOTS, DEFAULT_TRAVEL_JOURNAL, ensureAozuCompanions, type AozuStartup, type AozuWardrobeSlotId, type TravelJournalState } from '../companion/aozu.ts';
+import { AOZU_FORGE_QUESTS, AOZU_FORGE_STARTER_ITEM_IDS, AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, AOZU_WARDROBE_ITEMS, AOZU_WARDROBE_SLOTS, DEFAULT_TRAVEL_JOURNAL, ensureAozuCompanions, type AozuStartup, type AozuWardrobeSlotId, type TravelJournalState } from '../companion/aozu.ts';
 import type { AdventureMode } from '../companion/adventure.ts';
 import { createApplication, type Application } from '../companion/src/bootstrap.ts';
 import { AdventureGame } from './adventure-game.tsx';
@@ -16,6 +16,7 @@ const modules = [
 ] as const;
 
 const panels = [
+  { id: 'forge', icon: '創', label: '創角' },
   { id: 'quests', icon: '六', label: '生活' },
   { id: 'wardrobe', icon: '衣', label: '衣櫥' },
   { id: 'journal', icon: '札', label: '手札' },
@@ -31,19 +32,36 @@ type WardrobeItem = (typeof AOZU_WARDROBE_ITEMS)[number];
 type Placement = { x: number; y: number; scale: number };
 type TravelKind = 'spot' | 'food';
 type TravelChatMessage = { id: string; from: 'partner' | 'user'; text: string };
+type ForgeQuestKind = (typeof AOZU_FORGE_QUESTS)[number]['id'];
+type ForgeProposal = {
+  id: string;
+  kind: 'forge';
+  basePartnerId: Partner['id'];
+  name: string;
+  personality: string;
+  role: string;
+  questKind: ForgeQuestKind;
+  questGoal: string;
+  steps: [string, string, string];
+  starterItemId: WardrobeItem['id'];
+  dialogue?: string;
+};
+type ForgeProfile = Omit<ForgeProposal, 'kind' | 'dialogue'> & { progress: number; createdAt: number };
 type AgentProposal =
+  | ForgeProposal
   | { id: string; kind: 'life'; activity: Exclude<ModuleId, 'travel'>; summary: string; dialogue?: string }
   | { id: string; kind: 'travel'; title: string; stops: { day: 1 | 2 | 3; kind: TravelKind; name: string; location: string }[]; dialogue?: string }
   | { id: string; kind: 'outfit'; itemId: string; dialogue?: string }
   | { id: string; kind: 'memory'; title: string; summary: string; category: 'life' | 'travel' | 'writing' | 'learning' | 'bond'; dialogue?: string }
   | { id: string; kind: 'card'; title: string; ability: string; summary: string; requiredCapabilities: string[]; dialogue?: string };
 type SavedMemory = { id: string; partnerId: Partner['id']; title: string; summary: string; category: 'life' | 'travel' | 'writing' | 'learning' | 'bond'; createdAt: number };
-type SavedAbilityCard = { id: string; partnerId: Partner['id']; title: string; ability: string; summary: string; requiredCapabilities: string[]; createdAt: number };
+type SavedAbilityCard = { id: string; partnerId: Partner['id']; title: string; ability: string; summary: string; requiredCapabilities: string[]; createdAt: number; kind?: 'ability' | 'origin'; originProfileId?: string };
 type SavedLifeRecord = { id: string; partnerId: Partner['id']; activity: Exclude<ModuleId, 'travel'>; summary: string; createdAt: number };
 
 const AOZU_MEMORY_KEY = 'aozu:p0-memories';
 const AOZU_CARD_KEY = 'aozu:p0-ability-cards';
 const AOZU_LIFE_KEY = 'aozu:p0-life-records';
+const AOZU_FORGE_KEY = 'aozu:p0-forge-profile';
 const memoryCategoryLabels = { life: '生', travel: '旅', writing: '寫', learning: '學', bond: '伴' } as const;
 
 const readStoredList = <T,>(key: string): T[] => {
@@ -60,6 +78,7 @@ const saveStoredList = <T extends { id: string }>(key: string, current: T[], val
 };
 
 const agentProposalTitle = (proposal: AgentProposal) => {
+  if (proposal.kind === 'forge') return `創造夥伴・${proposal.name}`;
   if (proposal.kind === 'life') return `${modules.find(({ id }) => id === proposal.activity)?.label ?? '生活'}冒險紀錄`;
   if (proposal.kind === 'travel') return proposal.title;
   if (proposal.kind === 'outfit') return `穿上${AOZU_WARDROBE_ITEMS.find(({ id }) => id === proposal.itemId)?.label ?? '新配件'}`;
@@ -68,11 +87,22 @@ const agentProposalTitle = (proposal: AgentProposal) => {
 };
 
 const agentProposalSummary = (proposal: AgentProposal) => {
+  if (proposal.kind === 'forge') return `${proposal.personality}的${proposal.role}，第一個任務是「${proposal.questGoal}」。`;
   if (proposal.kind === 'life') return proposal.summary;
   if (proposal.kind === 'travel') return `${proposal.stops.length} 個地點將加入旅行手札`;
   if (proposal.kind === 'outfit') return '確認後才會替換同部位配件並重新合成角色造型。';
   if (proposal.kind === 'memory') return proposal.summary;
   return `${proposal.ability}｜${proposal.summary}`;
+};
+
+const defaultForgeDraft = {
+  basePartnerId: 'otter' as Partner['id'],
+  name: '小歐',
+  personality: '開朗、好奇、會把大目標拆成小冒險',
+  role: '日常冒險夥伴',
+  questKind: 'travel' as ForgeQuestKind,
+  questGoal: AOZU_FORGE_QUESTS[0].defaultGoal,
+  starterItemId: AOZU_FORGE_STARTER_ITEM_IDS[0] as WardrobeItem['id'],
 };
 
 const lifeControls: readonly { id: string; mark: string; label: string; panel: PanelId; module?: ModuleId; tone: string }[] = [
@@ -210,7 +240,7 @@ function PaperDollCanvas({ partner, layers }: { partner: Partner; layers: { item
 export default function Home() {
   const [runtime, setRuntime] = useState<AozuStartup | null>(null);
   const [runtimeError, setRuntimeError] = useState('');
-  const [panel, setPanel] = useState<PanelId>('quests');
+  const [panel, setPanel] = useState<PanelId>('forge');
   const [activeModuleId, setActiveModuleId] = useState<ModuleId>('travel');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
@@ -234,6 +264,8 @@ export default function Home() {
   const [savedMemories, setSavedMemories] = useState<SavedMemory[]>([]);
   const [savedCards, setSavedCards] = useState<SavedAbilityCard[]>([]);
   const [savedLifeRecords, setSavedLifeRecords] = useState<SavedLifeRecord[]>([]);
+  const [forgeProfile, setForgeProfile] = useState<ForgeProfile | null>(null);
+  const [forgeDraft, setForgeDraft] = useState(defaultForgeDraft);
   const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
   const [mobileConsoleOpen, setMobileConsoleOpen] = useState(false);
   const [consoleWidth, setConsoleWidth] = useState(31);
@@ -253,6 +285,29 @@ export default function Home() {
       setSavedMemories(readStoredList<SavedMemory>(AOZU_MEMORY_KEY));
       setSavedCards(readStoredList<SavedAbilityCard>(AOZU_CARD_KEY));
       setSavedLifeRecords(readStoredList<SavedLifeRecord>(AOZU_LIFE_KEY));
+      try {
+        const stored = JSON.parse(localStorage.getItem(AOZU_FORGE_KEY) ?? 'null') as ForgeProfile | null;
+        if (stored?.id
+          && typeof stored.name === 'string'
+          && typeof stored.personality === 'string'
+          && typeof stored.role === 'string'
+          && Array.isArray(stored.steps)
+          && stored.steps.length === 3
+          && AOZU_PARTNERS.some(({ id }) => id === stored.basePartnerId)
+          && AOZU_FORGE_QUESTS.some(({ id }) => id === stored.questKind)
+          && AOZU_WARDROBE_ITEMS.some(({ id }) => id === stored.starterItemId)) {
+          setForgeProfile(stored);
+          setForgeDraft({
+            basePartnerId: stored.basePartnerId,
+            name: stored.name,
+            personality: stored.personality,
+            role: stored.role,
+            questKind: stored.questKind,
+            questGoal: stored.questGoal,
+            starterItemId: stored.starterItemId,
+          });
+        }
+      } catch { localStorage.removeItem(AOZU_FORGE_KEY); }
     }, 0);
     return () => window.clearTimeout(timeout);
   }, []);
@@ -284,8 +339,12 @@ export default function Home() {
       const detail = (event as CustomEvent<{ command?: string; activity?: string; message?: string; proposal?: unknown }>).detail ?? {};
       if (detail.command === 'stage-proposal') {
         const proposal = detail.proposal as AgentProposal | undefined;
-        if (!proposal || typeof proposal.id !== 'string' || !['life', 'travel', 'outfit', 'memory', 'card'].includes(proposal.kind)) return;
+        if (!proposal || typeof proposal.id !== 'string' || !['forge', 'life', 'travel', 'outfit', 'memory', 'card'].includes(proposal.kind)) return;
         setAgentProposal(proposal);
+        if (proposal.kind === 'forge') {
+          setForgeDraft({ basePartnerId: proposal.basePartnerId, name: proposal.name, personality: proposal.personality, role: proposal.role, questKind: proposal.questKind, questGoal: proposal.questGoal, starterItemId: proposal.starterItemId });
+          setPanel('forge');
+        }
         if (proposal.kind === 'life') setActiveModuleId(proposal.activity);
         if (proposal.kind === 'travel') setActiveModuleId('travel');
         if (proposal.kind === 'outfit') setSelectedWardrobeItemId(proposal.itemId);
@@ -331,6 +390,11 @@ export default function Home() {
 
   const activeModule = modules.find(({ id }) => id === activeModuleId) ?? modules[3];
   const activePartner = AOZU_PARTNERS.find(({ name }) => name === runtime?.companion.name) ?? AOZU_PARTNERS[0];
+  const activeForgeProfile = forgeProfile?.basePartnerId === activePartner.id ? forgeProfile : null;
+  const activeDisplayName = activeForgeProfile?.name ?? activePartner.displayName;
+  const activeRole = activeForgeProfile?.role ?? activePartner.role;
+  const activeQuote = activeForgeProfile ? `${activeForgeProfile.personality}。${activeForgeProfile.questGoal}` : activePartner.quote;
+  const activeForgeQuest = activeForgeProfile ? AOZU_FORGE_QUESTS.find(({ id }) => id === activeForgeProfile.questKind) : undefined;
   const wardrobeEnabled = true;
   const storedWardrobeItems = wardrobeEnabled ? AOZU_WARDROBE_ITEMS.filter(({ id }) => runtime?.loadout.equippedDefinitionIds.includes(`wardrobe-${id}`)) : [];
   const hasLegacyStarterWardrobe = storedWardrobeItems.length === legacyStarterWardrobe.length && legacyStarterWardrobe.every((id) => storedWardrobeItems.some((item) => item.id === id));
@@ -355,6 +419,60 @@ export default function Home() {
   const refresh = async (application: Application) => {
     const startup = await application.loadStartup();
     if (startup.status === 'main') setRuntime(startup);
+    return startup;
+  };
+
+  const saveForgeProfile = (profile: ForgeProfile) => {
+    localStorage.setItem(AOZU_FORGE_KEY, JSON.stringify(profile));
+    setForgeProfile(profile);
+  };
+
+  const advanceForgeQuest = async (kind: ForgeQuestKind, application?: Application) => {
+    const profile = forgeProfile;
+    if (!profile || profile.questKind !== kind || profile.progress >= profile.steps.length) return;
+    const next = { ...profile, progress: Math.min(profile.steps.length, profile.progress + 1) };
+    saveForgeProfile(next);
+    if (next.progress < next.steps.length) {
+      setToast(`Origin Quest ${next.progress} / ${next.steps.length}`);
+      return;
+    }
+
+    const quest = AOZU_FORGE_QUESTS.find(({ id }) => id === next.questKind)!;
+    const card: SavedAbilityCard = {
+      id: `origin-${next.id}`,
+      partnerId: next.basePartnerId,
+      title: `${next.name}・Origin Card`,
+      ability: quest.ability,
+      summary: `${next.personality}｜完成「${next.questGoal}」`,
+      requiredCapabilities: [`aozu.quest.${next.questKind}`, `aozu.companion.${next.basePartnerId}`],
+      createdAt: Date.now(),
+      kind: 'origin',
+      originProfileId: next.id,
+    };
+    setSavedCards((current) => saveStoredList(AOZU_CARD_KEY, current, card));
+    const memory: SavedMemory = {
+      id: `origin-memory-${next.id}`,
+      partnerId: next.basePartnerId,
+      title: `${next.name}的第一場冒險`,
+      summary: next.questGoal,
+      category: next.questKind === 'travel' ? 'travel' : next.questKind === 'writing' ? 'writing' : 'life',
+      createdAt: Date.now(),
+    };
+    setSavedMemories((current) => saveStoredList(AOZU_MEMORY_KEY, current, memory));
+
+    try {
+      const activeApplication = application ?? (await bootAozu()).application;
+      const startup = await activeApplication.loadStartup();
+      if (startup.status === 'main') {
+        await activeApplication.submitAction(`wear-${quest.rewardItemId}`, startup.stage.revision, `origin-reward-${next.id}`);
+        await refresh(activeApplication);
+      }
+    } catch (error) {
+      setRuntimeError(`Origin Card 已封存，但獎勵配件尚未裝上：${messageFrom(error)}`);
+    }
+    setPanel('cards');
+    setRoomMessage(`我們完成第一場冒險了！「${quest.ability}」已封成 Origin Card，${AOZU_WARDROBE_ITEMS.find(({ id }) => id === quest.rewardItemId)?.label}也已解鎖並穿上。`);
+    setToast('Origin Card 已封存');
   };
 
   const runAction = async (actionId: string, success: string, idempotencyKey?: string) => {
@@ -364,9 +482,10 @@ export default function Home() {
     try {
       const { application } = await bootAozu();
       await application.submitAction(actionId, runtime.stage.revision, idempotencyKey);
-      await refresh(application);
+      const startup = await refresh(application);
       setToast(success);
       window.setTimeout(() => setToast(''), 1800);
+      if (startup.status === 'main' && startup.stage.revision > runtime.stage.revision && AOZU_FORGE_QUESTS.some(({ id }) => id === actionId)) await advanceForgeQuest(actionId as ForgeQuestKind, application);
       return true;
     } catch (error) {
       setRuntimeError(messageFrom(error));
@@ -376,6 +495,46 @@ export default function Home() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const stageForgeDraft = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!forgeDraft.name.trim() || !forgeDraft.personality.trim() || !forgeDraft.role.trim() || !forgeDraft.questGoal.trim()) {
+      setRuntimeError('請先完成名字、個性、角色定位與第一場冒險。');
+      return;
+    }
+    const quest = AOZU_FORGE_QUESTS.find(({ id }) => id === forgeDraft.questKind)!;
+    const proposal: ForgeProposal = {
+      id: `forge-${Date.now().toString(36)}`,
+      kind: 'forge',
+      ...forgeDraft,
+      name: forgeDraft.name.trim(),
+      personality: forgeDraft.personality.trim(),
+      role: forgeDraft.role.trim(),
+      questGoal: forgeDraft.questGoal.trim(),
+      steps: [...quest.steps],
+      dialogue: `我把「${forgeDraft.name.trim()}」的外型、個性與第一場冒險整理好了。確認後，我們才會真正創造這位夥伴。`,
+    };
+    setAgentProposal(proposal);
+    setDialogueIntent('module');
+    setRoomMessage(proposal.dialogue ?? '創角提案準備好了。');
+    setDialogueOpen(true);
+    setMobileConsoleOpen(false);
+  };
+
+  const continueForgeQuest = () => {
+    if (!activeForgeProfile) return;
+    setPanel('quests');
+    setMobileConsoleOpen(false);
+    setDialogueOpen(true);
+    if (activeForgeProfile.questKind === 'writing') {
+      setDialogueIntent('writing');
+      setRoomMessage(`把第一段想法貼給我。我們要一起完成「${activeForgeProfile.questGoal}」。`);
+      return;
+    }
+    setDialogueIntent('module');
+    setActiveModuleId(activeForgeProfile.questKind);
+    setRoomMessage(conversationGuides[activeForgeProfile.questKind].intro);
   };
 
   const switchPartner = async (partner: (typeof AOZU_PARTNERS)[number]) => {
@@ -552,7 +711,7 @@ export default function Home() {
     setRoomMessage(conversationGuides.travel.intro);
     setMobileConsoleOpen(false);
     if (mobile) {
-      setToast(`點一下${activePartner.displayName}開始旅行通話`);
+      setToast(`點一下${activeDisplayName}開始旅行通話`);
       window.setTimeout(() => setToast(''), 1800);
     }
   };
@@ -572,7 +731,7 @@ export default function Home() {
     setActiveModuleId(control.module);
     setRoomMessage(conversationGuides[control.module].intro);
     if (mobile) {
-      setToast(`已切換${control.label}，點一下${activePartner.displayName}開始對話`);
+      setToast(`已切換${control.label}，點一下${activeDisplayName}開始對話`);
       window.setTimeout(() => setToast(''), 1800);
     }
   };
@@ -671,6 +830,7 @@ export default function Home() {
     else points.taste += 8;
     const saved = await persistTravelJournal({ ...travelJournal, entries: [...travelJournal.entries, entry], points });
     if (!saved) return;
+    await advanceForgeQuest('travel');
 
     const reply = `完成！我把「${entry.name}」排進第 ${entry.day} 天手札。規劃 +6、${entry.kind === 'food' ? '品味' : '探索'} +8、羈絆 +1。`;
     setTravelChat((messages) => [...messages,
@@ -701,11 +861,12 @@ export default function Home() {
         const saved = JSON.parse(localStorage.getItem(key) ?? '[]');
         notes = Array.isArray(saved) ? saved : [];
       } catch { notes = []; }
-      notes.push({ text: value, partner: activePartner.displayName, createdAt: Date.now() });
+      notes.push({ text: value, partner: activeDisplayName, createdAt: Date.now() });
       localStorage.setItem(key, JSON.stringify(notes.slice(-100)));
       setRoomUserMessage(value);
       setRoomInput('');
       setRoomMessage(`這段我收進共同文字了。我們已經一起留下 ${notes.length} 段內容；你可以再貼一段，我會繼續陪你寫。`);
+      await advanceForgeQuest('writing');
       return;
     }
     if (activeModule.id === 'travel') {
@@ -730,7 +891,10 @@ export default function Home() {
       entries: travelJournal.entries.map((entry) => entry.id === entryId ? { ...entry, checked: !entry.checked } : entry),
       points,
     });
-    if (saved) setToast(current.checked ? '已恢復為待完成' : `完成 ${current.name}，能力點數已更新`);
+    if (saved) {
+      setToast(current.checked ? '已恢復為待完成' : `完成 ${current.name}，能力點數已更新`);
+      if (!current.checked) await advanceForgeQuest('travel');
+    }
   };
 
   const equipTravelAccessory = async (accessoryId: (typeof AOZU_TRAVEL_ACCESSORIES)[number]['id']) => {
@@ -749,6 +913,60 @@ export default function Home() {
   const confirmAgentProposal = async () => {
     const proposal = agentProposal;
     if (!proposal || busy) return;
+
+    if (proposal.kind === 'forge') {
+      if (forgeProfile?.id === proposal.id) {
+        setAgentProposal(null);
+        setRoomMessage(`${forgeProfile.name}已經誕生，重送同一份創角提案不會重設任務進度。`);
+        return;
+      }
+      const partner = AOZU_PARTNERS.find(({ id }) => id === proposal.basePartnerId);
+      const item = AOZU_WARDROBE_ITEMS.find(({ id }) => id === proposal.starterItemId);
+      if (!partner || !item) return;
+      setBusy(true);
+      try {
+        const { application } = await bootAozu();
+        const saved = runtime?.savedCompanions.filter(({ name }) => name === partner.name).at(-1);
+        if (!saved) throw new Error('找不到角色版型');
+        await application.activateCompanion(saved.bundleId);
+        let startup = await application.loadStartup();
+        if (startup.status !== 'main') throw new Error('角色版型無法啟用');
+        await application.submitAction(`wear-${item.id}`, startup.stage.revision, `${proposal.id}:starter`);
+        startup = await application.loadStartup();
+        if (startup.status !== 'main') throw new Error('創角結果無法載入');
+        setRuntime(startup);
+        const profile: ForgeProfile = {
+          id: proposal.id,
+          basePartnerId: proposal.basePartnerId,
+          name: proposal.name,
+          personality: proposal.personality,
+          role: proposal.role,
+          questKind: proposal.questKind,
+          questGoal: proposal.questGoal,
+          steps: proposal.steps,
+          starterItemId: proposal.starterItemId,
+          progress: 0,
+          createdAt: Date.now(),
+        };
+        saveForgeProfile(profile);
+        const memory: SavedMemory = { id: `forge-memory-${proposal.id}`, partnerId: partner.id, title: `${proposal.name}誕生`, summary: `${proposal.personality}的${proposal.role}，準備完成「${proposal.questGoal}」。`, category: 'bond', createdAt: Date.now() };
+        setSavedMemories((current) => saveStoredList(AOZU_MEMORY_KEY, current, memory));
+        setSelectedWardrobeItemId(item.id);
+        setPanel('quests');
+        setActiveModuleId(proposal.questKind === 'writing' ? 'steps' : proposal.questKind);
+        setDialogueIntent(proposal.questKind === 'writing' ? 'writing' : 'module');
+        setRoomMessage(`${proposal.name}來到房間了！先跟我說話，我們從「${proposal.steps[0]}」開始第一場冒險。`);
+        setAgentProposal(null);
+        setToast(`${proposal.name}已創造，Origin Quest 開始`);
+        window.setTimeout(() => setToast(''), 2400);
+      } catch (error) {
+        setRuntimeError(messageFrom(error));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+
     if (proposal.kind === 'life') {
       const saved = await runAction(proposal.activity, '生活冒險已完成並累積成長', proposal.id);
       if (!saved) return;
@@ -757,27 +975,38 @@ export default function Home() {
       setPanel('memories');
       setRoomMessage(`完成！「${proposal.summary}」已成為我們共同完成的生活冒險。`);
     }
+
     if (proposal.kind === 'travel') {
       const knownIds = new Set(travelJournal.entries.map(({ id }) => id));
       const room = Math.max(0, 60 - travelJournal.entries.length);
-      const additions = proposal.stops.slice(0, room).map((stop, index) => ({ ...stop, id: `agent-${proposal.id.slice(0, 50)}-${index}`, checked: false })).filter(({ id }) => !knownIds.has(id));
-      if (!additions.length) { setRuntimeError('旅行手札已滿，或這份 Agent 提案已經加入。'); return; }
+      const additions = proposal.stops.slice(0, room).map((stop, index) => ({
+        ...stop,
+        id: `agent-${proposal.id.slice(0, 50)}-${index}`,
+        checked: false,
+      })).filter(({ id }) => !knownIds.has(id));
+      if (!additions.length) {
+        setRuntimeError('旅行手札已滿，或這份 Agent 提案已經加入。');
+        return;
+      }
       const points = { ...travelJournal.points, planning: travelJournal.points.planning + 6, bond: travelJournal.points.bond + 1 };
       for (const stop of additions) points[stop.kind === 'food' ? 'taste' : 'exploration'] += 8;
       const saved = await persistTravelJournal({ ...travelJournal, title: proposal.title, entries: [...travelJournal.entries, ...additions], points }, proposal.id);
       if (!saved) return;
+      await advanceForgeQuest('travel');
       setPanel('journal');
       setRoomMessage(`完成！${additions.length} 個地點已寫進「${proposal.title}」，能力點數也已更新。`);
     }
+
     if (proposal.kind === 'outfit') {
       const item = AOZU_WARDROBE_ITEMS.find(({ id }) => id === proposal.itemId);
       if (!item) return;
       setSelectedWardrobeItemId(item.id);
-      const saved = await runAction(`wear-${item.id}`, `${item.label}已穿到${activePartner.displayName}身上`, proposal.id);
+      const saved = await runAction(`wear-${item.id}`, `${item.label}已穿到${activeDisplayName}身上`, proposal.id);
       if (!saved) return;
       setPanel('wardrobe');
       setRoomMessage(`穿好了！${item.label}已經成為我現在造型的一部分。`);
     }
+
     if (proposal.kind === 'memory') {
       const memory: SavedMemory = { id: proposal.id, partnerId: activePartner.id, title: proposal.title, summary: proposal.summary, category: proposal.category, createdAt: Date.now() };
       setSavedMemories((current) => saveStoredList(AOZU_MEMORY_KEY, current, memory));
@@ -785,6 +1014,7 @@ export default function Home() {
       setRoomMessage(`我記住「${proposal.title}」了；它只保存在這台裝置，也可以由你決定忘記。`);
       setToast('共同記憶已保存');
     }
+
     if (proposal.kind === 'card') {
       const card: SavedAbilityCard = { id: proposal.id, partnerId: activePartner.id, title: proposal.title, ability: proposal.ability, summary: proposal.summary, requiredCapabilities: proposal.requiredCapabilities, createdAt: Date.now() };
       setSavedCards((current) => saveStoredList(AOZU_CARD_KEY, current, card));
@@ -792,16 +1022,23 @@ export default function Home() {
       setRoomMessage(`「${proposal.title}」已封成能力卡。下次可以直接從卡片叫回這項技能。`);
       setToast('新的能力卡已封存');
     }
+
     setAgentProposal(null);
     window.setTimeout(() => setToast(''), 2200);
   };
 
-  const recallAbilityCard = (card: SavedAbilityCard) => {
+  const recallAbilityCard = async (card: SavedAbilityCard) => {
     setAgentProposal(null);
     setDialogueIntent('module');
+    if (card.kind === 'origin' && forgeProfile?.id === card.originProfileId) {
+      const partner = AOZU_PARTNERS.find(({ id }) => id === forgeProfile.basePartnerId);
+      if (partner) await switchPartner(partner);
+    }
     setDialogueOpen(true);
     setMobileConsoleOpen(false);
-    setRoomMessage(`已召喚「${card.title}」。我會使用「${card.ability}」陪你開始下一段冒險；${card.summary}`);
+    setRoomMessage(card.kind === 'origin'
+      ? `我回來了！「${card.title}」保留了我們的個性、能力與第一場冒險。現在要用「${card.ability}」一起做什麼？`
+      : `已召喚「${card.title}」。我會使用「${card.ability}」陪你開始下一段冒險；${card.summary}`);
   };
 
   const exportCompanion = async () => {
@@ -851,7 +1088,7 @@ export default function Home() {
       </header>
 
       <main className="game-world" style={{ '--console-width': `${consoleWidth}%` } as CSSProperties}>
-        <section className={`companion-room ${mobileToolsOpen ? 'is-tools-open' : ''} ${panel === 'wardrobe' && wardrobeEnabled && !mobileConsoleOpen ? 'is-wardrobe' : ''}`} aria-label={`${activePartner.displayName}的夥伴房間`}>
+        <section className={`companion-room ${mobileToolsOpen ? 'is-tools-open' : ''} ${panel === 'wardrobe' && wardrobeEnabled && !mobileConsoleOpen ? 'is-wardrobe' : ''}`} aria-label={`${activeDisplayName}的夥伴房間`}>
           <picture className="room-background"><img src="/assets/mascot-club-room-v1.webp" alt="暖光夥伴房間" /></picture>
           <div className="room-light" />
           {adventureMode && <AdventureGame key={adventureMode} mode={adventureMode} partner={activePartner} onClose={() => setAdventureMode(null)} />}
@@ -870,32 +1107,36 @@ export default function Home() {
           </div>
 
           <div className="mission-hud">
-            <span className="mission-kicker">{activeModule.category} ・ TODAY QUEST</span>
-            <strong>{activeModule.label}｜{activeModule.value}</strong>
-            <small>{activeModule.note}</small>
-            <button type="button" disabled={!runtime || busy} onClick={activeModule.id === 'travel' ? openTravelChat : () => runAction(activeModule.id, `${activeModule.label}已寫進共同記憶`)}>{busy ? '處理中…' : activeModule.id === 'travel' ? '開始對話' : activeModule.action}</button>
+            <span className="mission-kicker">{!forgeProfile ? 'AOZU COMPANION FORGE' : activeForgeProfile ? `ORIGIN QUEST ・ ${activeForgeProfile.progress}/${activeForgeProfile.steps.length}` : `${activeModule.category} ・ TODAY QUEST`}</span>
+            <strong>{!forgeProfile ? '創造一位能陪你完成任務的夥伴' : activeForgeProfile ? activeForgeProfile.questGoal : `${activeModule.label}｜${activeModule.value}`}</strong>
+            <small>{!forgeProfile ? '設定外型、個性、能力與第一場三步冒險' : activeForgeProfile ? activeForgeProfile.progress < activeForgeProfile.steps.length ? `下一步：${activeForgeProfile.steps[activeForgeProfile.progress]}` : 'Origin Card 已封存，可以隨時召喚' : activeModule.note}</small>
+            <button type="button" disabled={!runtime || busy} onClick={!forgeProfile ? () => openPanel('forge') : activeForgeProfile ? activeForgeProfile.progress < activeForgeProfile.steps.length ? continueForgeQuest : () => openPanel('cards') : activeModule.id === 'travel' ? openTravelChat : () => runAction(activeModule.id, `${activeModule.label}已寫進共同記憶`)}>{busy ? '處理中…' : !forgeProfile ? '開始創角' : activeForgeProfile ? activeForgeProfile.progress < activeForgeProfile.steps.length ? '繼續冒險' : '查看卡片' : activeModule.id === 'travel' ? '開始對話' : activeModule.action}</button>
           </div>
 
-          {!dialogueOpen && <button className="chat-launcher" type="button" onClick={() => { setDialogueIntent('module'); setRoomMessage(activeGuide.intro); setDialogueOpen(true); }} aria-label={`跟${activePartner.displayName}對話`}><span><PartnerHeadshot partner={activePartner} decorative /></span><b>跟我說話</b></button>}
+          {!dialogueOpen && <button className="chat-launcher" type="button" onClick={() => { setDialogueIntent('module'); setRoomMessage(activeForgeProfile ? `我是${activeDisplayName}。告訴我想一起做什麼，我會把它變成下一個可完成的冒險。` : activeGuide.intro); setDialogueOpen(true); }} aria-label={`跟${activeDisplayName}對話`}><span><PartnerHeadshot partner={activePartner} decorative /></span><b>跟我說話</b></button>}
           {dialogueOpen && <form className="room-chat" onSubmit={submitRoomChat}>
             <button className="room-chat-close" type="button" onClick={() => setDialogueOpen(false)} aria-label="收起對話">×</button>
-            <span className="room-call-status"><i />與{activePartner.displayName}通話中</span>
-            <div className="room-chat-message"><span className="room-chat-avatar"><PartnerHeadshot partner={activePartner} decorative /></span><p><strong>{activePartner.displayName}</strong>{roomMessage || (dialogueIntent === 'writing' ? '把想一起寫的內容貼給我。' : activeGuide.intro)}</p></div>
+            <span className="room-call-status"><i />與{activeDisplayName}通話中</span>
+            <div className="room-chat-message"><span className="room-chat-avatar"><PartnerHeadshot partner={activePartner} decorative /></span><p><strong>{activeDisplayName}</strong>{roomMessage || (dialogueIntent === 'writing' ? '把想一起寫的內容貼給我。' : activeGuide.intro)}</p></div>
             {roomUserMessage && <small className="room-user-echo">你說：{roomUserMessage}</small>}
             {agentProposal && <section className="agent-proposal-card" aria-label="WebMCP Agent 提案">
-              <span>WEBMCP 冒險提案</span><strong>{agentProposalTitle(agentProposal)}</strong><p>{agentProposalSummary(agentProposal)}</p>
+              <span>WEBMCP 冒險提案</span>
+              <strong>{agentProposalTitle(agentProposal)}</strong>
+              <p>{agentProposalSummary(agentProposal)}</p>
+              {agentProposal.kind === 'forge' && <ul><li><b>外型</b><span>{AOZU_PARTNERS.find(({ id }) => id === agentProposal.basePartnerId)?.displayName}</span><small>{agentProposal.role}</small></li>{agentProposal.steps.map((step, index) => <li key={step}><b>STEP {index + 1}</b><span>{step}</span><small>{index === 2 ? '完成後封存 Origin Card' : '完成後累積成長'}</small></li>)}</ul>}
               {agentProposal.kind === 'travel' && <ul>{agentProposal.stops.map((stop, index) => <li key={`${stop.name}-${index}`}><b>DAY {stop.day}</b><span>{stop.name}</span><small>{stop.location}</small></li>)}</ul>}
               {agentProposal.kind === 'outfit' && <div className="agent-outfit-preview"><WardrobeSprite item={AOZU_WARDROBE_ITEMS.find(({ id }) => id === agentProposal.itemId) ?? AOZU_WARDROBE_ITEMS[0]} /><small>紙娃娃會重新合成，不只是把圖貼在角色上。</small></div>}
               {agentProposal.kind === 'card' && <small>需要能力：{agentProposal.requiredCapabilities.join('、') || 'AOZU 本機能力'}</small>}
-              <em>確認以前不會改變角色資料。</em><div><button type="button" onClick={rejectAgentProposal}>先不要</button><button type="button" disabled={busy} onClick={() => void confirmAgentProposal()}>{busy ? '處理中…' : '確認一起做'}</button></div>
+              <em>確認以前不會改變角色資料。</em>
+              <div><button type="button" onClick={rejectAgentProposal}>先不要</button><button type="button" disabled={busy} onClick={() => void confirmAgentProposal()}>{busy ? '處理中…' : '確認一起做'}</button></div>
             </section>}
-            {!agentProposal && <div className="room-chat-composer"><input value={roomInput} maxLength={dialogueIntent === 'writing' ? 1000 : 120} onChange={(event) => setRoomInput(event.target.value)} placeholder={dialogueIntent === 'writing' ? '貼上段落、角色設定或下一句靈感' : pendingPlace && activeModule.id === 'travel' ? '貼上位置或附近地標' : activeGuide.placeholder} /><button type="submit" disabled={!runtime || busy || !roomInput.trim()} aria-label={`送出給${activePartner.displayName}`}>送出</button></div>}
+            {!agentProposal && <div className="room-chat-composer"><input value={roomInput} maxLength={dialogueIntent === 'writing' ? 1000 : 120} onChange={(event) => setRoomInput(event.target.value)} placeholder={dialogueIntent === 'writing' ? '貼上段落、角色設定或下一句靈感' : pendingPlace && activeModule.id === 'travel' ? '貼上位置或附近地標' : activeGuide.placeholder} /><button type="submit" disabled={!runtime || busy || !roomInput.trim()} aria-label={`送出給${activeDisplayName}`}>送出</button></div>}
           </form>}
 
-          <div ref={paperDollRef} className={`paper-doll partner-${activePartner.kind} ${panel === 'wardrobe' && wardrobeEnabled ? 'is-editing' : ''}`} aria-label={`${activePartner.displayName}，${equippedWardrobeLabel}${activeTravelAccessoryName ? `，${activeTravelAccessoryName}` : ''}`}>
+          <div ref={paperDollRef} className={`paper-doll partner-${activePartner.kind} ${panel === 'wardrobe' && wardrobeEnabled ? 'is-editing' : ''}`} aria-label={`${activeDisplayName}，${equippedWardrobeLabel}${activeTravelAccessoryName ? `，${activeTravelAccessoryName}` : ''}`}>
             <PartnerArt partner={activePartner} className="doll-base doll-fallback" />
             <PaperDollCanvas partner={activePartner} layers={equippedWardrobeItems.map((item) => ({ item, placement: placementFor(item) }))} />
-            <button className="mobile-pet-dialogue-hitbox" type="button" onClick={openPetDialogue} disabled={!runtime} aria-label={`點${activePartner.displayName}開始對話`} />
+            <button className="mobile-pet-dialogue-hitbox" type="button" onClick={openPetDialogue} disabled={!runtime} aria-label={`點${activeDisplayName}開始對話`} />
             {panel === 'wardrobe' && wardrobeEnabled && AOZU_WARDROBE_SLOTS.map((slot) => <span key={slot.id} className={`snap-target snap-${slot.id} ${magnetSlot === slot.id ? 'is-magnetic' : ''}`} style={{ '--slot-x': `${slot.x}%`, '--slot-y': `${slot.y}%` } as CSSProperties}><i />{slot.label}</span>)}
             {equippedWardrobeItems.map((item) => {
               const fit = wardrobeFitFor(item, activePartner);
@@ -912,7 +1153,7 @@ export default function Home() {
           </div>}
 
           {panel === 'wardrobe' && wardrobeEnabled && !mobileConsoleOpen && <section className="room-wardrobe-tray" aria-label="可拖曳物件列">
-            <header><div><span>MAGNETIC ITEMS</span><strong>把物件拖到{activePartner.displayName}身上</strong></div><button type="button" onClick={() => setPanel('quests')}>完成</button></header>
+            <header><div><span>MAGNETIC ITEMS</span><strong>把物件拖到{activeDisplayName}身上</strong></div><button type="button" onClick={() => setPanel('quests')}>完成</button></header>
             <div className="room-wardrobe-items">{AOZU_WARDROBE_ITEMS.map((item) => {
               const isEquipped = equippedWardrobeItems.some(({ id }) => id === item.id);
               return <button key={item.id} className={`room-wardrobe-item ${isEquipped ? 'is-equipped' : ''}`} type="button" disabled={!runtime || busy} aria-pressed={isEquipped} onClick={() => { if (!suppressWardrobeClickRef.current) equipWardrobeItem(item); }} onPointerDown={(event) => beginClosetDrag(item, event)} onPointerMove={moveClosetDrag} onPointerUp={finishClosetDrag} onPointerCancel={finishClosetDrag}>
@@ -922,7 +1163,7 @@ export default function Home() {
           </section>}
 
           <div className="companion-profile">
-            <PartnerHeadshot partner={activePartner} className="profile-headshot" /><div><strong>{activePartner.displayName}</strong><small>{activePartner.role} ・ 羈絆 76</small></div><b>Lv.12</b><i><span style={{ width: '76%' }} /></i>
+            <PartnerHeadshot partner={activePartner} className="profile-headshot" /><div><strong>{activeDisplayName}</strong><small>{activeRole} ・ {activeForgeProfile ? `Origin ${activeForgeProfile.progress}/${activeForgeProfile.steps.length}` : '羈絆 76'}</small></div><b>{activeForgeProfile ? 'Lv.1' : 'Lv.12'}</b><i><span style={{ width: activeForgeProfile ? `${Math.round((activeForgeProfile.progress / activeForgeProfile.steps.length) * 100)}%` : '76%' }} /></i>
           </div>
 
           <nav className="game-dock" aria-label="夥伴管理">
@@ -963,19 +1204,41 @@ export default function Home() {
         ><span>⋮</span></button>
 
         <aside className={`game-console ${panel === 'quests' && activeModuleId === 'travel' ? 'is-travel' : ''} ${mobileConsoleOpen ? 'is-mobile-open' : ''}`} aria-live="polite">
-          <button className="mobile-console-close" type="button" onClick={() => setMobileConsoleOpen(false)} aria-label="關閉詳細面板">返回{activePartner.displayName}</button>
+          <button className="mobile-console-close" type="button" onClick={() => setMobileConsoleOpen(false)} aria-label="關閉詳細面板">返回{activeDisplayName}</button>
           <nav className="life-control-bar" aria-label="食衣住行育控制">
             {lifeControls.map((control) => {
               const active = control.panel === 'wardrobe' ? panel === 'wardrobe' : panel === 'quests' && activeModuleId === control.module;
               return <button key={control.id} className={active ? 'is-active' : ''} style={{ '--control-tone': control.tone } as CSSProperties} type="button" onClick={() => selectLifeControl(control)} aria-pressed={active}><span>{control.mark}</span><small>{control.label}</small></button>;
             })}
           </nav>
+          {panel === 'forge' && <>
+            <div className="console-heading"><div><span>AOZU COMPANION FORGE</span><h1>創造你的虛擬夥伴</h1></div><b>P0 閉環</b></div>
+            <div className="forge-loop" aria-label="AOZU 成長閉環"><span className="is-active">1 創角</span><span>2 任務</span><span>3 成長</span><span>4 封卡</span></div>
+            <form className="forge-form" onSubmit={stageForgeDraft}>
+              <section className="forge-preview">
+                <PartnerHeadshot partner={AOZU_PARTNERS.find(({ id }) => id === forgeDraft.basePartnerId) ?? AOZU_PARTNERS[0]} decorative />
+                <div><small>即將誕生</small><strong>{forgeDraft.name || '尚未命名'}</strong><p>{forgeDraft.role || '替夥伴選一個角色定位'}</p></div>
+              </section>
+              <fieldset><legend>1. 選擇外型版型</legend><div className="forge-partner-grid">{AOZU_PARTNERS.map((partner) => <button key={partner.id} type="button" className={forgeDraft.basePartnerId === partner.id ? 'is-active' : ''} onClick={() => setForgeDraft((draft) => ({ ...draft, basePartnerId: partner.id }))}><PartnerHeadshot partner={partner} decorative /><span>{partner.displayName}</span></button>)}</div></fieldset>
+              <label><span>名字</span><input required minLength={1} maxLength={24} value={forgeDraft.name} onChange={(event) => setForgeDraft((draft) => ({ ...draft, name: event.target.value }))} placeholder="替夥伴命名" /></label>
+              <label><span>個性</span><textarea required minLength={2} maxLength={120} value={forgeDraft.personality} onChange={(event) => setForgeDraft((draft) => ({ ...draft, personality: event.target.value }))} /></label>
+              <label><span>角色定位</span><input required minLength={2} maxLength={60} value={forgeDraft.role} onChange={(event) => setForgeDraft((draft) => ({ ...draft, role: event.target.value }))} /></label>
+              <fieldset><legend>2. 選擇第一種能力</legend><div className="forge-quest-grid">{AOZU_FORGE_QUESTS.map((quest) => <button key={quest.id} type="button" className={forgeDraft.questKind === quest.id ? 'is-active' : ''} onClick={() => setForgeDraft((draft) => ({ ...draft, questKind: quest.id, questGoal: quest.defaultGoal }))}><strong>{quest.label}</strong><small>{quest.ability}</small></button>)}</div></fieldset>
+              <label><span>第一場冒險</span><textarea required minLength={4} maxLength={120} value={forgeDraft.questGoal} onChange={(event) => setForgeDraft((draft) => ({ ...draft, questGoal: event.target.value }))} /></label>
+              <label><span>誕生配件</span><select value={forgeDraft.starterItemId} onChange={(event) => setForgeDraft((draft) => ({ ...draft, starterItemId: event.target.value as WardrobeItem['id'] }))}>{AOZU_FORGE_STARTER_ITEM_IDS.map((id) => { const item = AOZU_WARDROBE_ITEMS.find((candidate) => candidate.id === id)!; return <option key={id} value={id}>{item.label}</option>; })}</select></label>
+              <div className="forge-contract"><strong>確認後才會建立</strong><p>AOZU 會套用外型、穿上誕生配件並建立三步 Origin Quest；完成後解鎖專屬配件，封存一張可再次召喚的 Origin Card。</p></div>
+              <button className="forge-submit" type="submit" disabled={!runtime || busy}>預覽創角提案</button>
+            </form>
+          </>}
           {panel === 'quests' && <>
-            <div className="console-heading"><div><span>{activeModuleId === 'travel' ? 'LIVE ROUTE CALL' : 'OMNILIFE QUEST'}</span><h1>{activeModuleId === 'travel' ? `和${activePartner.displayName}聊行程` : `${activeModule.category}・${activeModule.label}`}</h1></div><b>{activeModuleId === 'travel' ? `${travelScore} PTS` : activeModule.value}</b></div>
-            {activeModuleId === 'travel' ? <section className="travel-chat" aria-label="旅行規劃對話">
+            <div className="console-heading"><div><span>{activeForgeProfile ? 'ORIGIN QUEST' : activeModuleId === 'travel' ? 'LIVE ROUTE CALL' : 'OMNILIFE QUEST'}</span><h1>{activeForgeProfile ? `${activeDisplayName}的第一場冒險` : activeModuleId === 'travel' ? `和${activeDisplayName}聊行程` : `${activeModule.category}・${activeModule.label}`}</h1></div><b>{activeForgeProfile ? `${activeForgeProfile.progress} / ${activeForgeProfile.steps.length}` : activeModuleId === 'travel' ? `${travelScore} PTS` : activeModule.value}</b></div>
+            {activeForgeProfile && <section className="origin-quest-card"><header><div><small>{activeForgeQuest?.label}能力</small><strong>{activeForgeProfile.questGoal}</strong></div><span>{activeForgeProfile.progress === activeForgeProfile.steps.length ? '已封卡' : `獎勵 ${AOZU_WARDROBE_ITEMS.find(({ id }) => id === activeForgeQuest?.rewardItemId)?.label}`}</span></header><ol>{activeForgeProfile.steps.map((step, index) => <li key={step} className={index < activeForgeProfile.progress ? 'is-done' : index === activeForgeProfile.progress ? 'is-current' : ''}><b>{index < activeForgeProfile.progress ? '✓' : index + 1}</b><span>{step}</span></li>)}</ol><button type="button" onClick={activeForgeProfile.progress < activeForgeProfile.steps.length ? continueForgeQuest : () => openPanel('cards')}>{activeForgeProfile.progress < activeForgeProfile.steps.length ? '跟夥伴繼續任務' : '召喚 Origin Card'}</button></section>}
+            {activeForgeProfile?.questKind === 'writing' ? <section className="module-glass-card" style={{ '--module-tone': '#775ab5' } as CSSProperties}>
+              <span>寫</span><div><small>{activeDisplayName}的共筆邀請</small><h2>把一個段落、角色設定或靈感貼進對話，我們會一起把它留下來。</h2><p>每次保存一段共同文字，就會推進 Origin Quest。</p><b>創作 +1 ・ 羈絆 +2</b></div><button type="button" onClick={continueForgeQuest}>開始共同寫作</button>
+            </section> : activeModuleId === 'travel' ? <section className="travel-chat" aria-label="旅行規劃對話">
               <div className="travel-chat-head"><span><i />夥伴通話中</span><button type="button" onClick={() => setPanel('journal')}>打開旅行手札</button></div>
               <div className="travel-chat-log" aria-live="polite">
-                <article className="from-partner"><b><PartnerHeadshot partner={activePartner} decorative /></b><p><strong>{activePartner.displayName}</strong>把想去的景點或想吃的店告訴我，我會再問位置，排進三日行程並替我們累積能力點數。</p></article>
+                <article className="from-partner"><b><PartnerHeadshot partner={activePartner} decorative /></b><p><strong>{activeDisplayName}</strong>把想去的景點或想吃的店告訴我，我會再問位置，排進三日行程並替我們累積能力點數。</p></article>
                 {travelChat.map((message) => <article key={message.id} className={message.from === 'partner' ? 'from-partner' : 'from-user'}>{message.from === 'partner' && <b><PartnerHeadshot partner={activePartner} decorative /></b>}<p>{message.text}</p></article>)}
               </div>
               <div className="travel-skill-strip"><span>探索 <b>{travelJournal.points.exploration}</b></span><span>品味 <b>{travelJournal.points.taste}</b></span><span>規劃 <b>{travelJournal.points.planning}</b></span><span>羈絆 <b>{travelJournal.points.bond}</b></span></div>
@@ -989,13 +1252,13 @@ export default function Home() {
                 <button type="submit" disabled={!runtime || busy || !travelInput.trim()} aria-label="送出旅行訊息">➤</button>
               </form>
             </section> : <section className="module-glass-card" style={{ '--module-tone': activeModule.color } as CSSProperties}>
-              <span>{activeModule.icon}</span><div><small>{activePartner.displayName}的今日建議</small><h2>{activeModule.quest}</h2><p>{activeModule.note}</p><b>{activeModule.reward}</b></div><button type="button" disabled={!runtime || busy} onClick={() => runAction(activeModule.id, `${activeModule.label}已寫進共同記憶`)}>{busy ? '處理中…' : activeModule.action}</button>
+              <span>{activeModule.icon}</span><div><small>{activeDisplayName}的今日建議</small><h2>{activeModule.quest}</h2><p>{activeModule.note}</p><b>{activeModule.reward}</b></div><button type="button" disabled={!runtime || busy} onClick={() => runAction(activeModule.id, `${activeModule.label}已寫進共同記憶`)}>{busy ? '處理中…' : activeModule.action}</button>
             </section>}
           </>}
 
           {panel === 'wardrobe' && <>
-            <div className="console-heading"><div><span>MAGNETIC CLOSET</span><h1>{activePartner.displayName}的物件櫃</h1></div><b>{equippedWardrobeItems.length} / 4</b></div>
-            {!wardrobeEnabled && <div className="wardrobe-lock"><span>衣</span><strong>磁吸紙娃娃目前是布丁獺版型</strong><p>{activePartner.displayName}仍可裝備下方的專屬旅行配件；它們會隨手札能力點數逐一解鎖。</p></div>}
+            <div className="console-heading"><div><span>MAGNETIC CLOSET</span><h1>{activeDisplayName}的物件櫃</h1></div><b>{equippedWardrobeItems.length} / 4</b></div>
+            {!wardrobeEnabled && <div className="wardrobe-lock"><span>衣</span><strong>磁吸紙娃娃目前是布丁獺版型</strong><p>{activeDisplayName}仍可裝備下方的專屬旅行配件；它們會隨手札能力點數逐一解鎖。</p></div>}
             {wardrobeEnabled && <div className="closet-slots">
               {AOZU_WARDROBE_SLOTS.map((slot) => {
                 const items = AOZU_WARDROBE_ITEMS.filter((item) => item.slot === slot.id);
@@ -1027,7 +1290,7 @@ export default function Home() {
           {panel === 'journal' && <>
             <div className="console-heading"><div><span>TRAVEL FIELD NOTES</span><h1>旅行手札</h1></div><b>{completedStops} / {travelJournal.entries.length}</b></div>
             <section className="journal-cover">
-              <div><span>與 {activePartner.displayName} 共筆</span><h2>{travelJournal.title}</h2><p>景點、餐廳與位置都保存在這位夥伴的 Companion 記憶裡。</p></div>
+              <div><span>與 {activeDisplayName} 共筆</span><h2>{travelJournal.title}</h2><p>景點、餐廳與位置都保存在這位夥伴的 Companion 記憶裡。</p></div>
               <button type="button" onClick={openTravelChat}>＋ 繼續對話規劃</button>
             </section>
             <div className="journal-skills">
@@ -1044,7 +1307,7 @@ export default function Home() {
                   <header><span>DAY {day}</span><strong>第 {day} 天</strong><small>{stops.filter(({ checked }) => checked).length}/{stops.length} 完成</small></header>
                   {stops.length ? stops.map((entry) => <label key={entry.id} className={entry.checked ? 'is-checked' : ''}>
                     <input type="checkbox" checked={entry.checked} disabled={busy} onChange={() => toggleJournalEntry(entry.id)} /><span>{entry.kind === 'food' ? '食' : '旅'}</span><p><strong>{entry.name}</strong><small>{entry.location}</small></p><b>{entry.checked ? '完成' : '待訪'}</b>
-                  </label>) : <div className="empty-day">和{activePartner.displayName}聊一個想去的地方</div>}
+                  </label>) : <div className="empty-day">和{activeDisplayName}聊一個想去的地方</div>}
                 </section>;
               })}
             </div>
@@ -1053,8 +1316,8 @@ export default function Home() {
           {panel === 'cards' && <>
             <div className="console-heading"><div><span>ABILITY DECK</span><h1>夥伴卡片</h1></div><b>{3 + activeSavedCards.length} / 12</b></div>
             <div className="ability-deck">
-              <article className="ability-card featured"><div className="card-art"><PartnerArt partner={activePartner} /></div><span>ACTIVE PARTNER</span><h2>{activePartner.displayName}</h2><p>{activePartner.role}｜{activePartner.quote}</p><b>羈絆 76</b></article>
-              {activeSavedCards.map((card) => <article key={card.id} className="ability-card summoned"><span>WEBMCP ABILITY</span><h2>{card.title}</h2><p>{card.ability}｜{card.summary}</p><b>{card.requiredCapabilities.length ? card.requiredCapabilities.join('・') : 'AOZU LOCAL'}</b><button type="button" onClick={() => recallAbilityCard(card)}>召喚能力</button></article>)}
+              <article className="ability-card featured"><div className="card-art"><PartnerArt partner={activePartner} /></div><span>ACTIVE PARTNER</span><h2>{activeDisplayName}</h2><p>{activeRole}｜{activeQuote}</p><b>{activeForgeProfile ? `Origin ${activeForgeProfile.progress}/${activeForgeProfile.steps.length}` : '羈絆 76'}</b></article>
+              {activeSavedCards.map((card) => <article key={card.id} className={`ability-card summoned ${card.kind === 'origin' ? 'origin' : ''}`}><span>{card.kind === 'origin' ? 'ORIGIN CARD' : 'WEBMCP ABILITY'}</span><h2>{card.title}</h2><p>{card.ability}｜{card.summary}</p><b>{card.requiredCapabilities.length ? card.requiredCapabilities.join('・') : 'AOZU LOCAL'}</b><button type="button" onClick={() => void recallAbilityCard(card)}>{card.kind === 'origin' ? '召喚夥伴' : '召喚能力'}</button></article>)}
               <article className="ability-card travel"><span>MEMORY CARD</span><h2>台南三日旅行策劃</h2><p>步行友善 ・ 飲食偏好 ・ 旅費規劃</p><b>68% 解鎖中</b></article>
               <article className="ability-card locked"><span>NEXT CARD</span><h2>七日生活節奏</h2><p>連續完成飲食、步行與記帳後取得。</p><b>還差 3 個任務</b></article>
             </div>
@@ -1072,10 +1335,10 @@ export default function Home() {
           </>}
 
           {panel === 'adventure' && <>
-            <div className="console-heading"><div><span>AOZU ADVENTURE</span><h1>和{activePartner.displayName}出發</h1></div><b>本機計分</b></div>
+            <div className="console-heading"><div><span>AOZU ADVENTURE</span><h1>和{activeDisplayName}出發</h1></div><b>本機計分</b></div>
             <p className="adventure-console-intro">冒險由夥伴或 WebMCP 發起。選一個場景後，會回到以角色為中心的全畫面遊戲。</p>
             <div className="adventure-chooser">
-              <button type="button" onClick={() => { setAdventureMode('room'); setMobileConsoleOpen(false); }}><span className="room-preview">●</span><strong>黑炭精靈大作戰</strong><p>房間裡的黑炭精靈會越長越多，點擊牠們讓{activePartner.displayName}發射橡皮筋。</p><b>點擊／觸控射擊</b></button>
+              <button type="button" onClick={() => { setAdventureMode('room'); setMobileConsoleOpen(false); }}><span className="room-preview">●</span><strong>黑炭精靈大作戰</strong><p>房間裡的黑炭精靈會越長越多，點擊牠們讓{activeDisplayName}發射橡皮筋。</p><b>點擊／觸控射擊</b></button>
               <button type="button" onClick={() => { setAdventureMode('forest'); setMobileConsoleOpen(false); }}><span className="forest-preview" /><strong>風之森林淨路行動</strong><p>跳過風吹來的垃圾，成功避開就能累積分數並保存在這台裝置。</p><b>空白鍵／觸控跳躍</b></button>
             </div>
           </>}
