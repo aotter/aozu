@@ -137,3 +137,29 @@ export function CharacterSlotPlaceholder({ src, label }: { src: string; label?: 
 export function CharacterAssetImage({ blob, label = '' }: { blob: Blob; label?: string }) {
   return <BlobImage blob={blob} alt={label} className="size-full object-contain" />
 }
+
+export function CharacterAtlasFrameImage({ atlas, src, frameId, label = '' }: {
+  atlas: CharacterTextureAtlas
+  src: string
+  frameId: string
+  label?: string
+}) {
+  const frame = atlas.data.frames[frameId]?.frame
+  if (!frame) return null
+  return <span className="flex size-full items-center justify-center overflow-hidden">
+    <span className="relative block max-h-full max-w-full overflow-hidden" style={{ aspectRatio: `${frame.w}/${frame.h}`, ...(frame.w >= frame.h ? { width: '100%' } : { height: '100%' }) }}>
+      <img
+        src={src}
+        alt={label}
+        className="absolute max-w-none"
+        style={{
+          width: `${atlas.data.meta.size.w / frame.w * 100}%`,
+          height: `${atlas.data.meta.size.h / frame.h * 100}%`,
+          maxHeight: 'none',
+          left: `${-frame.x / frame.w * 100}%`,
+          top: `${-frame.y / frame.h * 100}%`,
+        }}
+      />
+    </span>
+  </span>
+}
