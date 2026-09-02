@@ -13,7 +13,7 @@ export function CompanionCreationPage({ loadSummary, onCreate }: {
   const { t } = useTranslation()
   const [summary, setSummary] = useState<Summary | null>()
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<string>()
 
   useEffect(() => {
     let active = true
@@ -38,9 +38,9 @@ export function CompanionCreationPage({ loadSummary, onCreate }: {
       </div>)}
     </dl>
     <Button className="mt-6" disabled={busy} onClick={async () => {
-      setBusy(true); setError(false)
-      try { await onCreate() } catch { setBusy(false); setError(true) }
+      setBusy(true); setError(undefined)
+      try { await onCreate() } catch (caught) { setBusy(false); setError(caught instanceof Error ? caught.message : String(caught)) }
     }}>{busy ? t('create.creating') : t('create.submit')}</Button>
-    {error && <p role="alert" className="mt-4 text-sm text-destructive">{t('create.error')}</p>}
+    {error && <p role="alert" className="mt-4 text-sm text-destructive">{t('create.error')} {error}</p>}
   </main>
 }

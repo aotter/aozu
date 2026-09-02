@@ -4,7 +4,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { BundleRecord } from '../../core/bundle.ts'
 import type { CharacterDraft } from '../../core/domain/character.ts'
 
-const DATABASE_NAME = 'companion'
+const DATABASE_NAME = 'aozu-companion-v1'
 const DATABASE_VERSION = 5
 
 export const META_STORE = 'meta'

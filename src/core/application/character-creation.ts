@@ -5,6 +5,7 @@ import {
   CHARACTER_VARIANT_GROUPS,
   CHARACTER_VARIANT_LAYERS,
   IDENTITY_CHARACTER_TRANSFORM,
+  applyCharacterAppearanceOverrides,
   resolveCharacterComposition,
   validateCharacterVariantTransform,
   validateCharacterPack,
@@ -130,7 +131,8 @@ export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage,
   const appearances = new Map(pack.appearances.map((appearance) => [appearance.id, appearance]))
   const assets = new Map(pack.assets.map((asset) => [asset.id, asset]))
   const files = new Map(loaded.starter.assetFiles.map((file) => [file.blobId, file]))
-  const draft = createCharacterDraft(undefined, draftId)
+  const draft = createCharacterDraft(pack.id, draftId)
+  draft.name = state.name
   const propIds = new Map<string, string>()
   const usedPropIds = new Set<string>()
   const propId = (appearanceId: string) => {
@@ -163,6 +165,8 @@ export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage,
       inspection,
     }
   }
+  const selectedAppearanceIds = new Set(state.composition.map(({ appearanceId }) => appearanceId))
+  const selectedPropIds: string[] = []
   for (const reference of state.composition) {
     const appearance = appearances.get(reference.appearanceId)
     if (!appearance) throw new Error(`Starter appearance not found: ${reference.appearanceId}`)
@@ -170,7 +174,16 @@ export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage,
       if (layer.slot === 'character-skin') put('body', 'base', 'Base body', 'body', layer.asset.assetId)
       else if (layer.slot === 'item-back' || layer.slot === 'item-front') {
         const id = propId(appearance.id)
+        selectedPropIds.push(id)
         put('prop', id, appearance.id, layer.slot === 'item-back' ? 'back' : 'front', layer.asset.assetId)
+      }
+    }
+  }
+  for (const appearance of pack.appearances.filter(({ id }) => !selectedAppearanceIds.has(id))) {
+    for (const layer of appearance.layers) {
+      if (layer.slot === 'character-skin') {
+        const id = appearance.id.replace(/^outfit-/, '').slice(0, 40)
+        put('outfit', id, appearance.id, 'body', layer.asset.assetId)
       }
     }
   }
@@ -182,7 +195,7 @@ export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage,
     if (variant.group === 'body') continue
     for (const asset of Object.values(variant.layers)) if (asset) asset.canonicalSha256 = canonicalSha256
   }
-  draft.selected.props = [...propIds.values()]
+  draft.selected.props = [...new Set(selectedPropIds)]
   return draft
 }
 
@@ -657,6 +670,7 @@ export async function loadCharacterProjection(
   bundleId: string,
   inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
   stateId?: string,
+  appearanceOverrides: readonly AppearanceRef[] = [],
 ): Promise<Array<ResolvedCharacterLayer & { blob: Blob }> | undefined> {
   const requestedState = stateId ? await entries.readById(stateId) : undefined
   if (stateId && (!requestedState || requestedState.collection !== 'character-states' || requestedState.status !== 'published')) {
@@ -688,6 +702,10 @@ export async function loadCharacterProjection(
     inspections.set(asset.blobId, await inspect(blob))
   }
   validateCharacterPack(pack, inspections)
-  const composition = (state?.data.composition as AppearanceRef[] | undefined) ?? pack.defaultComposition
+  const composition = applyCharacterAppearanceOverrides(
+    pack,
+    (state?.data.composition as AppearanceRef[] | undefined) ?? pack.defaultComposition,
+    appearanceOverrides,
+  )
   return resolveCharacterComposition(pack, composition).map((layer) => ({ ...layer, blob: blobs.get(layer.blobId)! }))
 }

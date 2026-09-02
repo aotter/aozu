@@ -246,7 +246,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
             : <CharacterRenderer label={draft.name} layers={previewLayers} atlas={atlas} />}</div>
         </div>
         {selectedVariant && <div className="mt-2 grid grid-cols-4 gap-1" aria-label={t('characterDraft.alignment.label')}>
-          {(['composite', 'overlay', 'difference', 'diagnostic'] as const).map((mode) => <Button key={mode} type="button" size="sm" variant={alignmentMode === mode ? 'secondary' : 'ghost'} className="h-7 px-1 text-[10px] sm:text-xs" onClick={() => setAlignmentMode(mode)}>{t(`characterDraft.alignment.${mode}`)}</Button>)}
+          {(['composite', 'overlay', 'difference', 'diagnostic'] as const).map((mode) => <Button key={mode} type="button" size="sm" variant={alignmentMode === mode ? 'secondary' : 'ghost'} className="min-h-10 px-1 text-base" onClick={() => setAlignmentMode(mode)}>{t(`characterDraft.alignment.${mode}`)}</Button>)}
         </div>}
         <label className="mt-2 min-w-0">
           <span className="sr-only">{t('draft.name')}</span>
@@ -330,10 +330,10 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
             <div className="mt-1 flex items-center gap-1 sm:gap-2">
               <Button type="button" size="icon" variant="ghost" className="size-8 shrink-0" aria-label={t('characterDraft.backToVariants')} onClick={() => setSelectedVariantKey(undefined)}><ArrowLeftIcon /></Button>
               <input aria-label={t('characterDraft.variantLabel')} className="min-w-0 flex-1 rounded-md border-0 bg-transparent px-1 py-1 text-xs font-medium sm:text-sm" value={selectedVariant.label} onChange={(event) => setDraft({ ...draft, variants: draft.variants.map((variant) => variant === selectedVariant ? { ...variant, label: event.target.value } : variant) })} onBlur={() => void updateDraft(draft)} />
-              {required && <span className="text-[9px] text-muted-foreground sm:text-xs">{t('characterDraft.required')}</span>}
+              {required && <span className="text-base text-muted-foreground">{t('characterDraft.required')}</span>}
             </div>
             {(primaryAsset || behindAsset) && <div className="mt-2 grid grid-cols-3 gap-1" aria-label={t('characterDraft.transform.label')}>
-              {(['x', 'y', 'scale'] as const).map((field) => <label key={field} className="min-w-0 text-[9px] text-muted-foreground sm:text-xs">
+              {(['x', 'y', 'scale'] as const).map((field) => <label key={field} className="min-w-0 text-base text-muted-foreground">
                 <span className="sr-only">{t(`characterDraft.transform.${field}`)}</span>
                 <input
                   type="number"
@@ -369,7 +369,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                   : <CharacterAssetImage blob={primaryAsset.blob} />
                 : PlaceholderIcon ? <PlaceholderIcon className="size-1/2 text-[#7b739e]/70" />
                   : <CharacterSlotPlaceholder src={characterSlotIcon(selectedVariant.group, selectedVariant.id)} />}</span>
-              <span className="block truncate p-1.5 text-[10px] sm:p-2 sm:text-xs">{t(layeredAccessory ? 'characterDraft.layers.primary' : `characterDraft.layers.${primaryLayer}`)}</span>
+              <span className="block truncate p-1.5 text-base sm:p-2">{t(layeredAccessory ? 'characterDraft.layers.primary' : `characterDraft.layers.${primaryLayer}`)}</span>
               {fileInput(selectedVariant, primaryLayer)}
             </label>
             {layeredAccessory && <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-dashed p-2 hover:border-foreground/40">
@@ -378,7 +378,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                   ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={`${selectedVariant.group}-${selectedVariant.id}-back`} />
                   : <CharacterAssetImage blob={behindAsset.blob} />
                 : <Layers2Icon className="size-5 text-[#7b739e]/70" />}</span>
-              <span className="min-w-0 truncate text-[9px] sm:text-xs">{t('characterDraft.layers.behindOptional')}</span>
+              <span className="min-w-0 truncate text-base">{t('characterDraft.layers.behindOptional')}</span>
               {fileInput(selectedVariant, 'back')}
             </label>}
           </>
@@ -387,7 +387,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
         {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
         </div>
         <div className="shrink-0 border-t pt-2">
-          {missing.length > 0 && <p className="mb-2 text-[10px] leading-4 text-muted-foreground sm:text-xs">{t('characterDraft.missingRequired')}</p>}
+          {missing.length > 0 && <p className="mb-2 text-base leading-6 text-muted-foreground">{t('characterDraft.missingRequired')}</p>}
           <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
           <DataControls exportData={exportDraft} exportFilename="companion-character-draft.zip" exportIconOnly exportLabel={t('draft.download')} />
           <Button size="sm" className="w-full" disabled={Boolean(busy) || Boolean(missing.length) || !draft.name.trim()} onClick={async () => {

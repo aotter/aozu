@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { CHARACTER_RIG, validateCharacterPack, type CharacterPack } from '../src/core/domain/character.ts'
+import { applyCharacterAppearanceOverrides, CHARACTER_RIG, resolveCharacterComposition, validateCharacterPack, type CharacterPack } from '../src/core/domain/character.ts'
 
 const inspection = { width: 512, height: 768, hasTransparentPixels: true, hasVisiblePixels: true, genuineRgba: true, visibleBounds: { x: 40, y: 20, width: 430, height: 720 }, visiblePixelCount: 100, size: 10, sha256: 'a'.repeat(64) }
 const pack: CharacterPack = {
@@ -19,6 +19,7 @@ const pack: CharacterPack = {
     ] },
     { id: 'default', layers: [{ asset: { packId: 'guide', packVersion: 1, assetId: 'skin' }, slot: 'character-skin', order: 1 }] },
     { id: 'happy', layers: [{ asset: { packId: 'guide', packVersion: 1, assetId: 'head' }, slot: 'expression-head', order: 1 }] },
+    { id: 'outfit', layers: [{ asset: { packId: 'guide', packVersion: 1, assetId: 'skin' }, slot: 'character-skin', order: 1 }] },
   ],
   defaultComposition: [
     { packId: 'guide', packVersion: 1, appearanceId: 'hat' },
@@ -28,6 +29,9 @@ const pack: CharacterPack = {
 }
 const inspections = new Map(pack.assets.map(({ blobId }) => [blobId, inspection]))
 assert.deepEqual(validateCharacterPack(pack, inspections).map(({ slot }) => slot), ['item-back', 'character-skin', 'expression-head', 'item-front'])
+const equipped = applyCharacterAppearanceOverrides(pack, pack.defaultComposition, [{ packId: 'guide', packVersion: 1, appearanceId: 'outfit' }])
+assert.equal(equipped.some(({ appearanceId }) => appearanceId === 'default'), false)
+assert.equal(resolveCharacterComposition(pack, equipped).some(({ id }) => id.includes(':outfit:')), true)
 assert.throws(() => validateCharacterPack({ ...pack, license: { ...pack.license, embedding: 'denied' as never } }, inspections), /embedded/)
 assert.throws(() => validateCharacterPack(pack, new Map([['skin', { ...inspection, genuineRgba: false }]])), /asset/)
 console.log('character: ok')

@@ -267,3 +267,17 @@ export function resolveCharacterComposition(
   if (finalOrders.size !== layers.length) throw new Error('Composition layer order collision')
   return layers.sort((left, right) => left.slotOrder - right.slotOrder || left.layerOrder - right.layerOrder || left.id.localeCompare(right.id))
 }
+
+export function applyCharacterAppearanceOverrides(
+  pack: CharacterPack,
+  composition: readonly AppearanceRef[],
+  overrides: readonly AppearanceRef[],
+) {
+  const appearances = new Map(pack.appearances.map((appearance) => [appearance.id, appearance]))
+  const selected = [...new Map(overrides.map((reference) => [reference.appearanceId, reference])).values()]
+  const replacedSlots = new Set(selected.flatMap((reference) => appearances.get(reference.appearanceId)?.layers.map(({ slot }) => slot) ?? []))
+  return [
+    ...composition.filter((reference) => appearances.get(reference.appearanceId)?.layers.every(({ slot }) => !replacedSlots.has(slot))),
+    ...selected,
+  ]
+}

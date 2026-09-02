@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "packages": [
+    "aozu-origin/starter.json",
     "focus-studio/starter.json"
   ]
 }

@@ -18,6 +18,7 @@ import { loadCompanionStartup } from './core/application/companion.ts'
 import { loadStage, submitAction as submitPreparedAction, submitInteraction } from './core/application/stage.ts'
 import {
   CHARACTER_RIG,
+  type AppearanceRef,
   type CharacterAssetTarget,
   type CharacterDraft,
   type CharacterVariantGroup,
@@ -269,12 +270,14 @@ export function createApplication(document: Document) {
       if (startup.savedCompanions.length) void requestPersistentStorage(document.defaultView?.navigator.storage)
       if (startup.status !== 'main') return { ...startup, pendingReview, authoringDrafts }
       const entries = createIndexedDbEntryRepository(startup.bundleId)
+      const loadout = (await planItemEffects(entries, startup.runId, [])).projection
       const character = await loadCharacterProjection(
         entries,
         createIndexedDbAssetRepository,
         startup.bundleId,
         inspectCharacterImage,
         startup.stage.scene?.characterStateId,
+        Object.values(loadout.appearances).filter((appearance): appearance is AppearanceRef => appearance !== null),
       )
       return {
         ...startup,

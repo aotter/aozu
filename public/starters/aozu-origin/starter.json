@@ -1,0 +1,353 @@
+{
+  "schemaVersion": 1,
+  "id": "aozu-origin",
+  "version": 1,
+  "name": "AOZU 起源任務",
+  "description": "從創造布丁獺開始，透過 WebMCP 完成第一場旅行冒險並封存能力卡。",
+  "compatibility": {
+    "contractVersion": 2,
+    "backboneVersion": "6"
+  },
+  "assetFiles": [
+    {
+      "blobId": "aozu-otter-base",
+      "path": "assets/otter-base.png",
+      "mediaType": "image/png"
+    },
+    {
+      "blobId": "aozu-otter-voyage",
+      "path": "assets/otter-voyage.png",
+      "mediaType": "image/png"
+    },
+    {
+      "blobId": "aozu-club-room",
+      "path": "assets/club-room.png",
+      "mediaType": "image/png"
+    }
+  ],
+  "characterPack": {
+    "id": "aozu-pudding-otter",
+    "version": 1,
+    "rigProfile": {
+      "id": "companion-fullbody",
+      "version": 2
+    },
+    "creator": {
+      "name": "Aotter"
+    },
+    "license": {
+      "id": "project-use",
+      "embedding": "allowed"
+    },
+    "assets": [
+      {
+        "id": "otter-base",
+        "blobId": "aozu-otter-base",
+        "mediaType": "image/png",
+        "size": 352795,
+        "sha256": "f9e3798298d4d8f35c9dc8bcb913cea0a7dc973b63cb381382e02a1bab05a26c"
+      },
+      {
+        "id": "otter-voyage",
+        "blobId": "aozu-otter-voyage",
+        "mediaType": "image/png",
+        "size": 411505,
+        "sha256": "8181eea756e53a86545b48aaa478ba23326ef802ed83e58831798266e8c2a8c9"
+      }
+    ],
+    "appearances": [
+      {
+        "id": "body-base",
+        "layers": [
+          {
+            "asset": {
+              "packId": "aozu-pudding-otter",
+              "packVersion": 1,
+              "assetId": "otter-base"
+            },
+            "slot": "character-skin",
+            "order": 1
+          }
+        ]
+      },
+      {
+        "id": "outfit-voyage",
+        "layers": [
+          {
+            "asset": {
+              "packId": "aozu-pudding-otter",
+              "packVersion": 1,
+              "assetId": "otter-voyage"
+            },
+            "slot": "character-skin",
+            "order": 1
+          }
+        ]
+      }
+    ],
+    "defaultComposition": [
+      {
+        "packId": "aozu-pudding-otter",
+        "packVersion": 1,
+        "appearanceId": "body-base"
+      }
+    ]
+  },
+  "characterStates": [
+    {
+      "id": "character:aozu-otter",
+      "name": "布丁獺",
+      "summary": "一位尚未選定能力與裝備、等待和你共同成長的 AOZU 夥伴。",
+      "packId": "aozu-pudding-otter",
+      "packVersion": 1,
+      "composition": [
+        {
+          "packId": "aozu-pudding-otter",
+          "packVersion": 1,
+          "appearanceId": "body-base"
+        }
+      ]
+    }
+  ],
+  "scenePack": {
+    "id": "aozu-origin-scenes",
+    "version": 1,
+    "assets": [
+      {
+        "id": "scene:aozu-club-room-background",
+        "blobId": "aozu-club-room",
+        "mediaType": "image/png",
+        "width": 512,
+        "height": 768,
+        "size": 608111,
+        "sha256": "30bd4e31c5dd1808866df7a40806c7695d13b8c6f29e64c7e12479feb891fcce"
+      }
+    ],
+    "compositions": [
+      {
+        "id": "scene:aozu-club-room",
+        "layers": [
+          {
+            "id": "background",
+            "assetId": "scene:aozu-club-room-background",
+            "plane": "back",
+            "order": 1
+          }
+        ]
+      }
+    ]
+  },
+  "directions": [
+    {
+      "id": "origin-travel",
+      "name": "AOZU 人物創建任務",
+      "summary": "告訴夥伴三個想去的地方，完成行程後取得遠航造型與可再次召回的旅程策劃能力。",
+      "seed": {
+        "kind": "task",
+        "directionId": "origin-travel",
+        "loopIds": [
+          "bond",
+          "journey",
+          "mastery"
+        ],
+        "completionMode": "finite",
+        "brief": "以 WebMCP 引導使用者建立布丁獺，收集三個旅行地點，整理為可執行行程，完成後授予並穿上遠航造型，再把旅程策劃能力封存為可召回的 Origin Card。"
+      },
+      "sceneCompositionId": "scene:aozu-club-room",
+      "playbook": {
+        "initialStageId": "meet-companion",
+        "metrics": {
+          "planning": 0,
+          "bond": 0
+        },
+        "flags": {
+          "origin-card-sealed": false
+        },
+        "itemDefinitions": [
+          {
+            "id": "origin-travel-card",
+            "name": "旅程策劃 Origin Card",
+            "equipSlot": "outfit",
+            "defaultAppearance": {
+              "packId": "aozu-pudding-otter",
+              "packVersion": 1,
+              "appearanceId": "outfit-voyage"
+            },
+            "grants": [
+              "travel.plan",
+              "travel.recall"
+            ]
+          }
+        ],
+        "stages": [
+          {
+            "id": "meet-companion",
+            "title": "和布丁獺相遇",
+            "narrative": "先確認這位夥伴，再一起接受第一場旅行建立任務。",
+            "agentFallback": true,
+            "actions": [
+              {
+                "id": "start-origin-quest",
+                "label": "接受起源任務",
+                "phrases": [
+                  "接受起源任務",
+                  "開始創建我的夥伴"
+                ],
+                "effects": [
+                  {
+                    "type": "addMetric",
+                    "metricId": "bond",
+                    "amount": 1
+                  },
+                  {
+                    "type": "changeStage",
+                    "stageId": "plan-first-trip"
+                  }
+                ]
+              }
+            ],
+            "progress": [
+              {
+                "id": "bond",
+                "label": "羈絆",
+                "source": {
+                  "fact": "metric",
+                  "id": "bond"
+                },
+                "max": 3
+              }
+            ]
+          },
+          {
+            "id": "plan-first-trip",
+            "title": "告訴我想去的地方",
+            "narrative": "把景點、店名或地址貼進對話框；WebMCP 會協助整理。也可以用下方動作逐一確認三個地點。",
+            "agentFallback": true,
+            "actions": [
+              {
+                "id": "confirm-place",
+                "label": "確認一個地點",
+                "phrases": [
+                  "確認一個地點",
+                  "加入這個地點"
+                ],
+                "effects": [
+                  {
+                    "type": "addMetric",
+                    "metricId": "planning",
+                    "amount": 1
+                  }
+                ]
+              }
+            ],
+            "progress": [
+              {
+                "id": "planning",
+                "label": "行程完成度",
+                "source": {
+                  "fact": "metric",
+                  "id": "planning"
+                },
+                "max": 3
+              }
+            ]
+          },
+          {
+            "id": "claim-reward",
+            "title": "遠航造型已穿上",
+            "narrative": "布丁獺已真正換成完整遠航造型，旅程策劃能力也已加入角色。現在把這段能力封存起來。",
+            "actions": [
+              {
+                "id": "seal-origin-card",
+                "label": "封存 Origin Card",
+                "phrases": [
+                  "封存 Origin Card",
+                  "保存旅程策劃能力"
+                ],
+                "effects": [
+                  {
+                    "type": "setFlag",
+                    "flagId": "origin-card-sealed",
+                    "value": true
+                  },
+                  {
+                    "type": "addMetric",
+                    "metricId": "bond",
+                    "amount": 2
+                  },
+                  {
+                    "type": "changeStage",
+                    "stageId": "origin-card"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "origin-card",
+            "title": "旅程策劃 Origin Card",
+            "narrative": "這位夥伴與旅程策劃能力已保存為 Companion。之後可從首頁再次開啟，也能匯出 Bundle 帶走。",
+            "terminal": true,
+            "actions": []
+          }
+        ],
+        "rules": [
+          {
+            "ruleId": "complete-first-plan",
+            "priority": 100,
+            "when": {
+              "all": [
+                {
+                  "fact": "stage",
+                  "id": "plan-first-trip"
+                },
+                {
+                  "fact": "metric",
+                  "id": "planning",
+                  "op": "gte",
+                  "value": 3
+                }
+              ]
+            },
+            "effects": [
+              {
+                "type": "grantItem",
+                "inventoryId": "origin-travel-card",
+                "definitionId": "origin-travel-card",
+                "quantity": 1,
+                "state": {}
+              },
+              {
+                "type": "equipItem",
+                "inventoryId": "origin-travel-card",
+                "slot": "outfit"
+              },
+              {
+                "type": "changeStage",
+                "stageId": "claim-reward"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "skeleton": {
+    "requiredStageIds": [
+      "meet-companion",
+      "plan-first-trip",
+      "claim-reward",
+      "origin-card"
+    ],
+    "requiredMetricIds": [
+      "planning",
+      "bond"
+    ],
+    "instructions": [
+      "Keep meet-companion as the initial stage and bind every stage to the AOZU room and selected character.",
+      "Use WebMCP dialogue or the local confirm-place action to record three destinations.",
+      "Grant and equip origin-travel-card only after planning reaches three.",
+      "Keep origin-card terminal so the saved Companion is the reusable ability card."
+    ]
+  }
+}
