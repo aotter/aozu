@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { advanceOriginProgress, AOZU_CUSTOMIZATION, AOZU_ORIGIN_LOOP_STAGES, AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, AOZU_WARDROBE_ITEMS, AOZU_WARDROBE_SLOTS, DEFAULT_TRAVEL_JOURNAL } from '../aozu.ts'
+import { advanceOriginProgress, AOZU_CUSTOMIZATION, AOZU_ORIGIN_LOOP_STAGES, AOZU_P0_WARDROBE_ITEMS, AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, AOZU_WARDROBE_ITEMS, AOZU_WARDROBE_SLOTS, DEFAULT_TRAVEL_JOURNAL } from '../aozu.ts'
 import { assembleAuthoredCandidate } from '../src/core/application/authoring.ts'
 
 const candidate = assembleAuthoredCandidate('bundle:aozu-check', AOZU_CUSTOMIZATION, 1)
@@ -26,6 +26,8 @@ assert.equal(AOZU_WARDROBE_ITEMS.length, 20)
 assert.ok(AOZU_WARDROBE_SLOTS.every(({ id }) => AOZU_WARDROBE_ITEMS.filter(({ slot }) => slot === id).length === 5))
 assert.ok(AOZU_WARDROBE_ITEMS.every(({ crop }) => crop.length === 4))
 assert.ok(AOZU_WARDROBE_ITEMS.every(({ crop: [x, y, width, height] }) => x >= 0 && y >= 0 && x + width <= 1024 && y + height <= 1536))
+assert.equal(AOZU_P0_WARDROBE_ITEMS.length, 8)
+assert.ok(AOZU_WARDROBE_SLOTS.every(({ id }) => AOZU_P0_WARDROBE_ITEMS.filter(({ slot }) => slot === id).length === 2))
 assert.deepEqual(travelJournal?.data.state, DEFAULT_TRAVEL_JOURNAL)
 assert.equal(DEFAULT_TRAVEL_JOURNAL.equippedAccessoryId, 'none')
 assert.equal(AOZU_TRAVEL_ACCESSORIES.length, 3)

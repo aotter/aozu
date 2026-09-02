@@ -22,9 +22,9 @@ assert.deepEqual(names.sort(), [
   'submit_character_asset_candidate', 'submit_companion_action',
 ])
 const forge = tools.find(({ name }) => name === 'stage_aozu_companion')!
-await forge.execute({ basePartnerId: 'otter', name: '小歐', personality: '好奇又可靠', role: '旅程夥伴', questKind: 'travel', questGoal: '完成週末旅行手札', steps: ['說出目的地', '補上位置', '完成一項清單'], starterItemId: 'explorer-bandana', idempotencyKey: 'forge-demo-1' })
-assert.deepEqual(commands.at(-1), { command: 'stage-proposal', proposal: { id: 'forge-demo-1', kind: 'forge', basePartnerId: 'otter', name: '小歐', personality: '好奇又可靠', role: '旅程夥伴', questKind: 'travel', questGoal: '完成週末旅行手札', steps: ['說出目的地', '補上位置', '完成一項清單'], starterItemId: 'explorer-bandana', dialogue: undefined } })
-await assert.rejects(() => forge.execute({ basePartnerId: 'otter', name: '小歐', personality: '好奇又可靠', role: '旅程夥伴', questKind: 'travel', questGoal: '完成週末旅行手札', steps: ['只有一步'], starterItemId: 'explorer-bandana', idempotencyKey: 'forge-demo-2' }), /exactly three steps/)
+await forge.execute({ basePartnerId: 'otter', name: '小歐', personality: '好奇又可靠', role: '旅程夥伴', questKind: 'travel', questGoal: '完成週末旅行手札', steps: ['說出目的地', '補上位置', '完成一項清單'], starterItemId: 'voyage-cap', idempotencyKey: 'forge-demo-1' })
+assert.deepEqual(commands.at(-1), { command: 'stage-proposal', proposal: { id: 'forge-demo-1', kind: 'forge', basePartnerId: 'otter', name: '小歐', personality: '好奇又可靠', role: '旅程夥伴', questKind: 'travel', questGoal: '完成週末旅行手札', steps: ['說出目的地', '補上位置', '完成一項清單'], starterItemId: 'voyage-cap', dialogue: undefined } })
+await assert.rejects(() => forge.execute({ basePartnerId: 'otter', name: '小歐', personality: '好奇又可靠', role: '旅程夥伴', questKind: 'travel', questGoal: '完成週末旅行手札', steps: ['只有一步'], starterItemId: 'voyage-cap', idempotencyKey: 'forge-demo-2' }), /exactly three steps/)
 const trip = tools.find(({ name }) => name === 'stage_aozu_trip_plan')!
 await trip.execute({ title: '台南散步', stops: [{ day: 1, kind: 'food', name: '早餐店', location: '中西區' }], idempotencyKey: 'trip-demo-1' })
 assert.deepEqual(commands.at(-1), { command: 'stage-proposal', proposal: { id: 'trip-demo-1', kind: 'travel', title: '台南散步', stops: [{ day: 1, kind: 'food', name: '早餐店', location: '中西區' }], dialogue: undefined } })

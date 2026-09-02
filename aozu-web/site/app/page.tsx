@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent, type PointerEvent as ReactPointerEvent } from 'react';
 
-import { advanceOriginProgress, AOZU_FORGE_QUESTS, AOZU_FORGE_STARTER_ITEM_IDS, AOZU_ORIGIN_LOOP_STAGES, AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, AOZU_WARDROBE_ITEMS, AOZU_WARDROBE_SLOTS, DEFAULT_TRAVEL_JOURNAL, ensureAozuCompanions, type AozuStartup, type AozuWardrobeSlotId, type TravelJournalState } from '../companion/aozu.ts';
+import { advanceOriginProgress, AOZU_FORGE_QUESTS, AOZU_FORGE_STARTER_ITEM_IDS, AOZU_ORIGIN_LOOP_STAGES, AOZU_P0_WARDROBE_ITEMS, AOZU_PARTNERS, AOZU_TRAVEL_ACCESSORIES, AOZU_WARDROBE_ITEMS, AOZU_WARDROBE_SLOTS, DEFAULT_TRAVEL_JOURNAL, ensureAozuCompanions, type AozuStartup, type AozuWardrobeSlotId, type TravelJournalState } from '../companion/aozu.ts';
 import type { AdventureMode } from '../companion/adventure.ts';
 import { createApplication, type Application } from '../companion/src/bootstrap.ts';
 import { AdventureGame } from './adventure-game.tsx';
@@ -474,11 +474,11 @@ export default function Home() {
   const activeRole = activeForgeProfile?.role ?? activePartner.role;
   const activeQuote = activeForgeProfile ? `${activeForgeProfile.personality}。${activeForgeProfile.questGoal}` : activePartner.quote;
   const activeForgeQuest = activeForgeProfile ? AOZU_FORGE_QUESTS.find(({ id }) => id === activeForgeProfile.questKind) : undefined;
-  const wardrobeEnabled = true;
-  const storedWardrobeItems = wardrobeEnabled ? AOZU_WARDROBE_ITEMS.filter(({ id }) => runtime?.loadout.equippedDefinitionIds.includes(`wardrobe-${id}`)) : [];
+  const wardrobeEnabled = activePartner.id === 'otter';
+  const storedWardrobeItems = wardrobeEnabled ? AOZU_P0_WARDROBE_ITEMS.filter(({ id }) => runtime?.loadout.equippedDefinitionIds.includes(`wardrobe-${id}`)) : [];
   const hasLegacyStarterWardrobe = storedWardrobeItems.length === legacyStarterWardrobe.length && legacyStarterWardrobe.every((id) => storedWardrobeItems.some((item) => item.id === id));
   const equippedWardrobeItems = hasLegacyStarterWardrobe ? [] : storedWardrobeItems;
-  const selectedWardrobeItem = AOZU_WARDROBE_ITEMS.find(({ id }) => id === selectedWardrobeItemId) ?? equippedWardrobeItems[0] ?? AOZU_WARDROBE_ITEMS[0];
+  const selectedWardrobeItem = AOZU_P0_WARDROBE_ITEMS.find(({ id }) => id === selectedWardrobeItemId) ?? equippedWardrobeItems[0] ?? AOZU_P0_WARDROBE_ITEMS[0];
   const selectedWardrobePlacement = placementDraft[`wardrobe-${selectedWardrobeItem.id}`] ?? placementFrom(runtime?.loadout.itemStates[`wardrobe-${selectedWardrobeItem.id}`]);
   const equippedWardrobeLabel = equippedWardrobeItems.map(({ label }) => label).join('、') || '原本造型';
   const activeGuide = conversationGuides[activeModule.id];
@@ -547,20 +547,24 @@ export default function Home() {
     };
     setSavedMemories((current) => saveStoredList(AOZU_MEMORY_KEY, current, memory));
 
-    try {
-      const activeApplication = options.application ?? (await bootAozu()).application;
-      const startup = await activeApplication.loadStartup();
-      if (startup.status === 'main') {
-        await activeApplication.submitAction(`wear-${quest.rewardItemId}`, startup.stage.revision, `origin-reward-${next.id}`);
-        await refresh(activeApplication);
+    if (next.basePartnerId === 'otter') {
+      try {
+        const activeApplication = options.application ?? (await bootAozu()).application;
+        const startup = await activeApplication.loadStartup();
+        if (startup.status === 'main') {
+          await activeApplication.submitAction(`wear-${quest.rewardItemId}`, startup.stage.revision, `origin-reward-${next.id}`);
+          await refresh(activeApplication);
+        }
+      } catch (error) {
+        setRuntimeError(`Origin Card 已封存，但獎勵配件尚未裝上：${messageFrom(error)}`);
       }
-    } catch (error) {
-      setRuntimeError(`Origin Card 已封存，但獎勵配件尚未裝上：${messageFrom(error)}`);
     }
     setPanel('cards');
     setDialogueOpen(false);
     setMobileConsoleOpen(true);
-    setRoomMessage(`我們完成第一場冒險了！「${quest.ability}」已封成 Origin Card，${AOZU_WARDROBE_ITEMS.find(({ id }) => id === quest.rewardItemId)?.label}也已解鎖並穿上。`);
+    setRoomMessage(next.basePartnerId === 'otter'
+      ? `我們完成第一場冒險了！「${quest.ability}」已封成 Origin Card，${AOZU_WARDROBE_ITEMS.find(({ id }) => id === quest.rewardItemId)?.label}也已解鎖並穿上。`
+      : `我們完成第一場冒險了！「${quest.ability}」已封成 Origin Card。P0 的換裝獎勵目前保留給布丁獺。`);
     setToast('Origin Card 已封存');
   };
 
@@ -715,6 +719,10 @@ export default function Home() {
   };
 
   const equipWardrobeItem = (item: WardrobeItem) => {
+    if (!wardrobeEnabled) {
+      setToast('P0 換裝目前只開放布丁獺');
+      return;
+    }
     setSelectedWardrobeItemId(item.id);
     void runAction(`wear-${item.id}`, `${item.label}已磁吸到${AOZU_WARDROBE_SLOTS.find(({ id }) => id === item.slot)?.label}`);
   };
@@ -741,10 +749,10 @@ export default function Home() {
     const bounds = paperDollRef.current?.getBoundingClientRect();
     const droppedOnDoll = !!bounds && event.clientX >= bounds.left && event.clientX <= bounds.right && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
     closetDragRef.current = null;
-    suppressWardrobeClickRef.current = true;
+    suppressWardrobeClickRef.current = drag.moved;
     setWardrobeGhost(null);
     setMagnetSlot(null);
-    if (!drag.moved || droppedOnDoll) equipWardrobeItem(drag.item);
+    if (drag.moved && droppedOnDoll) equipWardrobeItem(drag.item);
     window.setTimeout(() => { suppressWardrobeClickRef.current = false; }, 0);
   };
 
@@ -1044,7 +1052,7 @@ export default function Home() {
         return;
       }
       const partner = AOZU_PARTNERS.find(({ id }) => id === proposal.basePartnerId);
-      const item = AOZU_WARDROBE_ITEMS.find(({ id }) => id === proposal.starterItemId);
+      const item = AOZU_P0_WARDROBE_ITEMS.find(({ id }) => id === proposal.starterItemId);
       if (!partner || !item) return;
       setBusy(true);
       try {
@@ -1059,9 +1067,11 @@ export default function Home() {
           startup = await application.loadStartup();
           if (startup.status !== 'main') throw new Error('角色版型無法清理');
         }
-        await application.submitAction(`wear-${item.id}`, startup.stage.revision, `${proposal.id}:starter`);
-        startup = await application.loadStartup();
-        if (startup.status !== 'main') throw new Error('創角結果無法載入');
+        if (partner.id === 'otter') {
+          await application.submitAction(`wear-${item.id}`, startup.stage.revision, `${proposal.id}:starter`);
+          startup = await application.loadStartup();
+          if (startup.status !== 'main') throw new Error('創角結果無法載入');
+        }
         setRuntime(startup);
         const profile: ForgeProfile = {
           id: proposal.id,
@@ -1143,7 +1153,12 @@ export default function Home() {
     }
 
     if (proposal.kind === 'outfit') {
-      const item = AOZU_WARDROBE_ITEMS.find(({ id }) => id === proposal.itemId);
+      if (!wardrobeEnabled) {
+        setAgentProposal(null);
+        setRoomMessage('P0 的磁吸換裝目前只開放布丁獺；這位夥伴仍可切換、對話與完成任務。');
+        return;
+      }
+      const item = AOZU_P0_WARDROBE_ITEMS.find(({ id }) => id === proposal.itemId);
       if (!item) return;
       setSelectedWardrobeItemId(item.id);
       const saved = await runAction(`wear-${item.id}`, `${item.label}已穿到${activeDisplayName}身上`, proposal.id);
@@ -1299,7 +1314,7 @@ export default function Home() {
               <p>{agentProposalSummary(agentProposal)}</p>
               {agentProposal.kind === 'forge' && <ul><li><b>外型</b><span>{AOZU_PARTNERS.find(({ id }) => id === agentProposal.basePartnerId)?.displayName}</span><small>{agentProposal.role}</small></li>{agentProposal.steps.map((step, index) => <li key={step}><b>STEP {index + 1}</b><span>{step}</span><small>{index === 2 ? '完成後封存 Origin Card' : '完成後累積成長'}</small></li>)}</ul>}
               {agentProposal.kind === 'travel' && <ul>{agentProposal.stops.map((stop, index) => <li key={`${stop.name}-${index}`}><b>DAY {stop.day}</b><span>{stop.name}</span><small>{stop.location}</small></li>)}</ul>}
-              {agentProposal.kind === 'outfit' && <div className="agent-outfit-preview"><WardrobeSprite item={AOZU_WARDROBE_ITEMS.find(({ id }) => id === agentProposal.itemId) ?? AOZU_WARDROBE_ITEMS[0]} /><small>紙娃娃會重新合成，不只是把圖貼在角色上。</small></div>}
+              {agentProposal.kind === 'outfit' && <div className="agent-outfit-preview"><WardrobeSprite item={AOZU_P0_WARDROBE_ITEMS.find(({ id }) => id === agentProposal.itemId) ?? AOZU_P0_WARDROBE_ITEMS[0]} /><small>紙娃娃會重新合成，不只是把圖貼在角色上。</small></div>}
               {agentProposal.kind === 'card' && <small>需要能力：{agentProposal.requiredCapabilities.join('、') || 'AOZU 本機能力'}</small>}
               <em>確認以前不會改變角色資料。</em>
               <div><button type="button" onClick={rejectAgentProposal}>先不要</button><button type="button" disabled={busy} onClick={() => void confirmAgentProposal()}>{busy ? '處理中…' : '確認一起做'}</button></div>
@@ -1327,7 +1342,7 @@ export default function Home() {
 
           {panel === 'wardrobe' && wardrobeEnabled && !mobileConsoleOpen && <section className="room-wardrobe-tray" aria-label="可拖曳物件列">
             <header><div><span>MAGNETIC ITEMS</span><strong>把物件拖到{activeDisplayName}身上</strong></div><button type="button" onClick={() => setPanel('quests')}>完成</button></header>
-            <div className="room-wardrobe-items">{AOZU_WARDROBE_ITEMS.map((item) => {
+            <div className="room-wardrobe-items">{AOZU_P0_WARDROBE_ITEMS.map((item) => {
               const isEquipped = equippedWardrobeItems.some(({ id }) => id === item.id);
               return <button key={item.id} className={`room-wardrobe-item ${isEquipped ? 'is-equipped' : ''}`} type="button" disabled={!runtime || busy} aria-pressed={isEquipped} onClick={() => { if (!suppressWardrobeClickRef.current) equipWardrobeItem(item); }} onPointerDown={(event) => beginClosetDrag(item, event)}>
                 <WardrobeSprite item={item} /><strong>{item.label}</strong><small>{isEquipped ? '已穿上・可拖動' : '拖到角色身上'}</small>
@@ -1342,7 +1357,7 @@ export default function Home() {
           <nav className="game-dock" aria-label="夥伴管理">
             {panels.map((item) => <button key={item.id} className={panel === item.id ? 'is-active' : ''} type="button" onClick={() => openPanel(item.id)}><span>{item.icon}</span>{item.label}</button>)}
           </nav>
-          {panel !== 'wardrobe' && <button className="mobile-tools-toggle" type="button" aria-expanded={mobileToolsOpen} onClick={toggleTools} onPointerDown={beginToolPull} onPointerMove={moveToolPull} onPointerUp={finishToolPull} onPointerCancel={finishToolPull}>{mobileToolsOpen ? '收起' : '選單'}</button>}
+          {(panel !== 'wardrobe' || !wardrobeEnabled) && <button className="mobile-tools-toggle" type="button" aria-expanded={mobileToolsOpen} onClick={toggleTools} onPointerDown={beginToolPull} onPointerMove={moveToolPull} onPointerUp={finishToolPull} onPointerCancel={finishToolPull}>{mobileToolsOpen ? '收起' : '選單'}</button>}
           {mobileToolsOpen && <section className="mobile-tools-drawer" aria-label="夥伴工具">
             <div className="mobile-partner-carousel">
               <button className="mobile-partner-arrow is-left" type="button" aria-label="向左瀏覽夥伴" onClick={() => mobilePartnerListRef.current?.scrollBy({ left: -190, behavior: 'smooth' })}>‹</button>
@@ -1400,8 +1415,10 @@ export default function Home() {
               <label><span>角色定位</span><input required minLength={2} maxLength={60} value={forgeDraft.role} onChange={(event) => setForgeDraft((draft) => ({ ...draft, role: event.target.value }))} /></label>
               <fieldset><legend>2. 選擇第一種能力</legend><div className="forge-quest-grid">{AOZU_FORGE_QUESTS.map((quest) => <button key={quest.id} type="button" className={forgeDraft.questKind === quest.id ? 'is-active' : ''} onClick={() => setForgeDraft((draft) => ({ ...draft, questKind: quest.id, questGoal: quest.defaultGoal }))}><strong>{quest.label}</strong><small>{quest.ability}</small></button>)}</div></fieldset>
               <label><span>第一場冒險</span><textarea required minLength={4} maxLength={120} value={forgeDraft.questGoal} onChange={(event) => setForgeDraft((draft) => ({ ...draft, questGoal: event.target.value }))} /></label>
-              <label><span>誕生配件</span><select value={forgeDraft.starterItemId} onChange={(event) => setForgeDraft((draft) => ({ ...draft, starterItemId: event.target.value as WardrobeItem['id'] }))}>{AOZU_FORGE_STARTER_ITEM_IDS.map((id) => { const item = AOZU_WARDROBE_ITEMS.find((candidate) => candidate.id === id)!; return <option key={id} value={id}>{item.label}</option>; })}</select></label>
-              <div className="forge-contract"><strong>確認後才會建立</strong><p>AOZU 會套用外型、穿上誕生配件並建立三步 Origin Quest；完成後解鎖專屬配件，封存一張可再次召喚的 Origin Card。挑戰賽完整示範建議選「旅行規劃」。</p></div>
+              {forgeDraft.basePartnerId === 'otter'
+                ? <label><span>誕生配件</span><select value={forgeDraft.starterItemId} onChange={(event) => setForgeDraft((draft) => ({ ...draft, starterItemId: event.target.value as WardrobeItem['id'] }))}>{AOZU_FORGE_STARTER_ITEM_IDS.map((id) => { const item = AOZU_WARDROBE_ITEMS.find((candidate) => candidate.id === id)!; return <option key={id} value={id}>{item.label}</option>; })}</select></label>
+                : <div className="forge-contract"><strong>P0 不套用配件</strong><p>這位夥伴目前可切換、對話與完成任務；磁吸換裝只在布丁獺版型開放。</p></div>}
+              <div className="forge-contract"><strong>確認後才會建立</strong><p>AOZU 會套用外型並建立三步 Origin Quest；布丁獺會穿上誕生配件，完成後封存一張可再次召喚的 Origin Card。挑戰賽完整示範建議選「旅行規劃」。</p></div>
               <button className="forge-submit" type="submit" disabled={!runtime || busy}>預覽創角提案</button>
             </form>
           </>}
@@ -1433,10 +1450,10 @@ export default function Home() {
 
           {panel === 'wardrobe' && <>
             <div className="console-heading"><div><span>MAGNETIC CLOSET</span><h1>{activeDisplayName}的物件櫃</h1></div><b>{equippedWardrobeItems.length} / 4</b></div>
-            {!wardrobeEnabled && <div className="wardrobe-lock"><span>衣</span><strong>磁吸紙娃娃目前是布丁獺版型</strong><p>{activeDisplayName}仍可裝備下方的專屬旅行配件；它們會隨手札能力點數逐一解鎖。</p></div>}
+            {!wardrobeEnabled && <div className="wardrobe-lock"><span>衣</span><strong>P0 換裝目前只開放布丁獺</strong><p>{activeDisplayName}可以切換、對話與一起完成任務；專屬配件會在下一階段加入。</p></div>}
             {wardrobeEnabled && <div className="closet-slots">
               {AOZU_WARDROBE_SLOTS.map((slot) => {
-                const items = AOZU_WARDROBE_ITEMS.filter((item) => item.slot === slot.id);
+                const items = AOZU_P0_WARDROBE_ITEMS.filter((item) => item.slot === slot.id);
                 const equipped = equippedWardrobeItems.find((item) => item.slot === slot.id);
                 return <section key={slot.id} className="closet-slot">
                   <header><div><span>{slot.label}</span><strong>{equipped?.label ?? '尚未裝備'}</strong></div><button type="button" disabled={!runtime || busy || !equipped} onClick={() => void runAction(`clear-${slot.id}`, `已卸下${slot.label}物件`)}>卸下</button></header>
@@ -1449,7 +1466,7 @@ export default function Home() {
                 </section>;
               })}
             </div>}
-            <div className="accessory-section-heading"><div><span>TRAVEL REWARDS</span><h2>旅行配件</h2></div><small>{travelScore} 能力點</small></div>
+            {wardrobeEnabled && <><div className="accessory-section-heading"><div><span>TRAVEL REWARDS</span><h2>旅行配件</h2></div><small>{travelScore} 能力點</small></div>
             <div className="travel-accessory-grid">
               {AOZU_TRAVEL_ACCESSORIES.map((accessory) => {
                 const unlocked = travelScore >= accessory.threshold;
@@ -1458,8 +1475,8 @@ export default function Home() {
                   <i>{accessory.icon}</i><strong>{accessory.names[activePartner.id]}</strong><small>{equipped ? '裝備中' : unlocked ? '點一下裝備' : `${accessory.threshold - travelScore} 點後解鎖`}</small><span>{accessory.skill}</span>
                 </button>;
               })}
-            </div>
-            <div className="closet-note"><span>✓</span><p><strong>{wardrobeEnabled ? '四個部位各自磁吸，同類新物件會自動替換舊物件' : '每位夥伴都有三件專屬旅行配件'}</strong>可從物件櫃拖到角色身上，也可穿好後再拖曳調整；靠近光圈就會自動吸附。</p></div>
+            </div></>}
+            <div className="closet-note"><span>✓</span><p><strong>{wardrobeEnabled ? '四個部位各自磁吸，同類新物件會自動替換舊物件' : '此角色在 P0 不提供配件'}</strong>{wardrobeEnabled ? '可從物件櫃拖到角色身上，也可穿好後再拖曳調整；靠近光圈就會自動吸附。' : '目前仍可切換角色、對話並完成任務。'}</p></div>
           </>}
 
           {panel === 'journal' && <>
