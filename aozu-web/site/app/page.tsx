@@ -171,7 +171,15 @@ const wardrobeFits: Record<string, { x: number; y: number; size: number }> = {
   'explorer-compass': { x: 24, y: 50, size: 18 }, 'coffee-cup': { x: 25, y: 50, size: 16 }, 'focus-stylus': { x: 25, y: 48, size: 10 }, 'night-lantern': { x: 25, y: 53, size: 16 }, 'voyage-passport': { x: 25, y: 49, size: 14 },
 };
 
+const otterWardrobeFits: Record<string, { x: number; y: number; size: number }> = {
+  'explorer-bandana': { x: 50, y: 8, size: 30 }, 'coffee-scarf': { x: 50, y: 37, size: 38 }, 'focus-headphones': { x: 50, y: 24, size: 54 }, 'night-moon': { x: 61, y: 16, size: 18 }, 'voyage-cap': { x: 50, y: 15, size: 48 },
+  'explorer-vest': { x: 50, y: 54, size: 58 }, 'coffee-apron': { x: 50, y: 61, size: 54 }, 'focus-jacket': { x: 50, y: 54, size: 62 }, 'night-cape': { x: 52, y: 55, size: 60 }, 'voyage-jacket': { x: 50, y: 54, size: 62 },
+  'explorer-binoculars': { x: 75, y: 51, size: 30 }, 'coffee-dripper': { x: 76, y: 53, size: 25 }, 'focus-tablet': { x: 75, y: 51, size: 29 }, 'night-satchel': { x: 74, y: 54, size: 31 }, 'voyage-tag': { x: 75, y: 54, size: 21 },
+  'explorer-compass': { x: 18, y: 43, size: 24 }, 'coffee-cup': { x: 18, y: 43, size: 21 }, 'focus-stylus': { x: 18, y: 42, size: 11 }, 'night-lantern': { x: 18, y: 46, size: 20 }, 'voyage-passport': { x: 18, y: 43, size: 18 },
+};
+
 const dollImageCache = new Map<string, Promise<HTMLImageElement>>();
+const rigBaseCache = new Map<string, Promise<CanvasImageSource>>();
 const loadDollImage = (source: string) => {
   if (!dollImageCache.has(source)) dollImageCache.set(source, new Promise((resolve, reject) => {
     const image = new Image();
@@ -182,8 +190,55 @@ const loadDollImage = (source: string) => {
   return dollImageCache.get(source)!;
 };
 
+const rigBaseSource = (partner: Partner) => partner.id === 'otter' ? '/assets/mascot-otter-neutral-v2.png' : partner.image;
+
+const loadRigBase = (partner: Partner) => {
+  const source = rigBaseSource(partner);
+  if (!rigBaseCache.has(source)) rigBaseCache.set(source, (async () => {
+    const image = await loadDollImage(source);
+    if (partner.id !== 'otter') return image;
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return image;
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+    const visited = new Uint8Array(canvas.width * canvas.height);
+    const queue = new Int32Array(canvas.width * canvas.height);
+    let head = 0;
+    let tail = 0;
+    const isBackdrop = (index: number) => {
+      const offset = index * 4;
+      const red = pixels.data[offset];
+      const green = pixels.data[offset + 1];
+      const blue = pixels.data[offset + 2];
+      return Math.min(red, green, blue) >= 224 && Math.max(red, green, blue) - Math.min(red, green, blue) <= 20;
+    };
+    const add = (index: number) => {
+      if (visited[index] || !isBackdrop(index)) return;
+      visited[index] = 1;
+      queue[tail++] = index;
+    };
+    for (let x = 0; x < canvas.width; x += 1) { add(x); add((canvas.height - 1) * canvas.width + x); }
+    for (let y = 1; y < canvas.height - 1; y += 1) { add(y * canvas.width); add(y * canvas.width + canvas.width - 1); }
+    while (head < tail) {
+      const index = queue[head++];
+      const x = index % canvas.width;
+      if (index >= canvas.width) add(index - canvas.width);
+      if (index < canvas.width * (canvas.height - 1)) add(index + canvas.width);
+      if (x > 0) add(index - 1);
+      if (x < canvas.width - 1) add(index + 1);
+      pixels.data[index * 4 + 3] = 0;
+    }
+    context.putImageData(pixels, 0, 0);
+    return canvas;
+  })());
+  return rigBaseCache.get(source)!;
+};
+
 const wardrobeFitFor = (item: WardrobeItem, partner: Partner) => {
-  const fit = wardrobeFits[item.id] ?? AOZU_WARDROBE_SLOTS.find(({ id }) => id === item.slot)!;
+  const fit = (partner.id === 'otter' ? otterWardrobeFits[item.id] : wardrobeFits[item.id]) ?? AOZU_WARDROBE_SLOTS.find(({ id }) => id === item.slot)!;
   return partner.kind === 'human' ? { x: 50 + (fit.x - 50) * 0.68, y: fit.y * 0.84, size: fit.size * 0.72 } : fit;
 };
 
@@ -196,10 +251,10 @@ function PaperDollCanvas({ partner, layers }: { partner: Partner; layers: { item
       const canvas = canvasRef.current;
       const context = canvas?.getContext('2d');
       if (!canvas || !context) return;
-      const sources = [...new Set([partner.image, ...layers.map(({ item }) => item.image)])];
+      const sources = [...new Set(layers.map(({ item }) => item.image))];
       const images = new Map((await Promise.all(sources.map(async (source) => [source, await loadDollImage(source)] as const))));
+      const base = await loadRigBase(partner);
       if (cancelled) return;
-      const base = images.get(partner.image)!;
       const drawBase = () => context.drawImage(base, 0, 0, canvas.width, canvas.height);
       const drawLayer = ({ item, placement }: (typeof layers)[number]) => {
         const image = images.get(item.image)!;
@@ -215,20 +270,33 @@ function PaperDollCanvas({ partner, layers }: { partner: Partner; layers: { item
       context.clearRect(0, 0, canvas.width, canvas.height);
       layers.filter(({ item }) => item.slot === 'wardrobe-back').forEach(drawLayer);
       drawBase();
-      layers.filter(({ item }) => item.slot !== 'wardrobe-back').forEach(drawLayer);
+      layers.filter(({ item }) => item.slot === 'wardrobe-body').forEach(drawLayer);
 
       context.save();
       context.beginPath();
       if (partner.kind === 'human') {
         context.ellipse(canvas.width * .5, canvas.height * .17, canvas.width * .12, canvas.height * .11, 0, 0, Math.PI * 2);
       } else {
-        context.ellipse(canvas.width * .5, canvas.height * .3, canvas.width * .19, canvas.height * .15, 0, 0, Math.PI * 2);
+        context.ellipse(canvas.width * .5, canvas.height * .25, canvas.width * .25, canvas.height * .19, 0, 0, Math.PI * 2);
+      }
+      context.clip();
+      drawBase();
+      context.restore();
+
+      layers.filter(({ item }) => item.slot === 'wardrobe-hand').forEach(drawLayer);
+      context.save();
+      context.beginPath();
+      if (partner.id === 'otter') {
+        context.ellipse(canvas.width * .18, canvas.height * .43, canvas.width * .085, canvas.height * .095, -.2, 0, Math.PI * 2);
+        context.ellipse(canvas.width * .67, canvas.height * .49, canvas.width * .075, canvas.height * .07, 0, 0, Math.PI * 2);
+      } else if (partner.kind !== 'human') {
         context.ellipse(canvas.width * .27, canvas.height * .49, canvas.width * .1, canvas.height * .09, 0, 0, Math.PI * 2);
         context.ellipse(canvas.width * .66, canvas.height * .55, canvas.width * .09, canvas.height * .09, 0, 0, Math.PI * 2);
       }
       context.clip();
       drawBase();
       context.restore();
+      layers.filter(({ item }) => item.slot === 'wardrobe-head').forEach(drawLayer);
     };
     void render();
     return () => { cancelled = true; };
@@ -650,10 +718,10 @@ export default function Home() {
     if (!drag || drag.pointerId !== event.pointerId) return;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     closetDragRef.current = null;
-    suppressWardrobeClickRef.current = drag.moved;
+    suppressWardrobeClickRef.current = true;
     setWardrobeGhost(null);
     setMagnetSlot(null);
-    if (drag.snapping) equipWardrobeItem(drag.item);
+    if (!drag.moved || drag.snapping) equipWardrobeItem(drag.item);
     window.setTimeout(() => { suppressWardrobeClickRef.current = false; }, 0);
   };
 
@@ -1134,7 +1202,6 @@ export default function Home() {
           </form>}
 
           <div ref={paperDollRef} className={`paper-doll partner-${activePartner.kind} ${panel === 'wardrobe' && wardrobeEnabled ? 'is-editing' : ''}`} aria-label={`${activeDisplayName}，${equippedWardrobeLabel}${activeTravelAccessoryName ? `，${activeTravelAccessoryName}` : ''}`}>
-            <PartnerArt partner={activePartner} className="doll-base doll-fallback" />
             <PaperDollCanvas partner={activePartner} layers={equippedWardrobeItems.map((item) => ({ item, placement: placementFor(item) }))} />
             <button className="mobile-pet-dialogue-hitbox" type="button" onClick={openPetDialogue} disabled={!runtime} aria-label={`點${activeDisplayName}開始對話`} />
             {panel === 'wardrobe' && wardrobeEnabled && AOZU_WARDROBE_SLOTS.map((slot) => <span key={slot.id} className={`snap-target snap-${slot.id} ${magnetSlot === slot.id ? 'is-magnetic' : ''}`} style={{ '--slot-x': `${slot.x}%`, '--slot-y': `${slot.y}%` } as CSSProperties}><i />{slot.label}</span>)}

@@ -12,10 +12,10 @@ export const AOZU_PARTNERS = [
 ] as const
 
 export const AOZU_WARDROBE_SLOTS = [
-  { id: 'wardrobe-head', label: '頭部', x: 50, y: 24, size: 32 },
-  { id: 'wardrobe-body', label: '衣服', x: 50, y: 57, size: 50 },
-  { id: 'wardrobe-back', label: '背部', x: 70, y: 59, size: 26 },
-  { id: 'wardrobe-hand', label: '手持', x: 24, y: 49, size: 21 },
+  { id: 'wardrobe-head', label: '頭部', x: 50, y: 22, size: 42 },
+  { id: 'wardrobe-body', label: '衣服', x: 50, y: 54, size: 58 },
+  { id: 'wardrobe-back', label: '背部', x: 75, y: 53, size: 30 },
+  { id: 'wardrobe-hand', label: '手持', x: 18, y: 43, size: 22 },
 ] as const
 
 export type AozuWardrobeSlotId = (typeof AOZU_WARDROBE_SLOTS)[number]['id']
