@@ -55,6 +55,7 @@ import { requestPersistentStorage } from './adapters/browser/storage-persistence
 import { planItemEffects } from './core/application/items.ts'
 import { loadSceneProjection } from './core/application/scene.ts'
 import { exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
+import { exportCharacterDraftZip } from './adapters/zip/character-draft.ts'
 import {
   createBlankExperienceDraftData,
   createExperienceDraftData,
@@ -355,6 +356,11 @@ export function createApplication(document: Document) {
     },
     async deleteCompanion(bundleId: string) {
       await bundles.deleteSaved(bundleId)
+    },
+    async exportCharacterDraft() {
+      const draft = await characterDrafts.get()
+      if (!draft) throw new Error('Character draft not found')
+      return exportCharacterDraftZip(migrateCharacterDraft(draft))
     },
     async submitAction(actionId: string, expectedRevision: number, idempotencyKey: string = crypto.randomUUID()) {
       const { bundleId, runId, contractVersion } = await active()

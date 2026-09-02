@@ -7,6 +7,7 @@ import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterRegistr
 import { IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetTarget, type CharacterDraft, type CharacterDraftVariant, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
 import { CharacterAlignmentRenderer, CharacterAssetImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
+import { DataControls } from '@/ui/DataControls'
 import { StatusPage } from '@/ui/pages/StatusPage'
 
 type CharacterCategoryId = 'expressions' | 'outfits' | 'props'
@@ -25,12 +26,13 @@ const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
 }
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
 
-export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, autoFitVariant, onReview }: {
+export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, autoFitVariant, exportDraft, onReview }: {
   openDraft(): Promise<CharacterDraft>
   updateDraft(draft: CharacterDraft): Promise<CharacterDraft>
   saveAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string): Promise<CharacterDraft>
   setVariantTransform(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string, transform: CharacterVariantTransform): Promise<CharacterDraft>
   autoFitVariant(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string): Promise<CharacterDraft>
+  exportDraft(): Promise<Blob>
   onReview(draft: CharacterDraft): Promise<void>
 }) {
   const { t } = useTranslation()
@@ -342,11 +344,14 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
         </div>
         <div className="shrink-0 border-t pt-2">
           {missing.length > 0 && <p className="mb-2 text-[10px] leading-4 text-muted-foreground sm:text-xs">{t('characterDraft.missingRequired')}</p>}
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+          <DataControls exportData={exportDraft} exportFilename="companion-character-draft.zip" exportIconOnly exportLabel={t('draft.download')} />
           <Button size="sm" className="w-full" disabled={Boolean(busy) || Boolean(missing.length) || !draft.name.trim()} onClick={async () => {
             setBusy('review'); setError(undefined)
             try { await onReview(await updateDraft(draft)) }
             catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); setBusy(undefined) }
           }}>{busy === 'review' ? t('characterDraft.validating') : t('common.continue')}</Button>
+          </div>
         </div>
       </section>
     </main>
