@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { strFromU8, unzipSync } from 'fflate'
 
 import { buildCharacterPack, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
-import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
+import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, stitchCharacterEditPixels, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 import type { CharacterPackLibraryRecord } from '../src/core/application/ports.ts'
@@ -79,14 +79,14 @@ assert.equal(characterRegistrationFrame(draft).head?.variantId, 'happy')
 assert.equal(characterRegistrationFrame(draft).head?.calibration.rebasesCurrentExpressions, true)
 assert.equal(characterRegistrationFrame(draft).editableRegions.expression?.basis, 'head-anchor')
 assert.equal(characterRegistrationFrame(draft).editableRegions.expression?.shape.kind, 'ellipse')
-assert.equal(characterRegistrationFrame(draft).editableRegions.outfit?.shape.kind, 'rectangle')
+assert.equal(characterRegistrationFrame(draft).editableRegions.outfit?.shape.kind, 'outside-ellipse')
 const fallbackRegistration = characterRegistrationFrame({
   ...draft,
   headRegistration: undefined,
   variants: draft.variants.filter(({ group }) => group !== 'expression'),
 })
 assert.equal(fallbackRegistration.editableRegions.expression?.basis, 'body-bounds-fallback')
-assert.ok((fallbackRegistration.editableRegions.outfit?.shape.height ?? 0) > 0)
+assert.ok((fallbackRegistration.editableRegions.outfit?.shape.rx ?? 0) > 0)
 const preview = await reviewCharacterDraft(async () => inspection, draft)
 assert.equal(preview.source, 'character')
 assert.equal('bundleId' in preview, false)
@@ -276,6 +276,20 @@ outsideEdit.rgba[(2 * 64 + 2) * 4] = 255
 const protectedDelta = measureProtectedRegionDelta(protectedReference, outsideEdit, protectedRegion)
 assert.equal(protectedDelta?.changedPixels, 1)
 assert.ok((protectedDelta?.protectedChangeRatio ?? 0) > 0)
+const editProposal = structuredClone(outsideEdit)
+editProposal.rgba[(24 * 64 + 32) * 4] = 255
+const stitchedEdit = stitchCharacterEditPixels(protectedReference, editProposal, protectedRegion)
+assert.equal(stitchedEdit.rgba[(2 * 64 + 2) * 4], 64)
+assert.equal(stitchedEdit.rgba[(24 * 64 + 32) * 4], 255)
+assert.equal(measureProtectedRegionDelta(protectedReference, stitchedEdit, protectedRegion)?.protectedChangeRatio, 0)
+const outsideEllipseRegion = { ...protectedRegion, shape: { ...protectedRegion.shape, kind: 'outside-ellipse' as const } }
+const outsideEllipseProposal = structuredClone(protectedReference)
+outsideEllipseProposal.rgba[0] = 255
+outsideEllipseProposal.rgba[(24 * outsideEllipseProposal.width + 32) * 4] = 255
+const outsideEllipseStitch = stitchCharacterEditPixels(protectedReference, outsideEllipseProposal, outsideEllipseRegion)
+assert.equal(outsideEllipseStitch.rgba[0], 255)
+assert.equal(outsideEllipseStitch.rgba[(24 * outsideEllipseStitch.width + 32) * 4], 64)
+assert.equal(measureProtectedRegionDelta(protectedReference, outsideEllipseStitch, outsideEllipseRegion)?.changedPixels, 0)
 const staleUpdatedAt = savedDraft.updatedAt
 const transformed = await setCharacterVariantTransform(
   drafts,

@@ -49,7 +49,7 @@ import {
   reviewCharacterDraft,
 } from './core/application/character-creation.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
-import { inspectCharacterImage, readCharacterAlphaMask, readCharacterVisualSample, renderCharacterCompositeDataUrl, renderCharacterEditMaskDataUrl } from './adapters/browser/character-image.ts'
+import { inspectCharacterImage, readCharacterAlphaMask, readCharacterPixels, readCharacterVisualSample, renderCharacterCompositeDataUrl, renderCharacterEditMaskDataUrl, renderStitchedCharacterEditBlob } from './adapters/browser/character-image.ts'
 import { compileCharacterTextureAtlas } from './adapters/browser/character-atlas.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
@@ -705,8 +705,8 @@ export function createApplication(document: Document) {
       : input.group === 'outfit' ? registrationFrame.editableRegions.outfit : undefined
     const protectedRegionDelta = asset && alignmentReference && editableRegion
       ? measureProtectedRegionDelta(
-          await readCharacterVisualSample(alignmentReference.blob, referenceTransform),
-          await readCharacterVisualSample(asset.blob, transform),
+          await readCharacterPixels(alignmentReference.blob, referenceTransform),
+          await readCharacterPixels(asset.blob, transform),
           editableRegion,
         )
       : null
@@ -847,8 +847,8 @@ export function createApplication(document: Document) {
             'An outfit replaces the character-skin slot: generate the complete dressed character, never a clothing-only overlay. Preserve pose, body center, head position, and foot line. Generate props against the returned current composite.',
             'Generate at 1024×1536 and deterministically downsample 50% to the exact 512×768 canvas. Never crop, reframe, or recenter.',
             'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
-            'When the target returns an editableRegion mask, transparent pixels are editable and opaque pixels are protected. Keep all changes inside that deterministic registration-derived region; protectedRegionDelta reports non-blocking drift after submission, where 0 means unchanged and lower is better.',
-            'Submit only final RGBA PNG layers. The website validates but never repairs candidate images.',
+            'When the target returns an editableRegion mask, transparent pixels are editable and opaque pixels are protected. The website deterministically stitches accepted expression and outfit proposals into their edit source; protectedRegionDelta must then be 0.',
+            'Submit only full-canvas RGBA PNG proposals. The website never generates, removes backgrounds, or guesses geometry; it only compiles pixels authorized by the deterministic editable region.',
             'Expression layers replace the whole aligned head, including the same fixed hairstyle and facial hair. Hair and facial hair are not customizable slots.',
             'No expression overlay means the default face baked into the body. Optional whole-head variants include happy, sad, angry, surprised, and sleepy; additional variants are allowed.',
             'Outfits are full-body variants. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. A prop may be positioned anywhere, including on the head or in a hand.',
@@ -927,9 +927,25 @@ export function createApplication(document: Document) {
           input: { draftId: current.id, group: target.group, variantId: target.variantId, layer: target.layer, expectedUpdatedAt: current.updatedAt },
         }],
       }
-      let draft = await saveCharacterDraftAsset(characterDrafts, async () => inspection, current, target, blob, filename, 'agent')
       const autoFit = highConfidenceCharacterAutoFit(alignment)
-      if (autoFit && target.group !== 'body') {
+      const registrationFrame = characterRegistrationFrame(current)
+      const editableRegion = target.group === 'expression' ? registrationFrame.editableRegions.expression
+        : target.group === 'outfit' ? registrationFrame.editableRegions.outfit : undefined
+      const stitchReference = target.group === 'expression' ? expressionReference
+        : target.group === 'outfit' ? canonical : undefined
+      const stitchedBlob = stitchReference && editableRegion
+        ? await renderStitchedCharacterEditBlob(
+            stitchReference.blob,
+            blob,
+            editableRegion,
+            target.group === 'expression' ? headRegistration?.transform : undefined,
+            autoFit ?? undefined,
+          )
+        : null
+      const savedBlob = stitchedBlob ?? blob
+      const savedInspection = stitchedBlob ? await inspectCharacterImage(stitchedBlob) : inspection
+      let draft = await saveCharacterDraftAsset(characterDrafts, async () => savedInspection, current, target, savedBlob, filename, 'agent')
+      if (!stitchedBlob && autoFit && target.group !== 'body') {
         draft = await setCharacterVariantTransform(characterDrafts, current.id, target.group, target.variantId, draft.updatedAt, autoFit)
       }
       const savedVariant = draft.variants.find(({ group, id }) => group === target.group && id === target.variantId)!
@@ -941,17 +957,18 @@ export function createApplication(document: Document) {
           accepted: true,
           target: { ...target, label: savedVariant.label },
           filename,
-          byteLength: bytes.byteLength,
+          byteLength: savedBlob.size,
           inspection: {
-            width: inspection.width,
-            height: inspection.height,
-            genuineRgba: inspection.genuineRgba,
-            hasTransparentPixels: inspection.hasTransparentPixels,
-            visibleBounds: inspection.visibleBounds,
-            visiblePixelCount: inspection.visiblePixelCount,
+            width: savedInspection.width,
+            height: savedInspection.height,
+            genuineRgba: savedInspection.genuineRgba,
+            hasTransparentPixels: savedInspection.hasTransparentPixels,
+            visibleBounds: savedInspection.visibleBounds,
+            visiblePixelCount: savedInspection.visiblePixelCount,
           },
           alignment: specification?.alignment,
-          autoFit: autoFit ? { applied: true, transform: autoFit } : { applied: false },
+          compositor: stitchedBlob ? { applied: true, protectedRegionDelta: specification?.alignment.protectedRegionDelta } : { applied: false },
+          autoFit: autoFit ? { applied: true, transform: autoFit, bakedIntoAsset: Boolean(stitchedBlob) } : { applied: false },
         },
         nextActions: specification?.nextActions ?? characterNextActions(draft),
       }
