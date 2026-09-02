@@ -426,7 +426,7 @@ export async function saveCharacterDraftAsset(
       : target.group === 'expression' && !draft.headRegistration
         ? { headRegistration: { variantId: target.variantId } }
         : {}),
-    updatedAt: Date.now(),
+    updatedAt: Math.max(Date.now(), draft.updatedAt + 1),
   }
   await drafts.put(next)
   return next
@@ -534,6 +534,14 @@ export const resolveCharacterDraftAtlasSources = (draft: CharacterDraft): Charac
     blob: asset.blob,
     transform: variant.transform ? { ...variant.transform } : { ...IDENTITY_CHARACTER_TRANSFORM },
   })))
+
+export const characterDraftAtlasKey = (draft: CharacterDraft) => JSON.stringify(
+  draft.variants.flatMap((variant) => currentLayerEntries(draft, variant).map(([layer, asset]) => ({
+    id: assetKey(variant, layer),
+    sha256: asset.inspection.sha256,
+    transform: variant.transform ?? IDENTITY_CHARACTER_TRANSFORM,
+  }))).sort((left, right) => left.id.localeCompare(right.id)),
+)
 
 export function resolveCharacterDraftReferenceLayers(
   draft: CharacterDraft,

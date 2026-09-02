@@ -1,21 +1,29 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
+
+import { useBlobUrl } from '@/ui/useBlobUrl'
 
 export function BlobImage({ blob, alt = '', className, style }: { blob: Blob; alt?: string; className: string; style?: CSSProperties }) {
-  const [src, setSrc] = useState<string>()
-
-  useEffect(() => {
-    const objectUrl = URL.createObjectURL(blob)
-    // oxlint-disable-next-line react/set-state-in-effect -- Object URLs are external browser resources.
-    setSrc(objectUrl)
-    return () => URL.revokeObjectURL(objectUrl)
-  }, [blob])
+  const src = useBlobUrl(blob)
 
   return src ? <img src={src} alt={alt} className={className} style={style} /> : null
 }
 
 export function CrossfadeBlobImage({ blob, alt = '', className, style }: { blob: Blob; alt?: string; className: string; style?: CSSProperties }) {
   const urls = useRef(new Set<string>())
-  const [sources, setSources] = useState<{ current?: string; previous?: string }>({})
+  const styleKey = JSON.stringify(style)
+  const placement = useRef({ blob, style, styleKey })
+  const [sources, setSources] = useState<{
+    current?: { blob: Blob; url: string; style?: CSSProperties; styleKey?: string }
+    previous?: { blob: Blob; url: string; style?: CSSProperties; styleKey?: string }
+  }>({})
+
+  useLayoutEffect(() => {
+    placement.current = { blob, style, styleKey }
+    // oxlint-disable-next-line react/set-state-in-effect -- Keep the decoded source paired with its latest placement.
+    setSources((current) => current.current?.blob === blob && current.current.styleKey !== styleKey
+      ? { ...current, current: { ...current.current, style, styleKey } }
+      : current)
+  }, [blob, style, styleKey])
 
   useEffect(() => {
     const objectUrl = URL.createObjectURL(blob)
@@ -27,16 +35,17 @@ export function CrossfadeBlobImage({ blob, alt = '', className, style }: { blob:
         urls.current.delete(objectUrl)
         return
       }
-      setSources(({ current }) => ({ current: objectUrl, previous: current }))
+      const next = placement.current
+      setSources(({ current }) => ({ current: { blob, url: objectUrl, style: next.style, styleKey: next.styleKey }, previous: current }))
     })
     return () => { cancelled = true }
   }, [blob])
 
   useEffect(() => {
     if (!sources.previous) return
-    const previous = sources.previous
+    const previous = sources.previous.url
     const ownedUrls = urls.current
-    const timeout = window.setTimeout(() => setSources((current) => current.previous === previous ? { current: current.current } : current), 180)
+    const timeout = window.setTimeout(() => setSources((current) => current.previous?.url === previous ? { current: current.current } : current), 180)
     return () => {
       window.clearTimeout(timeout)
       URL.revokeObjectURL(previous)
@@ -53,7 +62,7 @@ export function CrossfadeBlobImage({ blob, alt = '', className, style }: { blob:
   }, [])
 
   return <>
-    {sources.previous && <img key={sources.previous} src={sources.previous} alt="" aria-hidden="true" className={`${className} character-layer-exit`} style={style} />}
-    {sources.current && <img key={sources.current} src={sources.current} alt={alt} className={`${className} character-layer-enter`} style={style} />}
+    {sources.previous && <img key={sources.previous.url} src={sources.previous.url} alt="" aria-hidden="true" className={`${className} character-layer-exit`} style={sources.previous.style} />}
+    {sources.current && <img key={sources.current.url} src={sources.current.url} alt={alt} className={`${className} character-layer-enter`} style={sources.current.style} />}
   </>
 }

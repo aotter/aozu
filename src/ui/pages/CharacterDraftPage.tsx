@@ -1,15 +1,16 @@
 import { ArrowLeftIcon, CircleSlash2Icon, Layers2Icon, PencilIcon, PlusIcon, ShapesIcon, ShirtIcon, SmileIcon } from 'lucide-react'
-import { useEffect, useRef, useState, type ComponentType, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
 
-import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterRegistrationFrame, hasCurrentCharacterLayer, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, transformCharacterBounds } from '@/core/application/character-creation.ts'
+import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterDraftAtlasKey, characterRegistrationFrame, hasCurrentCharacterLayer, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, transformCharacterBounds } from '@/core/application/character-creation.ts'
 import { workspacePath, type WorkspaceDestination } from '@/core/application/workspace.ts'
 import { IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetTarget, type CharacterDraft, type CharacterDraftVariant, type CharacterTextureAtlas, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
 import { CharacterAlignmentRenderer, CharacterAssetImage, CharacterAtlasFrameImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
 import { DataControls } from '@/ui/DataControls'
 import { StatusPage } from '@/ui/pages/StatusPage'
+import { useBlobUrl } from '@/ui/useBlobUrl'
 
 type CharacterCategoryId = 'expressions' | 'outfits' | 'props'
 type CharacterCategory = { id: CharacterCategoryId; group: CharacterVariantGroup; icon: ComponentType<{ className?: string }> }
@@ -29,18 +30,6 @@ const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
   return '/assets/character-slots/body-outfit.png'
 }
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
-const useBlobUrl = (blob?: Blob) => {
-  const [src, setSrc] = useState<string>()
-  useEffect(() => {
-    if (!blob) return
-    const url = URL.createObjectURL(blob)
-    // oxlint-disable-next-line react/set-state-in-effect -- Object URLs are external browser resources.
-    setSrc(url)
-    return () => URL.revokeObjectURL(url)
-  }, [blob])
-  return src
-}
-
 export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, autoFitVariant, compileAtlas, exportDraft, onReview }: {
   openDraft(): Promise<CharacterDraft>
   updateDraft(draft: CharacterDraft): Promise<CharacterDraft>
@@ -60,10 +49,11 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   const [loadError, setLoadError] = useState(false)
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
-  const [compiled, setCompiled] = useState<{ updatedAt: number; atlas?: CharacterTextureAtlas }>()
+  const [compiled, setCompiled] = useState<{ key: string; atlas?: CharacterTextureAtlas }>()
   const [selectedVariantKey, setSelectedVariantKey] = useState<string>()
   const [alignmentMode, setAlignmentMode] = useState<'composite' | 'overlay' | 'difference' | 'diagnostic'>('overlay')
-  const compiledAt = useRef<number | undefined>(undefined)
+  const atlasDraft = useRef<CharacterDraft | undefined>(undefined)
+  const draftRequest = useRef(0)
   const drag = useRef<{
     draft: CharacterDraft
     group: CharacterVariantGroup
@@ -79,9 +69,12 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
 
   useEffect(() => {
     let active = true
-    const refresh = () => void openDraft()
-      .then((next) => { if (active) setDraft(next) })
-      .catch(() => { if (active) setLoadError(true) })
+    const refresh = () => {
+      const request = ++draftRequest.current
+      void openDraft()
+      .then((next) => { if (active && draftRequest.current === request) setDraft(next) })
+      .catch(() => { if (active && draftRequest.current === request) setLoadError(true) })
+    }
     refresh()
     window.addEventListener('character-draft-updated', refresh)
     return () => {
@@ -90,20 +83,22 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
     }
   }, [openDraft])
 
+  const atlasKey = draft ? characterDraftAtlasKey(draft) : undefined
+  useLayoutEffect(() => { atlasDraft.current = draft }, [draft])
   useEffect(() => {
-    if (!draft || compiledAt.current === draft.updatedAt) return
-    compiledAt.current = draft.updatedAt
+    const source = atlasDraft.current
+    if (!source || !atlasKey || compiled?.key === atlasKey) return
     let active = true
-    void compileAtlas(draft)
-      .then((atlas) => { if (active) setCompiled({ updatedAt: draft.updatedAt, atlas }) })
+    void compileAtlas(source)
+      .then((atlas) => { if (active) setCompiled({ key: atlasKey, atlas }) })
       .catch((caught) => {
         console.error('Character atlas compile failed', caught)
-        if (active) setCompiled({ updatedAt: draft.updatedAt })
+        if (active) setCompiled({ key: atlasKey })
       })
     return () => { active = false }
-  }, [compileAtlas, draft])
+  }, [atlasKey, compileAtlas, compiled?.key])
 
-  const atlas = draft && compiled?.updatedAt === draft.updatedAt ? compiled.atlas : undefined
+  const atlas = compiled?.atlas
   const atlasSrc = useBlobUrl(atlas?.image)
 
   if (!step || step === 'identity' || step === 'accessories') return <Navigate to={workspacePath('character-expressions', draftId)} state={location.state} replace />
@@ -161,10 +156,27 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
     if (!active || active.pointerId !== event.pointerId) return
     drag.current = undefined
     event.currentTarget.releasePointerCapture(event.pointerId)
-    try { setDraft(await setVariantTransform(active.draft, active.group, active.variantId, active.current)); setError(undefined) }
-    catch (caught) { setDraft(active.draft); setError(caught instanceof Error ? caught.message : String(caught)) }
+    try { await commitDraft(() => setVariantTransform(active.draft, active.group, active.variantId, active.current), undefined, active.draft) }
+    catch {}
   }
-  const persist = (next: CharacterDraft) => { setDraft(next); void updateDraft(next) }
+  const commitDraft = async (write: () => Promise<CharacterDraft>, optimistic?: CharacterDraft, rollback?: CharacterDraft) => {
+    // ponytail: UI boundary only; replace its backend with one revision-safe Mantle Procedure when CharacterDraft migrates to Mantle entries.
+    const request = ++draftRequest.current
+    setError(undefined)
+    if (optimistic) setDraft(optimistic)
+    try {
+      const saved = await write()
+      if (draftRequest.current === request) setDraft(saved)
+      return saved
+    } catch (caught) {
+      if (draftRequest.current === request) {
+        if (rollback) setDraft(rollback)
+        setError(caught instanceof Error ? caught.message : String(caught))
+      }
+      throw caught
+    }
+  }
+  const persist = (next: CharacterDraft) => { void commitDraft(() => updateDraft(next), next, draft).catch(() => {}) }
   const activateVariant = (source: CharacterDraft, variant: CharacterDraftVariant) => {
     const { group, id } = variant
     if (group === 'body') return source
@@ -208,12 +220,10 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
         if (!file) return
         setBusy(targetKey); setError(undefined)
         try {
-          let next = await saveAsset(draft, { group: variant.group, variantId: variant.id, label: variant.label, layer }, file, file.name)
-          if (variant.group !== 'body' && layer !== 'back') {
-            next = activateVariant(next, variant)
-            await updateDraft(next)
-          }
-          setDraft(next)
+          await commitDraft(async () => {
+            const next = await saveAsset(draft, { group: variant.group, variantId: variant.id, label: variant.label, layer }, file, file.name)
+            return variant.group !== 'body' && layer !== 'back' ? updateDraft(activateVariant(next, variant)) : next
+          })
         } catch (caught) {
           setError(caught instanceof Error ? caught.message : String(caught))
         } finally {
@@ -250,7 +260,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
         </div>}
         <label className="mt-2 min-w-0">
           <span className="sr-only">{t('draft.name')}</span>
-          <input className="h-9 w-full rounded-md border bg-background px-2 text-sm" aria-label={t('draft.name')} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} onBlur={() => void updateDraft(draft)} />
+          <input className="h-9 w-full rounded-md border bg-background px-2 text-sm" aria-label={t('draft.name')} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} onBlur={() => void commitDraft(() => updateDraft(draft)).catch(() => {})} />
         </label>
       </section>
 
@@ -290,7 +300,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                   <span className="flex aspect-square items-center justify-center bg-muted/40 p-1 sm:p-2">{thumbnail
                     ? atlas && atlasSrc && frameId && atlas.data.frames[frameId]
                       ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={frameId} label={variant.label} />
-                      : <CharacterAssetImage blob={thumbnail.blob} label={variant.label} />
+                      : <CharacterAssetImage blob={thumbnail.blob} bounds={thumbnail.inspection.visibleBounds} label={variant.label} />
                     : variant.group === 'prop' ? <ShapesIcon className="size-1/2 text-[#7b739e]/70" />
                       : <CharacterSlotPlaceholder src={characterSlotIcon(variant.group, variant.id)} label={variant.label} />}</span>
                 </button>
@@ -323,13 +333,13 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
           }
           const commitTransform = async () => {
             const current = draft.variants.find((variant) => variantKey(variant) === variantKey(selectedVariant))!
-            try { setDraft(await setVariantTransform(draft, current.group, current.id, current.transform ?? IDENTITY_CHARACTER_TRANSFORM)); setError(undefined) }
-            catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)) }
+            try { await commitDraft(() => setVariantTransform(draft, current.group, current.id, current.transform ?? IDENTITY_CHARACTER_TRANSFORM)) }
+            catch {}
           }
           return <>
             <div className="mt-1 flex items-center gap-1 sm:gap-2">
               <Button type="button" size="icon" variant="ghost" className="size-8 shrink-0" aria-label={t('characterDraft.backToVariants')} onClick={() => setSelectedVariantKey(undefined)}><ArrowLeftIcon /></Button>
-              <input aria-label={t('characterDraft.variantLabel')} className="min-w-0 flex-1 rounded-md border-0 bg-transparent px-1 py-1 text-xs font-medium sm:text-sm" value={selectedVariant.label} onChange={(event) => setDraft({ ...draft, variants: draft.variants.map((variant) => variant === selectedVariant ? { ...variant, label: event.target.value } : variant) })} onBlur={() => void updateDraft(draft)} />
+              <input aria-label={t('characterDraft.variantLabel')} className="min-w-0 flex-1 rounded-md border-0 bg-transparent px-1 py-1 text-xs font-medium sm:text-sm" value={selectedVariant.label} onChange={(event) => setDraft({ ...draft, variants: draft.variants.map((variant) => variant === selectedVariant ? { ...variant, label: event.target.value } : variant) })} onBlur={() => void commitDraft(() => updateDraft(draft)).catch(() => {})} />
               {required && <span className="text-[9px] text-muted-foreground sm:text-xs">{t('characterDraft.required')}</span>}
             </div>
             {(primaryAsset || behindAsset) && <div className="mt-2 grid grid-cols-3 gap-1" aria-label={t('characterDraft.transform.label')}>
@@ -356,8 +366,8 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                 disabled={Boolean(busy)}
                 onClick={async () => {
                   setBusy('auto-fit'); setError(undefined)
-                  try { setDraft(await autoFitVariant(draft, selectedVariant.group, selectedVariant.id)) }
-                  catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)) }
+                  try { await commitDraft(() => autoFitVariant(draft, selectedVariant.group, selectedVariant.id)) }
+                  catch {}
                   finally { setBusy(undefined) }
                 }}
               >{t(registration.head?.variantId === selectedVariant.id ? 'characterDraft.transform.visualFit' : 'characterDraft.transform.autoFit')}</Button>}
@@ -366,7 +376,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
               <span className="flex aspect-square items-center justify-center bg-muted/40 p-2">{primaryAsset
                 ? atlas && atlasSrc && atlas.data.frames[`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`]
                   ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`} />
-                  : <CharacterAssetImage blob={primaryAsset.blob} />
+                  : <CharacterAssetImage blob={primaryAsset.blob} bounds={primaryAsset.inspection.visibleBounds} />
                 : PlaceholderIcon ? <PlaceholderIcon className="size-1/2 text-[#7b739e]/70" />
                   : <CharacterSlotPlaceholder src={characterSlotIcon(selectedVariant.group, selectedVariant.id)} />}</span>
               <span className="block truncate p-1.5 text-[10px] sm:p-2 sm:text-xs">{t(layeredAccessory ? 'characterDraft.layers.primary' : `characterDraft.layers.${primaryLayer}`)}</span>
@@ -376,7 +386,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
               <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted/40">{behindAsset
                 ? atlas && atlasSrc && atlas.data.frames[`${selectedVariant.group}-${selectedVariant.id}-back`]
                   ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={`${selectedVariant.group}-${selectedVariant.id}-back`} />
-                  : <CharacterAssetImage blob={behindAsset.blob} />
+                  : <CharacterAssetImage blob={behindAsset.blob} bounds={behindAsset.inspection.visibleBounds} />
                 : <Layers2Icon className="size-5 text-[#7b739e]/70" />}</span>
               <span className="min-w-0 truncate text-[9px] sm:text-xs">{t('characterDraft.layers.behindOptional')}</span>
               {fileInput(selectedVariant, 'back')}
@@ -392,7 +402,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
           <DataControls exportData={exportDraft} exportFilename="companion-character-draft.zip" exportIconOnly exportLabel={t('draft.download')} />
           <Button size="sm" className="w-full" disabled={Boolean(busy) || Boolean(missing.length) || !draft.name.trim()} onClick={async () => {
             setBusy('review'); setError(undefined)
-            try { await onReview(await updateDraft(draft)) }
+            try { await onReview(await commitDraft(() => updateDraft(draft))) }
             catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); setBusy(undefined) }
           }}>{busy === 'review' ? t('characterDraft.validating') : t('common.continue')}</Button>
           </div>

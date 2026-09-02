@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { strFromU8, unzipSync } from 'fflate'
 
-import { buildCharacterPack, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, characterDraftAtlasKey, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, stitchCharacterEditPixels, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
@@ -73,6 +73,11 @@ assert.deepEqual(
 assert.deepEqual(resolveCharacterDraftLayers(draft).map(({ layerOrder }) => layerOrder), [1, 2, 1, 1, 1, 2])
 assert.deepEqual(resolveCharacterDraftLayers(draft).find(({ slot }) => slot === 'expression-head')?.transform, { x: 2, y: -3, scale: 1.01 })
 assert.deepEqual(resolveCharacterDraftAtlasSources(draft).find(({ id }) => id === 'expression-happy-head')?.transform, { x: 2, y: -3, scale: 1.01 })
+const atlasKey = characterDraftAtlasKey(draft)
+assert.equal(characterDraftAtlasKey({ ...draft, name: 'Renamed', updatedAt: draft.updatedAt + 1, selected: { expression: undefined, outfit: undefined, props: [] } }), atlasKey)
+const movedAtlasDraft = structuredClone(draft)
+movedAtlasDraft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.transform!.x += 1
+assert.notEqual(characterDraftAtlasKey(movedAtlasDraft), atlasKey)
 assert.deepEqual(characterRegistrationFrame(draft).footLine, 739)
 assert.equal(characterHeadRegistration(draft)?.variant.id, 'happy')
 assert.equal(characterRegistrationFrame(draft).head?.variantId, 'happy')
@@ -187,6 +192,7 @@ const drafts = {
   async delete() {},
 }
 const replacementInspection = { ...inspection, sha256: 'b'.repeat(64), visibleBounds: { x: 40, y: 10, width: 430, height: 730 }, visiblePixelCount: 100 }
+const previousUpdatedAt = savedDraft.updatedAt
 savedDraft = await saveCharacterDraftAsset(
   drafts,
   async () => replacementInspection,
@@ -196,6 +202,7 @@ savedDraft = await saveCharacterDraftAsset(
   'replacement.png',
   'agent',
 )
+assert.ok(savedDraft.updatedAt > previousUpdatedAt)
 assert.equal(hasCurrentCharacterLayer(savedDraft, 'expression', 'happy', 'head'), false)
 assert.deepEqual(resolveCharacterDraftLayers(savedDraft).map(({ slot }) => slot), ['character-skin'])
 savedDraft = await saveCharacterDraftAsset(

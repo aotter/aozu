@@ -321,7 +321,7 @@ export function createApplication(document: Document) {
     },
     openCharacterDraft,
     async updateCharacterDraft(draft: CharacterDraft) {
-      const next = { ...draft, approvedAt: undefined, updatedAt: Date.now() }
+      const next = { ...draft, approvedAt: undefined, updatedAt: Math.max(Date.now(), draft.updatedAt + 1) }
       await characterDrafts.put(next)
       return next
     },
