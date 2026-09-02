@@ -1,5 +1,5 @@
-import { ArrowLeftIcon, BotIcon, CircleSlash2Icon, ImagePlusIcon, Layers2Icon, PencilIcon, PlusIcon, ScanFaceIcon, ShapesIcon, ShirtIcon, SmileIcon, SparklesIcon, UserRoundIcon } from 'lucide-react'
-import { useEffect, useRef, useState, type ComponentType, type PointerEvent as ReactPointerEvent } from 'react'
+import { ArrowLeftIcon, CircleSlash2Icon, Layers2Icon, PencilIcon, PlusIcon } from 'lucide-react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
 
@@ -9,15 +9,16 @@ import { IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetTarget, type Character
 import { CharacterAlignmentRenderer, CharacterAssetImage, CharacterAtlasFrameImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
 import { DataControls } from '@/ui/DataControls'
+import { AozuIcon, type AozuIconName } from '@/ui/AozuIcon'
 import { StatusPage } from '@/ui/pages/StatusPage'
 
 type CharacterCategoryId = 'expressions' | 'outfits' | 'props'
-type CharacterCategory = { id: CharacterCategoryId; group: CharacterVariantGroup; icon: ComponentType<{ className?: string }> }
+type CharacterCategory = { id: CharacterCategoryId; group: CharacterVariantGroup; icon: AozuIconName }
 
 const characterCategories: CharacterCategory[] = [
-  { id: 'expressions', group: 'expression', icon: SmileIcon },
-  { id: 'outfits', group: 'outfit', icon: ShirtIcon },
-  { id: 'props', group: 'prop', icon: ShapesIcon },
+  { id: 'expressions', group: 'expression', icon: 'expressions' },
+  { id: 'outfits', group: 'outfit', icon: 'outfits' },
+  { id: 'props', group: 'prop', icon: 'props' },
 ]
 const categoryDestinations: Record<CharacterCategoryId, WorkspaceDestination> = {
   expressions: 'character-expressions', outfits: 'character-outfits', props: 'character-props',
@@ -190,10 +191,6 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
     if (group === 'prop') persist({ ...draft, selected: { ...draft.selected, props: [] } })
   }
   const isSelected = (variant: CharacterDraftVariant) => variant.group === 'prop' ? draft.selected.props.includes(variant.id) : selectedId(variant.group) === variant.id
-  const toggleVariant = (variant: CharacterDraftVariant) => {
-    if (variant.group !== 'prop' || !isSelected(variant)) return selectVariant(variant)
-    persist({ ...draft, selected: { ...draft.selected, props: draft.selected.props.filter((id) => id !== variant.id) } })
-  }
   const hasSelection = (group: CharacterVariantGroup) => group === 'prop' ? Boolean(draft.selected.props.length) : Boolean(selectedId(group))
   const addVariant = (group: CharacterVariantGroup) => {
     const count = draft.variants.filter((variant) => variant.group === group).length + 1
@@ -237,17 +234,17 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   return <div className="draft-workshop-shell bg-muted/30">
     <main className="draft-workshop mx-auto w-full max-w-6xl p-3 sm:p-6">
       <aside className="character-spell-guide" aria-labelledby="character-spell-title">
-        <div className="spell-icon"><BotIcon aria-hidden="true" /></div>
+        <div className="spell-icon"><AozuIcon name="book" /></div>
         <div className="min-w-0 flex-1">
-          <p className="forge-kicker"><SparklesIcon aria-hidden="true" /> WEBMCP CHARACTER FORGE</p>
+          <p className="forge-kicker"><AozuIcon name="book" /> {t('characterDraft.bookKicker')}</p>
           <h1 id="character-spell-title" className="font-heading text-2xl font-semibold">{t('characterDraft.webmcpTitle')}</h1>
           <p>{t('characterDraft.webmcpInstruction')}</p>
           <blockquote>{t('characterDraft.webmcpSpell')}</blockquote>
         </div>
         <ol className="spell-workflow">
-          <li><UserRoundIcon aria-hidden="true" /><span>{t('characterDraft.webmcpBody')}</span></li>
-          <li><ScanFaceIcon aria-hidden="true" /><span>{t('characterDraft.webmcpExpressions')}</span></li>
-          <li><ImagePlusIcon aria-hidden="true" /><span>{t('characterDraft.webmcpAccessories')}</span></li>
+          <li title={t('characterDraft.webmcpBody')}><AozuIcon name="body" /><span className="sr-only">{t('characterDraft.webmcpBody')}</span></li>
+          <li title={t('characterDraft.webmcpExpressions')}><AozuIcon name="expressions" /><span className="sr-only">{t('characterDraft.webmcpExpressions')}</span></li>
+          <li title={t('characterDraft.webmcpAccessories')}><AozuIcon name="props" /><span className="sr-only">{t('characterDraft.webmcpAccessories')}</span></li>
         </ol>
       </aside>
 
@@ -281,7 +278,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
           {(['composite', 'overlay', 'difference', 'diagnostic'] as const).map((mode) => <Button key={mode} type="button" size="sm" variant={alignmentMode === mode ? 'secondary' : 'ghost'} onClick={() => setAlignmentMode(mode)}>{t(`characterDraft.alignment.${mode}`)}</Button>)}
         </div>}
         <div className="character-first-dialogue">
-          <span className="dialogue-portrait"><UserRoundIcon aria-hidden="true" /></span>
+          <span className="dialogue-portrait"><AozuIcon name="profile" /></span>
           <label className="min-w-0 flex-1">
             <span>{nameConfirmed && draft.name.trim() ? t('characterDraft.namedQuestion') : t('characterDraft.nameQuestion')}</span>
             <input aria-label={t('draft.name')} placeholder={t('characterDraft.namePlaceholder')} value={nameConfirmed ? draft.name : ''} onChange={(event) => setDraft({ ...draft, name: event.target.value, nameConfirmed: true })} onBlur={() => void commitName()} />
@@ -294,13 +291,13 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
         {!selectedVariant && <button type="button" className="body-foundation-card" onClick={() => setSelectedVariantKey(variantKey(bodyVariant))}>
           <span className="body-foundation-preview">{isCharacterDraftAssetCurrent(draft, bodyVariant, 'body')
             ? <CharacterAssetImage blob={bodyVariant.layers.body!.blob} label={bodyVariant.label} />
-            : <img src="/assets/placeholders/companion-body.png" alt="" />}</span>
+            : <img src="/assets/placeholders/companion-body-faint.png" alt="" />}</span>
           <span><strong>{t('characterDraft.baseBody')}</strong><small>{t('characterDraft.baseBodyHint')}</small></span>
           <PencilIcon aria-hidden="true" />
         </button>}
 
         {!selectedVariant && <nav aria-label={t('characterDraft.categorySwitcher')} className="workbench-tabs">
-          {characterCategories.map(({ id, icon: Icon }) => <Button
+          {characterCategories.map(({ id, icon }) => <Button
             key={id}
             type="button"
             variant={category?.id === id ? 'secondary' : 'ghost'}
@@ -308,7 +305,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
             aria-current={category?.id === id ? 'page' : undefined}
             onClick={() => { setSelectedVariantKey(undefined); navigate(workspacePath(categoryDestinations[id], draft.id), { replace: true, state: location.state }) }}
           >
-            <Icon className="size-4" />
+            <AozuIcon name={icon} />
             <span>{t(`characterDraft.categories.${id}`)}</span>
           </Button>)}
         </nav>}
@@ -329,12 +326,15 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
               const frameId = thumbnailLayer && `${variant.group}-${variant.id}-${thumbnailLayer}`
               const selected = isSelected(variant)
               return <div key={variantKey(variant)} className={`variant-card ${selected ? 'is-selected' : ''}`}>
-                <button type="button" aria-label={variant.label} title={variant.label} aria-pressed={selected} className="block w-full" onClick={() => toggleVariant(variant)}>
+                <button type="button" aria-label={variant.label} title={variant.label} aria-pressed={selected} className="block w-full" onClick={() => {
+                  if (!selected) selectVariant(variant)
+                  setSelectedVariantKey(variantKey(variant))
+                }}>
                   <span className="variant-preview">{thumbnail
                     ? atlas && atlasSrc && frameId && atlas.data.frames[frameId]
                       ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={frameId} label={variant.label} />
                       : <CharacterAssetImage blob={thumbnail.blob} label={variant.label} />
-                    : variant.group === 'prop' ? <ShapesIcon className="size-1/2 text-[#7b739e]/70" />
+                    : variant.group === 'prop' ? <AozuIcon name="props" className="is-placeholder" />
                       : <CharacterVariantPlaceholder group={variant.group} variantId={variant.id} label={variant.label} />}</span><span className="variant-label">{variant.label}</span>
                 </button>
                 <button type="button" title={t('characterDraft.editVariant', { name: variant.label })} className="variant-edit" aria-label={t('characterDraft.editVariant', { name: variant.label })} onClick={() => setSelectedVariantKey(variantKey(variant))}><PencilIcon className="size-4" /></button>
@@ -352,7 +352,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
           const primaryLayer = layeredAccessory ? 'front' : group.layers[0]
           const primaryAsset = isCharacterDraftAssetCurrent(draft, selectedVariant, primaryLayer) ? selectedVariant.layers[primaryLayer] : undefined
           const behindAsset = layeredAccessory && isCharacterDraftAssetCurrent(draft, selectedVariant, 'back') ? selectedVariant.layers.back : undefined
-          const PlaceholderIcon = selectedVariant.group === 'prop' ? ShapesIcon : undefined
+          const showPropPlaceholder = selectedVariant.group === 'prop'
           const required = REQUIRED_CHARACTER_TARGETS.some((target) => target.group === selectedVariant.group && target.variantId === selectedVariant.id)
           const transform = selectedVariant.transform ?? IDENTITY_CHARACTER_TRANSFORM
           const changeTransform = (field: keyof CharacterVariantTransform, value: number) => {
@@ -410,7 +410,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                 ? atlas && atlasSrc && atlas.data.frames[`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`]
                   ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`} />
                   : <CharacterAssetImage blob={primaryAsset.blob} />
-                : PlaceholderIcon ? <PlaceholderIcon className="size-1/2 text-[#7b739e]/70" />
+                : showPropPlaceholder ? <AozuIcon name="props" className="is-placeholder" />
                   : <CharacterVariantPlaceholder group={selectedVariant.group} variantId={selectedVariant.id} />}</span>
               <span>{t(layeredAccessory ? 'characterDraft.layers.primary' : `characterDraft.layers.${primaryLayer}`)}</span>
               {fileInput(selectedVariant, primaryLayer)}

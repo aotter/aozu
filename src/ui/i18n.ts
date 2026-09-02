@@ -15,6 +15,8 @@ const en = {
   },
   draft: { name: 'Companion name', download: 'Download draft ZIP' },
   start: {
+    bookKicker: 'AOZU BOOK OF CREATION',
+    archiveKicker: 'COMPANION ARCHIVE',
     title: 'Create your companion',
     description: 'Continue a saved Companion or start a new one. Confirmed data is saved locally.',
     unavailable: 'Not available yet',
@@ -57,6 +59,7 @@ const en = {
     },
   },
   starter: {
+    bookKicker: 'AOZU BOOK OF CREATION',
     title: 'Choose a starting point',
     description: 'Choose a character and a story independently. Start blank on either side.',
     characterTitle: 'Character',
@@ -118,6 +121,7 @@ const en = {
     discardDescription: 'This removes the staged bundle and its local assets. Saved companions are not affected.',
   },
   characterDraft: {
+    bookKicker: 'AOZU BOOK OF CREATION',
     webmcpTitle: 'Speak a character spell in the TUI',
     webmcpInstruction: 'Describe one coherent character. WebMCP will fill the real body, expression, outfit, and prop slots below.',
     webmcpSpell: '“Aozu, create a character for me. I want…”',
@@ -260,6 +264,8 @@ const zhTW = {
   },
   draft: { name: '夥伴名稱', download: '下載草稿 ZIP' },
   start: {
+    bookKicker: 'AOZU 生成之書',
+    archiveKicker: '夥伴卡庫',
     title: '鍛造你的虛擬夥伴',
     description: '從空白卡創造新夥伴、匯入夥伴卡，或繼續已保存在本機的旅程。',
     unavailable: '尚未開放',
@@ -302,6 +308,7 @@ const zhTW = {
     },
   },
   starter: {
+    bookKicker: 'AOZU 生成之書',
     title: '展開一張新的角色藍圖',
     description: '角色與故事可以分開選擇；任一側都能從空白開始，再由你或 WebMCP 完成。',
     characterTitle: '角色原型',
@@ -344,6 +351,7 @@ const zhTW = {
     discardDescription: '這會移除暫存套件與本機素材，不影響已保存的夥伴。',
   },
   characterDraft: {
+    bookKicker: 'AOZU 生成之書',
     webmcpTitle: '在 TUI 念出創角咒語',
     webmcpInstruction: '描述一個完整角色，WebMCP 會把真正的全身、表情、服裝與配件素材填入下方欄位。',
     webmcpSpell: '「Aozu幫我創立角色，我想要……」',

@@ -1,4 +1,3 @@
-import { BookOpenIcon, BotIcon, MapIcon, SparklesIcon, UserRoundIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -6,6 +5,7 @@ import type { CharacterDraft, ResolvedCharacterLayer } from '@/core/domain/chara
 import type { ResolvedSceneLayer } from '@/core/domain/scene.ts'
 import { CharacterRenderer } from '@/ui/CharacterRenderer'
 import { SceneRenderer } from '@/ui/SceneRenderer'
+import { AozuIcon } from '@/ui/AozuIcon'
 import { Button } from '@/ui/components/ui/button'
 import { StatusPage } from '@/ui/pages/StatusPage'
 
@@ -54,14 +54,14 @@ export function CompanionCreationPage({ loadSummary, saveProfile, onCreate }: {
   return <main className="adventure-authoring mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
     <header className="adventure-heading">
       <div>
-        <p className="forge-kicker"><SparklesIcon aria-hidden="true" /> {t('create.kicker')}</p>
+        <p className="forge-kicker"><AozuIcon name="book" /> {t('create.kicker')}</p>
         <h1 className="font-heading text-4xl font-semibold tracking-tight">{t('create.title')}</h1>
         <p className="mt-3 max-w-3xl leading-7 text-muted-foreground">{t('create.description')}</p>
       </div>
       <ol className="adventure-steps" aria-label={t('create.stepsLabel')}>
-        <li className="is-complete"><UserRoundIcon aria-hidden="true" /><span>{t('create.stepCharacter')}</span></li>
-        <li className="is-active"><BookOpenIcon aria-hidden="true" /><span>{t('create.stepProfile')}</span></li>
-        <li><MapIcon aria-hidden="true" /><span>{t('create.stepWorld')}</span></li>
+        <li className="is-complete"><AozuIcon name="body" /><span>{t('create.stepCharacter')}</span></li>
+        <li className="is-active"><AozuIcon name="profile" /><span>{t('create.stepProfile')}</span></li>
+        <li><AozuIcon name="world" /><span>{t('create.stepWorld')}</span></li>
       </ol>
     </header>
 
@@ -82,7 +82,7 @@ export function CompanionCreationPage({ loadSummary, saveProfile, onCreate }: {
 
       <section className="profile-scroll" aria-labelledby="profile-title">
         <div className="profile-scroll-heading">
-          <BotIcon aria-hidden="true" />
+          <AozuIcon name="profile" />
           <div><h2 id="profile-title" className="font-heading text-2xl font-semibold">{t('create.profileTitle')}</h2><p>{t('create.profileDescription')}</p></div>
         </div>
         <div className="profile-fields">
@@ -95,7 +95,7 @@ export function CompanionCreationPage({ loadSummary, saveProfile, onCreate }: {
         </div>
 
         <aside className="experience-spell">
-          <div className="spell-icon"><SparklesIcon aria-hidden="true" /></div>
+          <div className="spell-icon"><AozuIcon name="book" /></div>
           <div><strong>{t('create.webmcpTitle')}</strong><p>{t('create.webmcpInstruction')}</p><blockquote>{t('create.webmcpSpell', { name: summary.character })}</blockquote></div>
         </aside>
 

@@ -1,4 +1,4 @@
-import { PackageOpenIcon, PlusIcon, ScrollTextIcon, SparklesIcon, Trash2Icon } from 'lucide-react'
+import { PlusIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from '@/ui/components/ui/alert-dialog'
 import { DataControls } from '@/ui/DataControls'
+import { AozuIcon } from '@/ui/AozuIcon'
 import type { SavedCompanion } from '@/core/application/companion'
 import type { StagedCandidatePreview } from '@/core/application/candidate'
 
@@ -51,42 +52,17 @@ export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onO
     <main className="start-page mx-auto min-h-[calc(100svh-3.5rem)] w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
       <section className="forge-hero" aria-labelledby="start-title">
         <div>
-          <p className="forge-kicker"><SparklesIcon aria-hidden="true" /> AOZU COMPANION FORGE</p>
+          <p className="forge-kicker"><AozuIcon name="book" /> {t('start.bookKicker')}</p>
           <h1 id="start-title" className="font-heading text-4xl font-semibold tracking-tight sm:text-5xl">{t('start.title')}</h1>
           <p className="mt-4 max-w-2xl leading-7 text-muted-foreground">{t('start.description')}</p>
         </div>
-        <div className="forge-seal" aria-hidden="true"><span>AOZU</span><small>WEBMCP</small></div>
+        <AozuIcon name="book" className="forge-seal" />
       </section>
 
-      {pendingReview && <section className="mt-8">
-        <h2 className="font-heading text-lg font-medium">{t('start.pending.title')}</h2>
-        <article className="parchment-notice mt-3 flex items-center justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm">
-          <div className="min-w-0">
-            <h3 className="truncate font-heading font-medium">{pendingReview.name}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{t('start.pending.description')}</p>
-          </div>
-          <Button onClick={onResumeReview}>{t('start.pending.resume')}</Button>
-        </article>
-      </section>}
-      {authoringDrafts.length > 0 && <section className="mt-8">
-        <h2 className="font-heading text-lg font-medium">{t('start.draft.title')}</h2>
-        <div className="mt-3 grid gap-3">{authoringDrafts.map((draft) => <article key={draft.id} className="parchment-notice flex flex-col items-stretch justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm sm:flex-row sm:items-center">
-          <div className="min-w-0">
-            <h3 className="truncate font-heading font-medium">{draft.name}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{t(`start.draft.${draft.status}`)}</p>
-          </div>
-          <div className="flex shrink-0 items-center justify-end gap-2">
-            <DataControls exportData={() => exportCharacterDraft(draft.id)} exportFilename={`${draft.name}-draft.zip`} exportIconOnly exportLabel={t('draft.download')} />
-            <Button variant="destructive" disabled={Boolean(deleting)} onClick={() => setConfirmation({ kind: 'draft', id: draft.id, name: draft.name })}>{t('start.saved.delete')}</Button>
-            <Button onClick={() => onResumeDraft(draft.destination)}>{t('start.draft.resume')}</Button>
-          </div>
-        </article>)}</div>
-        {deleteError && <p role="alert" className="mt-2 text-sm text-destructive">{t('start.saved.deleteError')}</p>}
-      </section>}
       <section className="companion-vault mt-10" aria-labelledby="saved-companions-title">
         <div className="vault-heading">
           <div>
-            <p className="forge-kicker"><ScrollTextIcon aria-hidden="true" /> COMPANION ARCHIVE</p>
+            <p className="forge-kicker"><AozuIcon name="archive" /> {t('start.archiveKicker')}</p>
             <h2 id="saved-companions-title" className="font-heading text-2xl font-medium">{t('start.saved.title')}</h2>
           </div>
           <span className="vault-count">{t('start.saved.count', { count: savedCompanions.length })}</span>
@@ -141,7 +117,7 @@ export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onO
 
       <div className="start-gates mt-8 grid gap-4 sm:grid-cols-2">
         <section className="start-gate rounded-2xl border bg-background p-5 shadow-sm">
-          <div className="gate-icon"><SparklesIcon aria-hidden="true" /></div>
+          <div className="gate-icon"><AozuIcon name="book" /></div>
           <div className="min-w-0">
             <h2 className="font-heading text-xl font-medium">{t('start.options.starter.title')}</h2>
             <p className="mt-2 leading-6 text-muted-foreground">{t('start.options.starter.description')}</p>
@@ -149,7 +125,7 @@ export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onO
           <Button className="gate-action" onClick={onChooseStarter}><PlusIcon aria-hidden="true" />{t('start.chooseStarter')}</Button>
         </section>
         <section className="start-gate rounded-2xl border bg-background p-5 shadow-sm">
-          <div className="gate-icon"><PackageOpenIcon aria-hidden="true" /></div>
+          <div className="gate-icon"><AozuIcon name="import" /></div>
           <div className="min-w-0">
             <h2 className="font-heading text-xl font-medium">{t('start.options.bundle.title')}</h2>
             <p className="mt-2 leading-6 text-muted-foreground">{t('start.options.bundle.description')}</p>
@@ -157,6 +133,34 @@ export function StartPage({ savedCompanions, pendingReview, authoringDrafts, onO
           <div className="gate-action"><DataControls prepareImport={prepareImport} /></div>
         </section>
       </div>
+
+      {(pendingReview || authoringDrafts.length > 0) && <section className="draft-pouch mt-8" aria-labelledby="draft-pouch-title">
+        <div className="draft-pouch-heading">
+          <AozuIcon name="archive" />
+          <h2 id="draft-pouch-title" className="font-heading text-lg font-medium">{t('start.draft.title')}</h2>
+        </div>
+        <div className="draft-pouch-list">
+          {pendingReview && <article className="draft-pouch-item">
+            <div className="min-w-0">
+              <h3 className="truncate font-heading font-medium">{pendingReview.name}</h3>
+              <p>{t('start.pending.description')}</p>
+            </div>
+            <Button onClick={onResumeReview}>{t('start.pending.resume')}</Button>
+          </article>}
+          {authoringDrafts.map((draft) => <article key={draft.id} className="draft-pouch-item">
+            <div className="min-w-0">
+              <h3 className="truncate font-heading font-medium">{draft.name}</h3>
+              <p>{t(`start.draft.${draft.status}`)}</p>
+            </div>
+            <div className="draft-pouch-actions">
+              <DataControls exportData={() => exportCharacterDraft(draft.id)} exportFilename={`${draft.name}-draft.zip`} exportIconOnly exportLabel={t('draft.download')} />
+              <Button variant="destructive" disabled={Boolean(deleting)} onClick={() => setConfirmation({ kind: 'draft', id: draft.id, name: draft.name })}>{t('start.saved.delete')}</Button>
+              <Button onClick={() => onResumeDraft(draft.destination)}>{t('start.draft.resume')}</Button>
+            </div>
+          </article>)}
+        </div>
+        {deleteError && <p role="alert" className="mt-2 text-sm text-destructive">{t('start.saved.deleteError')}</p>}
+      </section>}
     </main>
     <AlertDialog open={Boolean(confirmation)} onOpenChange={(open) => { if (!open && !deleting) setConfirmation(undefined) }}>
       <AlertDialogContent>

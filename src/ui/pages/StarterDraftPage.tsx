@@ -1,4 +1,4 @@
-import { BotIcon, CircleHelpIcon, ImagePlusIcon, ScanFaceIcon, ScrollTextIcon, SparklesIcon } from 'lucide-react'
+import { CircleHelpIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -10,6 +10,7 @@ import type {
   ValidatedStarterPackage,
 } from '@/core/domain/starter.ts'
 import { SceneRenderer } from '@/ui/SceneRenderer'
+import { AozuIcon } from '@/ui/AozuIcon'
 import { Button } from '@/ui/components/ui/button'
 
 const selected = (
@@ -54,7 +55,7 @@ export function StarterDraftPage({ loadStarters, startCreation, onSelected }: {
   return <main className="starter-page mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
     <header className="starter-intro">
       <div>
-        <p className="forge-kicker"><SparklesIcon aria-hidden="true" /> CHARACTER BLUEPRINT</p>
+        <p className="forge-kicker"><AozuIcon name="book" /> {t('starter.bookKicker')}</p>
         <h1 className="font-heading text-4xl font-semibold tracking-tight sm:text-5xl">{t('starter.title')}</h1>
         <p className="mt-4 max-w-3xl leading-7 text-muted-foreground">{t('starter.description')}</p>
       </div>
@@ -65,12 +66,12 @@ export function StarterDraftPage({ loadStarters, startCreation, onSelected }: {
           <div className="reference-drawer-heading">
             <p>{t('starter.referenceHint')}</p>
             <div className="reference-view-switch" role="group" aria-label={t('starter.referenceTitle')}>
-              <button type="button" aria-pressed={referenceView === 'body'} onClick={() => setReferenceView('body')}><ScanFaceIcon aria-hidden="true" />{t('starter.bodyView')}</button>
-              <button type="button" aria-pressed={referenceView === 'head'} onClick={() => setReferenceView('head')}><ScanFaceIcon aria-hidden="true" />{t('starter.headView')}</button>
+              <button type="button" aria-pressed={referenceView === 'body'} onClick={() => setReferenceView('body')}><AozuIcon name="body" />{t('starter.bodyView')}</button>
+              <button type="button" aria-pressed={referenceView === 'head'} onClick={() => setReferenceView('head')}><AozuIcon name="expressions" />{t('starter.headView')}</button>
             </div>
           </div>
           <div className="reference-placeholder" role="img" aria-label={t(referenceView === 'body' ? 'starter.bodyView' : 'starter.headView')}>
-            <img src={referenceView === 'body' ? '/assets/placeholders/companion-body.png' : '/assets/placeholders/companion-head.png'} alt="" />
+            <img src={referenceView === 'body' ? '/assets/placeholders/companion-body-faint.png' : '/assets/placeholders/companion-head.png'} alt="" />
           </div>
         </div>
       </details>
@@ -86,7 +87,7 @@ export function StarterDraftPage({ loadStarters, startCreation, onSelected }: {
         <div className="character-methods">
           <button type="button" aria-pressed={character === null} onClick={() => setCharacter(null)} className="blank-character-card">
             <div className="blank-character-renderer" role="img" aria-label={t('starter.blankCharacter')}>
-              <img src="/assets/placeholders/companion-body.png" alt="" />
+              <img src="/assets/placeholders/companion-body-faint.png" alt="" />
             </div>
             <span className="method-copy">
               <strong>{t('starter.blankMethodTitle')}</strong>
@@ -95,15 +96,15 @@ export function StarterDraftPage({ loadStarters, startCreation, onSelected }: {
           </button>
 
           <div className="webmcp-method">
-            <div className="webmcp-orbit" aria-hidden="true"><BotIcon /><span /></div>
+            <div className="webmcp-orbit" aria-hidden="true"><AozuIcon name="book" /><span /></div>
             <div>
               <h3>{t('starter.webmcpTitle')}</h3>
               <p>{t('starter.webmcpDescription')}</p>
             </div>
             <ol className="webmcp-steps">
-              <li><SparklesIcon aria-hidden="true" /><span>{t('starter.webmcpStepPrompt')}</span></li>
-              <li><ImagePlusIcon aria-hidden="true" /><span>{t('starter.webmcpStepImport')}</span></li>
-              <li><ScanFaceIcon aria-hidden="true" /><span>{t('starter.webmcpStepFit')}</span></li>
+              <li><AozuIcon name="book" /><span>{t('starter.webmcpStepPrompt')}</span></li>
+              <li><AozuIcon name="import" /><span>{t('starter.webmcpStepImport')}</span></li>
+              <li><AozuIcon name="fit" /><span>{t('starter.webmcpStepFit')}</span></li>
             </ol>
           </div>
         </div>
@@ -118,7 +119,7 @@ export function StarterDraftPage({ loadStarters, startCreation, onSelected }: {
         <div className="story-options">
         <button type="button" aria-pressed={story === null} onClick={() => setStory(null)}
           className="story-card blank-story-card">
-          <div className="blank-story-map" aria-hidden="true"><ScrollTextIcon /></div>
+          <div className="blank-story-map" aria-hidden="true"><AozuIcon name="world" /></div>
           <strong>{t('starter.blankStory')}</strong>
           <span>{t('starter.blankStoryDescription')}</span>
         </button>
@@ -138,7 +139,7 @@ export function StarterDraftPage({ loadStarters, startCreation, onSelected }: {
 
     <section className="creation-summary" aria-labelledby="selection-title">
       <div>
-        <p className="forge-kicker"><ScrollTextIcon aria-hidden="true" /> {t('starter.selectionTitle')}</p>
+        <p className="forge-kicker"><AozuIcon name="archive" /> {t('starter.selectionTitle')}</p>
         <dl>
           <div><dt>{t('starter.characterSelection')}</dt><dd>{t('starter.blankCharacter')}</dd></div>
           <div><dt>{t('starter.storySelection')}</dt><dd>{selectedStory?.direction.name ?? t('starter.blankStory')}</dd></div>

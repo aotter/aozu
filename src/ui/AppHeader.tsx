@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/ui/components/ui/button'
+import { AozuIcon } from '@/ui/AozuIcon'
 
 type AppHeaderProps = {
   webmcpAvailable: boolean
@@ -27,6 +28,7 @@ export function AppHeader({ webmcpAvailable, title, onBack, actions }: AppHeader
       >
         <div className="flex min-w-0 items-center gap-1">
           {onBack && <Button type="button" size="icon" variant="ghost" onClick={onBack} aria-label={t('common.back')}><ArrowLeftIcon /></Button>}
+          <AozuIcon name="book" className="header-book-icon" />
           <span className="truncate font-heading text-lg font-semibold">
             {title ?? t('common.productName')}
           </span>
