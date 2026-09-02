@@ -5,6 +5,7 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router'
 
 import type { Application } from '@/bootstrap.ts'
 import type { StagedCandidatePreview } from '@/core/application/candidate.ts'
+import { WORKSPACE_DESTINATIONS, type WorkspaceDestination } from '@/core/application/workspace.ts'
 import { AppHeader } from '@/ui/AppHeader'
 import { AppMenu } from '@/ui/AppMenu'
 import { CandidateReviewPage } from '@/ui/pages/CandidateReviewPage'
@@ -35,23 +36,13 @@ export function AppRoutes({ application }: { application: Application }) {
       console.error('Companion startup failed', error)
       setLoadError(true)
     })
-  }, [refresh])
+  }, [location.pathname, refresh])
 
   useEffect(() => {
     const onUpdate = () => void refresh()
     window.addEventListener('companion-updated', onUpdate)
     return () => window.removeEventListener('companion-updated', onUpdate)
   }, [refresh])
-
-  useEffect(() => {
-    const onDraftUpdate = () => {
-      if (!location.pathname.startsWith('/character')) navigate('/character', {
-        state: { returnTo: location.pathname === '/companion' ? '/companion' : '/start' },
-      })
-    }
-    window.addEventListener('character-draft-updated', onDraftUpdate)
-    return () => window.removeEventListener('character-draft-updated', onDraftUpdate)
-  }, [location.pathname, navigate])
 
   useEffect(() => {
     const onCandidate = (event: Event) => {
@@ -61,6 +52,26 @@ export function AppRoutes({ application }: { application: Application }) {
     window.addEventListener('experience-candidate-staged', onCandidate)
     return () => window.removeEventListener('experience-candidate-staged', onCandidate)
   }, [location.pathname, navigate])
+
+  useEffect(() => {
+    const onNavigate = (event: Event) => {
+      const destination = (event as CustomEvent<{ destination: WorkspaceDestination }>).detail.destination
+      if (destination === 'character-review') {
+        void application.openCharacterDraft()
+          .then(application.prepareCharacter)
+          .then((next) => {
+            setPreview(next)
+            navigate('/review', { state: { returnTo: location.pathname === '/companion' ? '/companion' : '/start' } })
+          })
+        return
+      }
+      navigate(WORKSPACE_DESTINATIONS[destination], {
+        state: destination.startsWith('character-') || destination === 'experience-review' ? { returnTo: '/start' } : undefined,
+      })
+    }
+    window.addEventListener('companion-navigate', onNavigate)
+    return () => window.removeEventListener('companion-navigate', onNavigate)
+  }, [application, location.pathname, navigate])
 
   if (loadError) return <><AppHeader webmcpAvailable={false} /><StatusPage>{t('startup.error')}</StatusPage></>
   if (!startup) return <><AppHeader webmcpAvailable={false} /><StatusPage>{t('startup.loading')}</StatusPage></>
@@ -77,6 +88,9 @@ export function AppRoutes({ application }: { application: Application }) {
     openDraft={application.openCharacterDraft}
     updateDraft={application.updateCharacterDraft}
     saveAsset={application.saveCharacterAsset}
+    setVariantTransform={application.setCharacterVariantTransform}
+    autoFitVariant={application.autoFitCharacterVariant}
+    exportDraft={application.exportCharacterDraft}
     onReview={(draft) => prepareReview(application.prepareCharacter(draft))}
   />
   const showBack = location.pathname !== '/' && location.pathname !== '/start'
@@ -117,6 +131,9 @@ export function AppRoutes({ application }: { application: Application }) {
       prepareImport={(blob) => prepareReview(application.prepareImport(blob))}
       pendingReview={startup.pendingReview}
       onResumeReview={() => navigate('/review', { state: { returnTo: '/start' } })}
+      authoringDraft={startup.authoringDraft}
+      exportCharacterDraft={application.exportCharacterDraft}
+      onResumeDraft={(destination) => navigate(destination, { state: { returnTo: '/start' } })}
     />} />
     <Route path="/starter" element={<StarterDraftPage
       loadStarters={application.listStarters}

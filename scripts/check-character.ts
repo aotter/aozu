@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 
 import { CHARACTER_RIG, validateCharacterPack, type CharacterPack } from '../src/core/domain/character.ts'
 
-const inspection = { width: 512, height: 768, hasTransparentPixels: true, hasVisiblePixels: true, genuineRgba: true, size: 10, sha256: 'a'.repeat(64) }
+const inspection = { width: 512, height: 768, hasTransparentPixels: true, hasVisiblePixels: true, genuineRgba: true, visibleBounds: { x: 40, y: 20, width: 430, height: 720 }, visiblePixelCount: 100, size: 10, sha256: 'a'.repeat(64) }
 const pack: CharacterPack = {
   id: 'guide', version: 1, rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
   creator: { name: 'Companion' }, license: { id: 'test', url: 'https://example.com/license', embedding: 'allowed' },
@@ -18,12 +18,12 @@ const pack: CharacterPack = {
       { asset: { packId: 'guide', packVersion: 1, assetId: 'hat-front' }, slot: 'item-front', order: 1 },
     ] },
     { id: 'default', layers: [{ asset: { packId: 'guide', packVersion: 1, assetId: 'skin' }, slot: 'character-skin', order: 1 }] },
-    { id: 'neutral', layers: [{ asset: { packId: 'guide', packVersion: 1, assetId: 'head' }, slot: 'expression-head', order: 1 }] },
+    { id: 'happy', layers: [{ asset: { packId: 'guide', packVersion: 1, assetId: 'head' }, slot: 'expression-head', order: 1 }] },
   ],
   defaultComposition: [
     { packId: 'guide', packVersion: 1, appearanceId: 'hat' },
     { packId: 'guide', packVersion: 1, appearanceId: 'default' },
-    { packId: 'guide', packVersion: 1, appearanceId: 'neutral' },
+    { packId: 'guide', packVersion: 1, appearanceId: 'happy' },
   ],
 }
 const inspections = new Map(pack.assets.map(({ blobId }) => [blobId, inspection]))

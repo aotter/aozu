@@ -34,11 +34,20 @@ export const CHARACTER_VARIANT_LAYERS = {
 export type CharacterVariantGroup = typeof CHARACTER_VARIANT_GROUPS[number]
 export type CharacterVariantLayer = 'body' | 'head' | 'back' | 'front'
 
+export interface CharacterVariantTransform {
+  x: number
+  y: number
+  scale: number
+}
+
+export const IDENTITY_CHARACTER_TRANSFORM: CharacterVariantTransform = { x: 0, y: 0, scale: 1 }
+
 export interface CharacterDraftAsset {
   blob: Blob
   filename: string
   source: 'user' | 'agent' | 'starter'
   inspection: CharacterAssetInspection
+  canonicalSha256?: string
 }
 
 export interface CharacterDraftVariant {
@@ -46,6 +55,7 @@ export interface CharacterDraftVariant {
   group: CharacterVariantGroup
   label: string
   layers: Partial<Record<CharacterVariantLayer, CharacterDraftAsset>>
+  transform?: CharacterVariantTransform
 }
 
 export interface CharacterAssetTarget {
@@ -61,8 +71,9 @@ export interface CharacterDraft {
   packId: string
   name: string
   variants: CharacterDraftVariant[]
+  headRegistration?: { variantId: string }
   selected: {
-    expression: string
+    expression?: string
     outfit?: string
     props: string[]
   }
@@ -91,7 +102,7 @@ export interface CharacterPack {
   assets: Array<{ id: string; blobId: string; mediaType: 'image/png'; size: number; sha256: string }>
   appearances: Array<{
     id: string
-    layers: Array<{ asset: AssetRef; slot: string; order: number }>
+    layers: Array<{ asset: AssetRef; slot: string; order: number; transform?: CharacterVariantTransform }>
   }>
   defaultComposition: AppearanceRef[]
 }
@@ -102,6 +113,8 @@ export interface CharacterAssetInspection {
   hasTransparentPixels: boolean
   hasVisiblePixels: boolean
   genuineRgba: boolean
+  visibleBounds?: { x: number; y: number; width: number; height: number }
+  visiblePixelCount?: number
   size: number
   sha256: string
 }
@@ -112,10 +125,18 @@ export interface ResolvedCharacterLayer {
   slot: string
   slotOrder: number
   layerOrder: number
+  transform: CharacterVariantTransform
 }
 
 const idPattern = /^[a-z0-9][a-z0-9_-]{0,63}$/
 const https = (value: string) => new URL(value).protocol === 'https:'
+export function validateCharacterVariantTransform({ x, y, scale }: CharacterVariantTransform) {
+  if (
+    !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(scale) ||
+    Math.abs(x) > CHARACTER_RIG.canvas.width || Math.abs(y) > CHARACTER_RIG.canvas.height ||
+    scale < 0.25 || scale > 4
+  ) throw new Error('Character transform is outside the supported canvas range')
+}
 const rigFor = (profile: CharacterPack['rigProfile'] | undefined) => {
   if (!profile || profile.id !== CHARACTER_RIG.id) throw new Error('Unsupported character rig')
   if (profile.version === CHARACTER_RIG.version) return CHARACTER_RIG
@@ -146,6 +167,7 @@ export function validateCharacterPack(
       !inspected.genuineRgba ||
       !inspected.hasTransparentPixels ||
       !inspected.hasVisiblePixels ||
+      !inspected.visibleBounds ||
       inspected.size !== asset.size ||
       inspected.sha256 !== asset.sha256
     ) throw new Error(`Invalid character asset: ${asset.id}`)
@@ -160,10 +182,21 @@ export function validateCharacterPack(
     const localOrders = new Set<string>()
     for (const layer of appearance.layers) {
       const orderKey = `${layer.slot}:${layer.order}`
+      if (layer.transform) validateCharacterVariantTransform(layer.transform)
+      const transform = layer.transform ?? IDENTITY_CHARACTER_TRANSFORM
+      const asset = assets.get(layer.asset.assetId)
+      const bounds = asset && inspections.get(asset.blobId)?.visibleBounds
+      const visible = bounds && {
+        x: transform.x + bounds.x * transform.scale,
+        y: transform.y + bounds.y * transform.scale,
+        width: bounds.width * transform.scale,
+        height: bounds.height * transform.scale,
+      }
       if (
         layer.asset.packId !== pack.id || layer.asset.packVersion !== pack.version ||
-        !assets.has(layer.asset.assetId) || !slotOrders.has(layer.slot) ||
-        !Number.isSafeInteger(layer.order) || localOrders.has(orderKey)
+        !asset || !slotOrders.has(layer.slot) || !Number.isSafeInteger(layer.order) || localOrders.has(orderKey) ||
+        !visible || visible.x + visible.width <= 0 || visible.y + visible.height <= 0 ||
+        visible.x >= rig.canvas.width || visible.y >= rig.canvas.height
       ) throw new Error(`Invalid appearance layer: ${appearance.id}`)
       localOrders.add(orderKey)
     }
@@ -198,11 +231,11 @@ export function resolveCharacterComposition(
         slot: layer.slot,
         slotOrder,
         layerOrder: layer.order,
+        transform: layer.transform ? { ...layer.transform } : { ...IDENTITY_CHARACTER_TRANSFORM },
       })
     }
   }
   if (!layers.some(({ slot }) => slot === 'character-skin')) throw new Error('Character composition requires a skin')
-  if (rig.version >= 2 && !layers.some(({ slot }) => slot === 'expression-head')) throw new Error('Character composition requires a head expression')
   const finalOrders = new Set(layers.map(({ slot, layerOrder }) => `${slot}:${layerOrder}`))
   if (finalOrders.size !== layers.length) throw new Error('Composition layer order collision')
   return layers.sort((left, right) => left.slotOrder - right.slotOrder || left.layerOrder - right.layerOrder || left.id.localeCompare(right.id))

@@ -17,6 +17,8 @@ export const inspectCharacterFixture = async (blob: Blob) => ({
   hasTransparentPixels: true,
   hasVisiblePixels: true,
   genuineRgba: true,
+  visibleBounds: { x: 40, y: 20, width: 430, height: 720 },
+  visiblePixelCount: 100,
   size: blob.size,
   sha256: await sha256(blob),
 })

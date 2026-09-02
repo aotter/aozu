@@ -8,13 +8,16 @@ import type { StagedCandidatePreview } from '@/core/application/candidate'
 
 const startOptions = ['starter', 'bundle'] as const
 
-export function StartPage({ savedCompanions, pendingReview, onOpenCompanion, onDeleteCompanion, onChooseStarter, onResumeReview, prepareImport }: {
+export function StartPage({ savedCompanions, pendingReview, authoringDraft, onOpenCompanion, onDeleteCompanion, onChooseStarter, onResumeReview, onResumeDraft, exportCharacterDraft, prepareImport }: {
   savedCompanions: SavedCompanion[]
   pendingReview: StagedCandidatePreview | null
+  authoringDraft: { characterName: string | null; destination: '/character/expressions' | '/create' } | null
   onOpenCompanion(bundleId: string): Promise<void>
   onDeleteCompanion(bundleId: string): Promise<void>
   onChooseStarter(): void
   onResumeReview(): void
+  onResumeDraft(destination: '/character/expressions' | '/create'): void
+  exportCharacterDraft(): Promise<Blob>
   prepareImport(blob: Blob): Promise<void>
 }) {
   const { t } = useTranslation()
@@ -33,6 +36,19 @@ export function StartPage({ savedCompanions, pendingReview, onOpenCompanion, onD
             <p className="mt-1 text-xs text-muted-foreground">{t('start.pending.description')}</p>
           </div>
           <Button onClick={onResumeReview}>{t('start.pending.resume')}</Button>
+        </article>
+      </section>}
+      {authoringDraft && <section className="mt-8">
+        <h2 className="font-heading text-lg font-medium">{t('start.draft.title')}</h2>
+        <article className="mt-3 flex flex-col items-stretch justify-between gap-4 rounded-2xl border bg-background p-4 shadow-sm sm:flex-row sm:items-center">
+          <div className="min-w-0">
+            {authoringDraft.characterName && <h3 className="truncate font-heading font-medium">{authoringDraft.characterName}</h3>}
+            <p className="mt-1 text-xs text-muted-foreground">{t(`start.draft.${authoringDraft.destination === '/create' ? 'experience' : 'character'}`)}</p>
+          </div>
+          <div className="flex shrink-0 items-center justify-end gap-2">
+            <DataControls exportData={exportCharacterDraft} exportFilename="companion-character-draft.zip" exportIconOnly exportLabel={t('draft.download')} />
+            <Button onClick={() => onResumeDraft(authoringDraft.destination)}>{t('start.draft.resume')}</Button>
+          </div>
         </article>
       </section>}
       {savedCompanions.length > 0 && <section className="mt-8">

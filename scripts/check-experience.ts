@@ -110,7 +110,7 @@ assert.equal(candidate.preview.source, 'experience')
 assert.equal(candidate.entries.find(({ collection }) => collection === 'character-packs')?.data.pack.id, characterResources.pack.id)
 assert.equal(characterResources.assets.every(({ id }) => candidate.assets.some((asset) => asset.id === id)), true)
 assert.equal(candidate.record.metadata?.starter?.manifestSha256, resources.manifestSha256)
-assert.equal(candidate.assets.length, 3)
+assert.equal(candidate.assets.length, 2)
 const storedCandidateEntries = new Map(candidate.entries.map(({ id, collection, data }) => [id, {
   id, collection, data, status: 'published' as const, version: 1, createdAt: 1, updatedAt: 1,
 }]))
@@ -159,7 +159,7 @@ const blank = assembleExperienceCandidate('bundle-blank', blankDraft, null, char
 }, 1)
 assert.equal(blank.preview.story, null)
 assert.equal(blank.preview.sceneLayers.length, 0)
-assert.equal(blank.assets.length, 2)
+assert.equal(blank.assets.length, 1)
 assert.equal(blank.record.metadata?.starter, undefined)
 let activated = false
 await approveCandidate({ async activate() { activated = true; return {} as never } } as never, candidate.record.id, true)

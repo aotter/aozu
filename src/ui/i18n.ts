@@ -12,6 +12,7 @@ const en = {
     loading: 'Loading local data…',
     error: 'Local data could not be loaded. Refresh and try again.',
   },
+  draft: { name: 'Companion name', download: 'Download draft ZIP' },
   start: {
     title: 'Create your companion',
     description: 'Continue a saved Companion or start a new one. Confirmed data is saved locally.',
@@ -21,6 +22,12 @@ const en = {
       title: 'Waiting for review',
       description: 'Validated and stored locally, but not active yet.',
       resume: 'Resume review',
+    },
+    draft: {
+      title: 'Draft in progress',
+      character: 'Continue customizing this character.',
+      experience: 'The character is ready. Continue creating the Companion.',
+      resume: 'Continue editing',
     },
     saved: {
       title: 'Saved companions',
@@ -92,7 +99,7 @@ const en = {
   },
   characterDraft: {
     required: 'Required',
-    missingRequired: 'Add the base body and neutral whole-head expression to continue.',
+    missingRequired: 'Add the base character to continue.',
     validating: 'Checking…',
     variantLabel: 'Variant name',
     editVariant: 'Edit {{name}}',
@@ -100,6 +107,22 @@ const en = {
     categorySwitcher: 'Appearance categories',
     backToVariants: 'Back to variants',
     none: 'None',
+    alignment: {
+      label: 'Alignment preview',
+      composite: 'Composite',
+      overlay: 'Overlay',
+      difference: 'Difference',
+      diagnostic: 'Align',
+    },
+    transform: {
+      label: 'Variant transform',
+      x: 'Horizontal offset',
+      y: 'Vertical offset',
+      scale: 'Scale',
+      autoFit: 'Auto fit',
+      visualFit: 'Try visual fit',
+      dragHead: 'Drag to align this head',
+    },
     categories: {
       expressions: 'Expressions',
       outfits: 'Outfits',

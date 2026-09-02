@@ -11,6 +11,7 @@ import {
   PROGRESS_BINDING_SCHEMA,
 } from '../domain/playbook.ts'
 import { CHARACTER_VARIANT_GROUPS } from '../domain/character.ts'
+import { WORKSPACE_DESTINATIONS } from '../application/workspace.ts'
 import { compileBundle } from '../bundle.ts'
 
 const source = (sourceId: string, manifest: object): ManifestSource => ({
@@ -47,6 +48,7 @@ const nextActionSchema = objectSchema({
   tool: { type: 'string', minLength: 1 },
   required: { type: 'boolean' },
   reason: { type: 'string', minLength: 1 },
+  input: { type: 'object' },
 }, ['tool', 'required'])
 
 const toolResultSchema = objectSchema({
@@ -443,6 +445,40 @@ const ALL_BACKBONE_SOURCES = [
     }),
   ),
   source(
+    'authoring/inspect-workspace.yaml',
+    envelope('Procedure', 'inspect-workspace', {
+      title: 'Inspect Workspace',
+      description: 'Start here on every page. Returns the current workflow phase, saved authoring and play state, blockers, allowed destinations, and the next tool or navigation action without guessing routes.',
+      input: emptyReadOnlyInput,
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.inspect-workspace' },
+    }),
+  ),
+  source(
+    'authoring/inspect-workspace-mcp.yaml',
+    envelope('Trigger', 'inspect-workspace', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'inspect-workspace' },
+    }),
+  ),
+  source(
+    'authoring/navigate-companion.yaml',
+    envelope('Procedure', 'navigate-companion', {
+      title: 'Navigate Companion',
+      description: 'Navigate the website to one destination returned by inspect_workspace. This changes only the browser surface and never mutates Companion data or approves a review.',
+      input: objectSchema({ destination: { enum: Object.keys(WORKSPACE_DESTINATIONS) } }, ['destination']),
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.navigate-companion' },
+    }),
+  ),
+  source(
+    'authoring/navigate-companion-mcp.yaml',
+    envelope('Trigger', 'navigate-companion', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'navigate-companion' },
+    }),
+  ),
+  source(
     "authoring/select-experience-draft.yaml",
     envelope("Procedure", "select-experience-draft", {
       title: 'Select Experience Draft',
@@ -523,8 +559,15 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-character-contract.yaml',
     envelope('Procedure', 'inspect-character-contract', {
       title: 'Inspect Character Contract',
-      description: 'Required first step before generating or changing character art. Returns the exact rig and production brief. Generate and preprocess assets outside the website, then submit only final 512×768 RGBA PNG layers. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
-      input: emptyReadOnlyInput,
+      description: 'Required before generating or changing character art. Optionally name one target to receive its exact reference layer, alpha-mask diagnostics, z-order, canonical freshness, and alignment mode. A registered head anchor may include an experimental native pixel-and-edge correlation suggestion; it is never applied or approved automatically. Outfits are complete dressed character-skin replacements, not clothing-only overlays. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
+      input: {
+        ...objectSchema({
+          group: { enum: CHARACTER_VARIANT_GROUPS },
+          variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
+          layer: { enum: ['body', 'head', 'back', 'front'] },
+        }),
+        readOnly: true,
+      },
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.inspect-character-contract' },
     }),
@@ -540,15 +583,16 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/submit-character-asset-candidate.yaml',
     envelope('Procedure', 'submit-character-asset-candidate', {
       title: 'Submit Character Asset Candidate',
-      description: 'Fill one layer of a character variant with a final PNG candidate. Inspect the contract first. A variant belongs to body, expression, outfit, or prop. Props are independent, multi-select, full-canvas overlays placed anywhere relative to the canonical character and may contain front and back layers. Send a data:image/png;base64 URL only after producing an exact 512×768 RGBA image with real transparency. Whole-head expressions include the complete aligned head, hairstyle, and facial hair. This stages a draft candidate only and never approves or activates it.',
+      description: 'Fill one layer of a character variant with a final PNG candidate. Inspect the contract first. Outfits must contain the complete dressed character because they replace character-skin; clothing-only images are rejected. Whole-head expressions include the complete aligned head, hairstyle, and facial hair. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. Send an exact 512×768 RGBA data:image/png;base64 URL with real transparency. Alpha-mask preflight rejects structurally invalid candidates without mutating the draft. A valid candidate is staged only and is never approved or activated.',
       input: objectSchema({
         group: { enum: CHARACTER_VARIANT_GROUPS },
         variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
         label: { type: 'string', minLength: 1, maxLength: 80 },
         layer: { enum: ['body', 'head', 'back', 'front'] },
+        expectedUpdatedAt: { type: 'integer', minimum: 0 },
         filename: { type: 'string', minLength: 1, maxLength: 200 },
         dataUrl: { type: 'string', pattern: '^data:image/png;base64,', maxLength: 7_100_000 },
-      }, ['group', 'variantId', 'label', 'layer', 'filename', 'dataUrl']),
+      }, ['group', 'variantId', 'label', 'layer', 'expectedUpdatedAt', 'filename', 'dataUrl']),
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.submit-character-asset-candidate' },
     }),
@@ -558,6 +602,30 @@ const ALL_BACKBONE_SOURCES = [
     envelope('Trigger', 'submit-character-asset-candidate', {
       source: { kind: 'mcp', surface: 'public' },
       target: { procedure: 'submit-character-asset-candidate' },
+    }),
+  ),
+  source(
+    'authoring/set-character-variant-transform.yaml',
+    envelope('Procedure', 'set-character-variant-transform', {
+      title: 'Set Character Variant Transform',
+      description: 'Safety net for an otherwise valid staged character variant whose full-canvas pixels need translation or uniform scale. Use absolute values returned or derived from inspect_character_contract; never accumulate directional nudges. When the target is the registered head anchor, visually compare it with the canonical body default head; changing it automatically rebases every current expression. Front and back prop layers share this transform. The canonical body is locked.',
+      input: objectSchema({
+        group: { enum: ['expression', 'outfit', 'prop'] },
+        variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
+        expectedUpdatedAt: { type: 'integer', minimum: 0 },
+        x: { type: 'number', minimum: -512, maximum: 512 },
+        y: { type: 'number', minimum: -768, maximum: 768 },
+        scale: { type: 'number', minimum: 0.25, maximum: 4 },
+      }, ['group', 'variantId', 'expectedUpdatedAt', 'x', 'y', 'scale']),
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.set-character-variant-transform' },
+    }),
+  ),
+  source(
+    'authoring/set-character-variant-transform-mcp.yaml',
+    envelope('Trigger', 'set-character-variant-transform', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'set-character-variant-transform' },
     }),
   ),
   source(
