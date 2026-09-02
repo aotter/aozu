@@ -10,6 +10,7 @@ import {
   validateCharacterPack,
   type AppearanceRef,
   type CharacterAssetTarget,
+  type CharacterAtlasSource,
   type CharacterAssetInspection,
   type CharacterDraft,
   type CharacterDraftAsset,
@@ -476,6 +477,13 @@ export const resolveCharacterDraftLayers = (
   draft: CharacterDraft,
   preview?: Pick<CharacterDraftVariant, 'group' | 'id'>,
 ) => resolveDraftLayers(draft, preview)
+
+export const resolveCharacterDraftAtlasSources = (draft: CharacterDraft): CharacterAtlasSource[] =>
+  draft.variants.flatMap((variant) => currentLayerEntries(draft, variant).map(([layer, asset]) => ({
+    id: assetKey(variant, layer),
+    blob: asset.blob,
+    transform: variant.transform ? { ...variant.transform } : { ...IDENTITY_CHARACTER_TRANSFORM },
+  })))
 
 export function resolveCharacterDraftReferenceLayers(
   draft: CharacterDraft,

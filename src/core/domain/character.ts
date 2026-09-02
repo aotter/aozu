@@ -128,6 +128,33 @@ export interface ResolvedCharacterLayer {
   transform: CharacterVariantTransform
 }
 
+export interface CharacterAtlasSource {
+  id: string
+  blob: Blob
+  transform: CharacterVariantTransform
+}
+
+export interface CharacterTextureAtlas {
+  image: Blob
+  data: {
+    frames: Record<string, {
+      frame: { x: number; y: number; w: number; h: number }
+      rotated: false
+      trimmed: true
+      spriteSourceSize: { x: number; y: number; w: number; h: number }
+      sourceSize: { w: number; h: number }
+    }>
+    meta: {
+      app: 'Companion'
+      version: '1'
+      image: 'character.atlas.png'
+      format: 'RGBA8888'
+      size: { w: number; h: number }
+      scale: '1'
+    }
+  }
+}
+
 const idPattern = /^[a-z0-9][a-z0-9_-]{0,63}$/
 const https = (value: string) => new URL(value).protocol === 'https:'
 export function validateCharacterVariantTransform({ x, y, scale }: CharacterVariantTransform) {

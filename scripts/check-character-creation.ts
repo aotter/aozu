@@ -1,12 +1,28 @@
 import assert from 'node:assert/strict'
 import { strFromU8, unzipSync } from 'fflate'
 
-import { buildCharacterPack, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 import type { CharacterPackLibraryRecord } from '../src/core/application/ports.ts'
 import { exportCharacterDraftZip } from '../src/adapters/zip/character-draft.ts'
+import { packCharacterAtlasFrames } from '../src/adapters/browser/character-atlas.ts'
+
+const packedFrames = packCharacterAtlasFrames([
+  { id: 'body', width: 100, height: 200, bounds: { x: 20, y: 30, width: 100, height: 200 } },
+  { id: 'head', width: 80, height: 70, bounds: { x: 42, y: 18, width: 80, height: 70 } },
+])
+assert.deepEqual(packedFrames.frames.head.spriteSourceSize, { x: 42, y: 18, w: 80, h: 70 })
+assert.deepEqual(packedFrames.frames.body.sourceSize, { w: 512, h: 768 })
+assert.equal(packedFrames.frames.body.rotated, false)
+assert.throws(() => packCharacterAtlasFrames([
+  { id: 'same', width: 1, height: 1, bounds: { x: 0, y: 0, width: 1, height: 1 } },
+  { id: 'same', width: 1, height: 1, bounds: { x: 0, y: 0, width: 1, height: 1 } },
+]), /unique/)
+assert.throws(() => packCharacterAtlasFrames([
+  { id: 'huge', width: 4097, height: 1, bounds: { x: 0, y: 0, width: 4097, height: 1 } },
+]), /exceeds/)
 
 const inspection = { width: 512, height: 768, hasTransparentPixels: true, hasVisiblePixels: true, genuineRgba: true, visibleBounds: { x: 40, y: 20, width: 430, height: 720 }, visiblePixelCount: 100, size: 10, sha256: 'a'.repeat(64) }
 const asset: CharacterDraftAsset = { blob: new Blob(['sprite'], { type: 'image/png' }), filename: 'sprite.png', source: 'user', inspection, canonicalSha256: inspection.sha256 }
@@ -26,7 +42,14 @@ draft.headRegistration = { variantId: 'happy' }
 draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.transform = { x: 2, y: -3, scale: 1.01 }
 
 const experience = { id: draft.id, schemaVersion: 1 as const, revision: 0, character: null, story: null, createdAt: 1, updatedAt: 1 }
-const draftArchive = unzipSync(new Uint8Array(await (await exportCharacterDraftZip(draft, experience)).arrayBuffer()))
+const atlas = {
+  image: new Blob(['atlas'], { type: 'image/png' }),
+  data: {
+    frames: { 'body-base-body': { frame: { x: 2, y: 2, w: 10, h: 20 }, rotated: false as const, trimmed: true as const, spriteSourceSize: { x: 40, y: 20, w: 10, h: 20 }, sourceSize: { w: 512, h: 768 } } },
+    meta: { app: 'Companion' as const, version: '1' as const, image: 'character.atlas.png' as const, format: 'RGBA8888' as const, size: { w: 14, h: 24 }, scale: '1' as const },
+  },
+}
+const draftArchive = unzipSync(new Uint8Array(await (await exportCharacterDraftZip(draft, experience, atlas)).arrayBuffer()))
 const archivedDraft = JSON.parse(strFromU8(draftArchive['draft.json']!))
 const archivedPack = JSON.parse(strFromU8(draftArchive['character-pack.json']!))
 assert.equal(archivedDraft.id, draft.id)
@@ -36,6 +59,10 @@ assert.deepEqual(archivedDraft.headRegistration, draft.headRegistration)
 assert.deepEqual(archivedDraft.variants.find(({ group, id }: { group: string; id: string }) => group === 'expression' && id === 'happy').transform, { x: 2, y: -3, scale: 1.01 })
 assert.deepEqual(archivedPack.appearances.find(({ id }: { id: string }) => id === 'expression-happy').layers[0].transform, { x: 2, y: -3, scale: 1.01 })
 assert.equal(strFromU8(draftArchive['assets/expression-happy-head.png']!), 'sprite')
+assert.equal(strFromU8(draftArchive['character.atlas.png']!), 'atlas')
+assert.equal(JSON.parse(strFromU8(draftArchive['character.atlas.json']!)).frames['body-base-body'].spriteSourceSize.x, 40)
+assert.equal(archivedPack.atlas.image, 'character.atlas.png')
+assert.equal(archivedPack.assets.find(({ id }: { id: string }) => id === 'body-base-body').atlasFrame, 'body-base-body')
 
 const pack = buildCharacterPack(draft)
 assert.deepEqual(pack.defaultComposition.map(({ appearanceId }) => appearanceId), ['outfit-outfit-1', 'expression-happy', 'prop-prop-1', 'prop-prop-2'])
@@ -45,6 +72,7 @@ assert.deepEqual(
 )
 assert.deepEqual(resolveCharacterDraftLayers(draft).map(({ layerOrder }) => layerOrder), [1, 2, 1, 1, 1, 2])
 assert.deepEqual(resolveCharacterDraftLayers(draft).find(({ slot }) => slot === 'expression-head')?.transform, { x: 2, y: -3, scale: 1.01 })
+assert.deepEqual(resolveCharacterDraftAtlasSources(draft).find(({ id }) => id === 'expression-happy-head')?.transform, { x: 2, y: -3, scale: 1.01 })
 assert.deepEqual(characterRegistrationFrame(draft).footLine, 739)
 assert.equal(characterHeadRegistration(draft)?.variant.id, 'happy')
 assert.equal(characterRegistrationFrame(draft).head?.variantId, 'happy')
