@@ -55,8 +55,8 @@ import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
 import { planItemEffects } from './core/application/items.ts'
 import { loadSceneProjection } from './core/application/scene.ts'
-import { exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
-import { exportCharacterDraftZip } from './adapters/zip/character-draft.ts'
+import { companionArchiveKind, exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
+import { exportCharacterDraftZip, readCharacterDraftZip } from './adapters/zip/character-draft.ts'
 import {
   createBlankExperienceDraftData,
   createExperienceDraftData,
@@ -433,7 +433,34 @@ export function createApplication(document: Document) {
       return { path: 'cold' as const, turn }
     },
     exportData: exportPortableBundle,
-    prepareImport: stagePortableBundle,
+    async prepareImport(blob: Blob) {
+      const kind = companionArchiveKind(new Uint8Array(await blob.arrayBuffer()))
+      if (kind === 'portable') return { kind: 'candidate' as const, preview: await stagePortableBundle(blob) }
+      const imported = await readCharacterDraftZip(blob, inspectCharacterImage)
+      const experience = imported.experience
+        ? { schemaVersion: 1 as const, revision: 0, character: null, story: structuredClone(imported.experience.story) }
+        : createBlankExperienceDraftData()
+      const result = await (await getAuthoringRuntime()).invokeTrigger<Entry>({
+        trigger: 'select-experience-draft',
+        input: experience,
+        ctx: { user: null, staff: null, env: {} },
+      })
+      if (!result.ok) throw new Error(result.diagnostic.message ?? 'Experience Draft could not be restored')
+      const savedExperience = toExperienceDraft(result.data)
+      try {
+        await characterDrafts.put({ ...imported.draft, id: savedExperience.id, updatedAt: Date.now() })
+      } catch (error) {
+        await createIndexedDbEntryRepository(AUTHORING_NAMESPACE).delete({
+          id: savedExperience.id,
+          collection: 'experience-drafts',
+          expectedVersion: result.data.version,
+          expectedStatus: result.data.status,
+        })
+        throw error
+      }
+      await requestPersistentStorage(browser?.navigator.storage)
+      return { kind: 'draft' as const, draftId: savedExperience.id }
+    },
   }
   async function createLocalCompanion(rawInput: unknown) {
     const { draftId } = rawInput as { draftId: string }

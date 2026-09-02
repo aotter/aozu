@@ -121,7 +121,13 @@ export function AppRoutes({ application }: { application: Application }) {
     ? startup.companion.name
     : location.pathname.endsWith('/review') ? review?.name : undefined
   const importCandidate = async (blob: Blob, returnTo: FlowReturnTo) => {
-    setPreview(await application.prepareImport(blob))
+    const imported = await application.prepareImport(blob)
+    if (imported.kind === 'draft') {
+      await refresh()
+      navigate(workspacePath('character-expressions', imported.draftId), { state: { returnTo } })
+      return
+    }
+    setPreview(imported.preview)
     navigate('/review', { state: { returnTo } })
   }
   const headerActions = location.pathname === '/companion' && startup.status === 'main' ? <AppMenu

@@ -6,7 +6,7 @@ import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureP
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
 import type { CharacterPackLibraryRecord } from '../src/core/application/ports.ts'
-import { exportCharacterDraftZip } from '../src/adapters/zip/character-draft.ts'
+import { exportCharacterDraftZip, readCharacterDraftZip } from '../src/adapters/zip/character-draft.ts'
 import { packCharacterAtlasFrames } from '../src/adapters/browser/character-atlas.ts'
 
 const packedFrames = packCharacterAtlasFrames([
@@ -49,7 +49,8 @@ const atlas = {
     meta: { app: 'Companion' as const, version: '1' as const, image: 'character.atlas.png' as const, format: 'RGBA8888' as const, size: { w: 14, h: 24 }, scale: '1' as const },
   },
 }
-const draftArchive = unzipSync(new Uint8Array(await (await exportCharacterDraftZip(draft, experience, atlas)).arrayBuffer()))
+const draftZip = await exportCharacterDraftZip(draft, experience, atlas)
+const draftArchive = unzipSync(new Uint8Array(await draftZip.arrayBuffer()))
 const archivedDraft = JSON.parse(strFromU8(draftArchive['draft.json']!))
 const archivedPack = JSON.parse(strFromU8(draftArchive['character-pack.json']!))
 assert.equal(archivedDraft.id, draft.id)
@@ -63,6 +64,13 @@ assert.equal(strFromU8(draftArchive['character.atlas.png']!), 'atlas')
 assert.equal(JSON.parse(strFromU8(draftArchive['character.atlas.json']!)).frames['body-base-body'].spriteSourceSize.x, 40)
 assert.equal(archivedPack.atlas.image, 'character.atlas.png')
 assert.equal(archivedPack.assets.find(({ id }: { id: string }) => id === 'body-base-body').atlasFrame, 'body-base-body')
+const restored = await readCharacterDraftZip(draftZip, async () => inspection)
+assert.equal(restored.draft.id, draft.id)
+assert.equal(restored.draft.approvedAt, undefined)
+assert.deepEqual(restored.draft.selected, draft.selected)
+assert.deepEqual(restored.draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 2, y: -3, scale: 1.01 })
+assert.equal(await restored.draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.layers.head!.blob.text(), 'sprite')
+assert.equal(restored.experience?.id, experience.id)
 
 const pack = buildCharacterPack(draft)
 assert.deepEqual(pack.defaultComposition.map(({ appearanceId }) => appearanceId), ['outfit-outfit-1', 'expression-happy', 'prop-prop-1', 'prop-prop-2'])

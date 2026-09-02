@@ -49,8 +49,8 @@ const en = {
         description: 'Choose a character and purpose, then customize the complete experience.',
       },
       bundle: {
-        title: 'Import a bundle',
-        description: 'Validate and restore a local file.',
+        title: 'Import from ZIP',
+        description: 'Restore a Companion bundle or authoring draft.',
       },
     },
   },
@@ -192,7 +192,7 @@ const en = {
     import: 'Import data',
     busy: 'Working…',
     done: 'Data ready.',
-    error: 'The bundle could not be used.',
+    error: 'The file could not be used.',
   },
 } as const
 
