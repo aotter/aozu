@@ -59,10 +59,12 @@ const initialVariants = (): CharacterDraftVariant[] => [
   { group: 'prop', id: 'prop-1', label: 'Prop 1', layers: {} },
 ]
 
-export const createCharacterDraft = (packId = `character-${crypto.randomUUID()}`, id = 'current'): CharacterDraft => ({
+export const createCharacterDraft = (packId: string = `character-${crypto.randomUUID()}`, id: string = crypto.randomUUID()): CharacterDraft => ({
   id,
-  schemaVersion: 3,
+  schemaVersion: 4,
+  revision: 0,
   packId,
+  rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
   name: 'My Companion',
   variants: initialVariants(),
   selected: { props: [] },
@@ -237,12 +239,16 @@ export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage,
 }
 
 type LegacyRole = 'body-base' | 'head-neutral' | 'head-happy' | 'body-outfit' | 'prop-back' | 'prop-front'
-type CharacterDraftV2 = Omit<CharacterDraft, 'schemaVersion' | 'variants' | 'selected'> & {
+type CharacterDraftV3 = Omit<CharacterDraft, 'schemaVersion' | 'revision' | 'rigProfile' | 'published'> & {
+  schemaVersion: 3
+  approvedAt?: number
+}
+type CharacterDraftV2 = Omit<CharacterDraftV3, 'schemaVersion' | 'variants' | 'selected'> & {
   schemaVersion: 2
   variants: Array<Omit<CharacterDraftVariant, 'group'> & { group: CharacterVariantGroup | 'headwear' }>
   selected: { expression: string; outfit?: string; headwear?: string; prop?: string }
 }
-type LegacyCharacterDraft = Omit<CharacterDraft, 'schemaVersion' | 'variants' | 'selected'> & {
+type LegacyCharacterDraft = Omit<CharacterDraftV3, 'schemaVersion' | 'variants' | 'selected'> & {
   assets: Partial<Record<LegacyRole, CharacterDraftAsset>>
   selectedBody: 'body-base' | 'body-outfit'
   selectedExpression: 'head-neutral' | 'head-happy'
@@ -271,8 +277,18 @@ const withHeadRegistration = (draft: CharacterDraft): CharacterDraft => {
   return withoutRegistration as CharacterDraft
 }
 
-export function migrateCharacterDraft(draft: CharacterDraft | CharacterDraftV2 | LegacyCharacterDraft): CharacterDraft {
-  if ('schemaVersion' in draft && draft.schemaVersion === 3) return withHeadRegistration(withoutDefaultExpression(draft))
+export function migrateCharacterDraft(draft: CharacterDraft | CharacterDraftV3 | CharacterDraftV2 | LegacyCharacterDraft): CharacterDraft {
+  if ('schemaVersion' in draft && draft.schemaVersion === 4) return withHeadRegistration(withoutDefaultExpression(draft))
+  if ('schemaVersion' in draft && draft.schemaVersion === 3) {
+    const { approvedAt: _approvedAt, ...legacy } = draft
+    const upgraded: CharacterDraft = {
+      ...legacy,
+      schemaVersion: 4,
+      revision: 0,
+      rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
+    }
+    return withHeadRegistration(withoutDefaultExpression(upgraded))
+  }
   if ('schemaVersion' in draft && draft.schemaVersion === 2) {
     const usedPropIds = new Set(draft.variants.filter(({ group }) => group === 'prop').map(({ id }) => id))
     const migratedHeadwearIds = new Map<string, string>()
@@ -287,7 +303,9 @@ export function migrateCharacterDraft(draft: CharacterDraft | CharacterDraftV2 |
     })
     return withHeadRegistration(withoutDefaultExpression({
       ...draft,
-      schemaVersion: 3,
+      schemaVersion: 4,
+      revision: 0,
+      rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
       variants,
       selected: {
         ...(draft.selected.expression !== 'neutral' ? { expression: draft.selected.expression } : {}),
@@ -366,7 +384,7 @@ export async function setCharacterVariantTransform(
   }
   const next = {
     ...draft,
-    approvedAt: undefined,
+    revision: draft.revision + 1,
     variants: draft.variants.map((candidate) => candidate === variant
       ? { ...candidate, transform: { ...transform } }
       : rebasesHeads && candidate.group === 'expression' && isCharacterDraftAssetCurrent(draft, candidate, 'head')
@@ -374,8 +392,7 @@ export async function setCharacterVariantTransform(
         : candidate),
     updatedAt: Math.max(Date.now(), draft.updatedAt + 1),
   }
-  await drafts.put(next)
-  return next
+  return drafts.put(next)
 }
 
 export async function saveCharacterDraftAsset(
@@ -419,7 +436,7 @@ export async function saveCharacterDraftAsset(
     : variants
   const next: CharacterDraft = {
     ...draft,
-    approvedAt: undefined,
+    revision: draft.revision + 1,
     variants: nextVariants,
     ...(!derived && previousCanonical && previousCanonical !== inspection.sha256
       ? { headRegistration: undefined }
@@ -428,8 +445,7 @@ export async function saveCharacterDraftAsset(
         : {}),
     updatedAt: Math.max(Date.now(), draft.updatedAt + 1),
   }
-  await drafts.put(next)
-  return next
+  return drafts.put(next)
 }
 
 const ref = (pack: CharacterPack, appearanceId: string): AppearanceRef => ({
@@ -554,7 +570,7 @@ export function resolveCharacterDraftReferenceLayers(
   return resolveDraftLayers(draft, undefined, target)
 }
 
-export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
+export function buildCharacterPack(draft: CharacterDraft, version = (draft.published?.version ?? 0) + 1): CharacterPack {
   if (!draft.name.trim()) throw new Error('Companion name is required')
   if (!hasCurrentCharacterLayer(draft, 'body', 'base', 'body')) throw new Error('Base body is required')
   const keys = new Set<string>()
@@ -571,8 +587,8 @@ export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
   }
   const pack: CharacterPack = {
     id: draft.packId,
-    version: 1,
-    rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
+    version,
+    rigProfile: structuredClone(draft.rigProfile),
     creator: { name: 'Local user' },
     license: { id: 'private-use', embedding: 'allowed' },
     assets: draft.variants.flatMap((variant) => currentLayerEntries(draft, variant).map(([layer, asset]) => ({
@@ -586,7 +602,7 @@ export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
       const layers = currentLayerEntries(draft, variant).map(([layer]) => {
         const placement = characterAssetPlacement(variant.group, layer, propOrders.get(variant.id))
         return {
-          asset: { packId: draft.packId, packVersion: 1, assetId: assetKey(variant, layer) },
+          asset: { packId: draft.packId, packVersion: version, assetId: assetKey(variant, layer) },
           ...placement,
           ...(variant.transform ? { transform: { ...variant.transform } } : {}),
         }
@@ -602,8 +618,8 @@ export function buildCharacterPack(draft: CharacterDraft): CharacterPack {
   return pack
 }
 
-export function buildCharacterDraftResources(draft: CharacterDraft) {
-  const pack = buildCharacterPack(draft)
+export function buildCharacterDraftResources(draft: CharacterDraft, version?: number) {
+  const pack = buildCharacterPack(draft, version)
   const state = {
     id: `character:${pack.id}`,
     packId: pack.id,
@@ -668,8 +684,9 @@ export async function installCharacterDraft(
   library: CharacterPackLibraryRepository,
   inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
   draft: CharacterDraft,
+  version?: number,
 ): Promise<InstalledCharacterPackProjection> {
-  const { pack, assets } = buildCharacterDraftResources(draft)
+  const { pack, assets } = buildCharacterDraftResources(draft, version)
   const record = { name: draft.name.trim(), pack, composition: structuredClone(pack.defaultComposition), assets }
   const projection = await validateLibraryRecord(inspect, record)
   await library.install(record)

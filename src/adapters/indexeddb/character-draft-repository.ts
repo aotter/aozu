@@ -9,8 +9,13 @@ export function createIndexedDbCharacterDraftRepository(): CharacterDraftReposit
     async get(id) {
       return (await (await openCompanionDatabase()).get(CHARACTER_DRAFT_STORE, id)) ?? null
     },
+    async create(draft) {
+      await (await openCompanionDatabase()).add(CHARACTER_DRAFT_STORE, draft)
+      return draft
+    },
     async put(draft) {
       await (await openCompanionDatabase()).put(CHARACTER_DRAFT_STORE, draft)
+      return draft
     },
     async delete(id) {
       await (await openCompanionDatabase()).delete(CHARACTER_DRAFT_STORE, id)

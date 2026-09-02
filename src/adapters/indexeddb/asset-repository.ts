@@ -14,5 +14,15 @@ export function createIndexedDbAssetRepository(bundleId: string) {
       const database = await openCompanionDatabase()
       return database.getAllFromIndex(ASSET_STORE, 'bundleId', bundleId)
     },
+    async deleteAll() {
+      const database = await openCompanionDatabase()
+      const transaction = database.transaction(ASSET_STORE, 'readwrite')
+      let cursor = await transaction.store.index('bundleId').openKeyCursor(bundleId)
+      while (cursor) {
+        await transaction.store.delete(cursor.primaryKey)
+        cursor = await cursor.continue()
+      }
+      await transaction.done
+    },
   }
 }

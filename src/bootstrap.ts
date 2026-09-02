@@ -4,6 +4,7 @@ import { bootMantleRuntime, InvokeFailure, type MantleRuntime } from '@aotter/ma
 import { createIndexedDbBundleRepository } from './adapters/indexeddb/bundle-repository.ts'
 import { createIndexedDbAssetRepository } from './adapters/indexeddb/asset-repository.ts'
 import { createIndexedDbCharacterDraftRepository } from './adapters/indexeddb/character-draft-repository.ts'
+import { createCharacterWorkspaceRepository } from './adapters/indexeddb/character-workspace-repository.ts'
 import { createIndexedDbCharacterPackLibraryRepository } from './adapters/indexeddb/character-pack-library-repository.ts'
 import { ExperienceSubmissionConflict, persistTriggeredExperienceCandidate } from './adapters/indexeddb/experience-candidate-repository.ts'
 import { createIndexedDbEntryRepository, createIndexedDbMantleStorageAdapter } from './adapters/indexeddb/mantle-storage.ts'
@@ -56,15 +57,12 @@ import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
 import { planItemEffects } from './core/application/items.ts'
 import { loadSceneProjection } from './core/application/scene.ts'
-import { companionArchiveKind, exportPortableBundle, stagePortableBundle } from './adapters/zip/bundle.ts'
+import { companionArchiveKind, exportPortableBundle } from './adapters/zip/bundle.ts'
 import { exportCharacterDraftZip, readCharacterDraftZip } from './adapters/zip/character-draft.ts'
 import {
-  createBlankExperienceDraftData,
-  createExperienceDraftData,
   sameExperienceSeed,
   type ExperienceDraft,
   type StarterCharacterSelection,
-  type StarterStorySelection,
 } from './core/domain/starter.ts'
 import { PLAYBOOK_LIMITS as EXPERIENCE_LIMITS } from './core/domain/playbook.ts'
 import { activeDraftId, workspaceNavigation, workspacePath, workspacePhase, type WorkspaceDestination } from './core/application/workspace.ts'
@@ -88,7 +86,7 @@ const toExperienceDraft = (entry: Entry): ExperienceDraft => ({
 export function createApplication(document: Document) {
   const agent = createAgentCapability(document)
   const bundles = createIndexedDbBundleRepository()
-  const characterDrafts = createIndexedDbCharacterDraftRepository()
+  const legacyCharacterDrafts = createIndexedDbCharacterDraftRepository()
   const characterPacks = createIndexedDbCharacterPackLibraryRepository()
   const browser = document.defaultView
   let runtimeAtlas: { key: string; value: ReturnType<typeof compileCharacterTextureAtlas> } | undefined
@@ -158,6 +156,7 @@ export function createApplication(document: Document) {
       'companion.set-character-variant-transform': setCharacterTransform,
     },
   })
+  const characterDrafts = createCharacterWorkspaceRepository(getAuthoringRuntime, createIndexedDbAssetRepository)
 
   const listExperienceDrafts = async () => {
     const entries = await (await getAuthoringRuntime()).entries.readPublished({ collection: 'experience-drafts' })
@@ -169,20 +168,32 @@ export function createApplication(document: Document) {
     return entry?.collection === 'experience-drafts' && entry.status === 'published' ? toExperienceDraft(entry) : null
   }
 
-  const migrateLegacyCharacterDraft = async (experiences: ExperienceDraft[]) => {
-    const legacy = await characterDrafts.get('current')
-    if (!legacy || experiences.some(({ id }) => id === 'current')) return
-    const existingIds = new Set((await characterDrafts.list()).map(({ id }) => id))
-    const target = experiences.find(({ id }) => !existingIds.has(id))
-    if (!target) return
-    await characterDrafts.put({ ...migrateCharacterDraft(legacy), id: target.id })
-    await characterDrafts.delete('current')
+  let legacyCharactersMigrated: Promise<void> | undefined
+  const migrateLegacyCharacters = () => legacyCharactersMigrated ??= (async () => {
+    const legacy = await legacyCharacterDrafts.list()
+    if (!legacy.length) return
+    const packIds = new Set((await characterDrafts.list()).map(({ packId }) => packId))
+    for (const stored of legacy) {
+      const draft = migrateCharacterDraft(stored)
+      if (!packIds.has(draft.packId)) {
+        await characterDrafts.create(draft)
+        packIds.add(draft.packId)
+      }
+      await legacyCharacterDrafts.delete(stored.id)
+    }
+  })().catch((error) => {
+    legacyCharactersMigrated = undefined
+    throw error
+  })
+
+  const listCharacterDrafts = async () => {
+    await migrateLegacyCharacters()
+    return (await characterDrafts.list()).sort((left, right) => right.updatedAt - left.updatedAt || left.id.localeCompare(right.id))
   }
 
   const listAuthoringDrafts = async () => {
     const experiences = await listExperienceDrafts()
-    await migrateLegacyCharacterDraft(experiences)
-    const characters = (await characterDrafts.list()).map(migrateCharacterDraft)
+    const characters = await listCharacterDrafts()
     const ids = new Set([...experiences.map(({ id }) => id), ...characters.map(({ id }) => id)])
     return [...ids].map((id) => ({
       id,
@@ -205,7 +216,11 @@ export function createApplication(document: Document) {
       }))),
     })))
     if (refreshed) draft = { ...draft, variants }
-    if (draft !== existing) await characterDrafts.put(draft)
+    if (draft !== existing) draft = await characterDrafts.put({
+      ...draft,
+      revision: existing.revision + 1,
+      updatedAt: Math.max(Date.now(), existing.updatedAt + 1),
+    })
     return draft
   }
 
@@ -219,7 +234,6 @@ export function createApplication(document: Document) {
       expectedVersion: entry.version,
       expectedStatus: entry.status,
     })
-    await characterDrafts.delete(draftId)
   }
 
   const selectCharacterPack = async (draftId: string, expectedRevision: number, packId: string, packVersion: number) => {
@@ -255,6 +269,14 @@ export function createApplication(document: Document) {
     return { bundleId: bundle.record.id, contractVersion: bundle.record.identity.contractVersion, ...bundle.record.metadata }
   }
   const application = {
+    async loadCharacterLibrary() {
+      return {
+        webmcpAvailable: agent.isAvailable(),
+        characters: (await listCharacterDrafts()).map(({ id, name, revision, updatedAt, published }) => ({
+          id, name, revision, updatedAt, published,
+        })),
+      }
+    },
     async loadStartup() {
       const [startup, pendingReview, drafts] = await Promise.all([
         loadCompanionStartup(agent, bundles, createIndexedDbEntryRepository),
@@ -270,8 +292,8 @@ export function createApplication(document: Document) {
       const authoringDrafts = drafts.map(({ id, character, experience }) => ({
         id,
         name: character?.name ?? experience?.story?.direction.name ?? 'Untitled Companion',
-        status: character?.approvedAt && experience?.character ? 'experience' as const : 'character' as const,
-        destination: workspacePath(character?.approvedAt && experience?.character ? 'create' : 'character-expressions', id),
+        status: character?.published && experience?.character ? 'experience' as const : 'character' as const,
+        destination: workspacePath(character?.published && experience?.character ? 'create' : 'character-expressions', id),
       }))
       if (startup.savedCompanions.length) void requestPersistentStorage(document.defaultView?.navigator.storage)
       if (startup.status !== 'main') return { ...startup, pendingReview, authoringDrafts }
@@ -302,35 +324,27 @@ export function createApplication(document: Document) {
     },
     listStarters: loadStarters,
     openExperienceDraft,
-    async startCreation(characterChoice: StarterCharacterSelection, storyChoice: StarterStorySelection) {
+    async createCharacter(characterChoice: StarterCharacterSelection) {
       const packages = await loadStarters()
-      const findPackage = (choice: Exclude<StarterCharacterSelection | StarterStorySelection, null>) => {
+      const findPackage = (choice: Exclude<StarterCharacterSelection, null>) => {
         const loaded = packages.find(({ starter }) => starter.id === choice.starterId && starter.version === choice.starterVersion)
         if (!loaded) throw new Error(`Starter not found: ${choice.starterId}@${choice.starterVersion}`)
         return loaded
       }
-      const experience = storyChoice
-        ? createExperienceDraftData(findPackage(storyChoice), storyChoice.directionId)
-        : createBlankExperienceDraftData()
-      const result = await (await getAuthoringRuntime()).invokeTrigger<Entry>({
-        trigger: 'select-experience-draft',
-        input: experience,
-        ctx: { user: null, staff: null, env: {} },
-      })
-      if (!result.ok) throw new Error(result.diagnostic.message ?? 'Experience Draft could not be saved')
-      const savedExperience = toExperienceDraft(result.data)
       const character = characterChoice
-        ? createCharacterDraftFromStarter(findPackage(characterChoice), characterChoice.stateId, savedExperience.id)
-        : createCharacterDraft(undefined, savedExperience.id)
-      await characterDrafts.put(character)
+        ? createCharacterDraftFromStarter(findPackage(characterChoice), characterChoice.stateId)
+        : createCharacterDraft()
+      const saved = await characterDrafts.create(character)
       await requestPersistentStorage(browser?.navigator.storage)
-      return savedExperience
+      return saved
     },
     openCharacterDraft,
     async updateCharacterDraft(draft: CharacterDraft) {
-      const next = { ...draft, approvedAt: undefined, updatedAt: Math.max(Date.now(), draft.updatedAt + 1) }
-      await characterDrafts.put(next)
-      return next
+      return characterDrafts.put({
+        ...draft,
+        revision: draft.revision + 1,
+        updatedAt: Math.max(Date.now(), draft.updatedAt + 1),
+      })
     },
     async saveCharacterAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string, source: 'user' | 'agent' = 'user') {
       return saveCharacterDraftAsset(characterDrafts, inspectCharacterImage, draft, target, blob, filename, source)
@@ -366,28 +380,20 @@ export function createApplication(document: Document) {
       }
     },
     selectCharacterPack,
-    async approveCharacterDraft(draftId: string, selectForAuthoring = false) {
-      let draft = await characterDrafts.get(draftId)
+    async approveCharacterDraft(draftId: string) {
+      const draft = await characterDrafts.get(draftId)
       if (!draft) throw new Error('Character draft not found')
-      const pack = buildCharacterDraftResources(draft).pack
-      const existing = (await characterPacks.list()).find(({ pack: saved }) => saved.id === pack.id && saved.version === pack.version)
-      if (existing && (existing.name !== draft.name.trim() || JSON.stringify(existing.pack) !== JSON.stringify(pack))) {
-        draft = { ...draft, packId: `character-${crypto.randomUUID()}` }
-        await characterDrafts.put(draft)
-      }
-      let installed: { id: string; version: number }
-      if (existing && existing.pack.id === draft.packId) {
-        await loadInstalledCharacterPackResources(characterPacks, inspectCharacterImage, { packId: existing.pack.id, packVersion: existing.pack.version })
-        installed = { id: existing.pack.id, version: existing.pack.version }
-      } else installed = await installCharacterDraft(characterPacks, inspectCharacterImage, draft)
-      if (selectForAuthoring) {
-        const experience = await openExperienceDraft(draftId)
-        if (!experience) throw new Error('Experience Draft not found')
-        await selectCharacterPack(experience.id, experience.revision, installed.id, installed.version)
-      }
-      const approved = { ...draft, approvedAt: Date.now(), updatedAt: Date.now() }
-      await characterDrafts.put(approved)
-      return approved
+      if (draft.published?.revision === draft.revision) return draft
+      const priorVersions = (await characterPacks.list()).filter(({ pack }) => pack.id === draft.packId).map(({ pack }) => pack.version)
+      const nextVersion = Math.max(draft.published?.version ?? 0, ...priorVersions, 0) + 1
+      await installCharacterDraft(characterPacks, inspectCharacterImage, draft, nextVersion)
+      const revision = draft.revision + 1
+      return characterDrafts.put({
+        ...draft,
+        revision,
+        published: { version: nextVersion, revision },
+        updatedAt: Math.max(Date.now(), draft.updatedAt + 1),
+      })
     },
     async approveCandidate(bundleId: string, approved: true) {
       return approveStagedCandidate(bundles, bundleId, approved)
@@ -409,15 +415,12 @@ export function createApplication(document: Document) {
       await bundles.deleteSaved(bundleId)
     },
     deleteAuthoringDraft,
+    deleteCharacter: (characterId: string) => characterDrafts.delete(characterId),
     async exportCharacterDraft(draftId: string) {
       const draft = await characterDrafts.get(draftId)
       if (!draft) throw new Error('Character draft not found')
       const current = migrateCharacterDraft(draft)
-      return exportCharacterDraftZip(
-        current,
-        await openExperienceDraft(draftId),
-        await compileAuthoringAtlas(current),
-      )
+      return exportCharacterDraftZip(current, null, await compileAuthoringAtlas(current))
     },
     async submitAction(actionId: string, expectedRevision: number, idempotencyKey: string = crypto.randomUUID()) {
       const { bundleId, runId, contractVersion } = await active()
@@ -442,31 +445,19 @@ export function createApplication(document: Document) {
     exportData: exportPortableBundle,
     async prepareImport(blob: Blob) {
       const kind = companionArchiveKind(new Uint8Array(await blob.arrayBuffer()))
-      if (kind === 'portable') return { kind: 'candidate' as const, preview: await stagePortableBundle(blob) }
+      if (kind === 'portable') throw new Error('This build imports Character ZIP files only')
       const imported = await readCharacterDraftZip(blob, inspectCharacterImage)
-      const experience = imported.experience
-        ? { schemaVersion: 1 as const, revision: 0, character: null, story: structuredClone(imported.experience.story) }
-        : createBlankExperienceDraftData()
-      const result = await (await getAuthoringRuntime()).invokeTrigger<Entry>({
-        trigger: 'select-experience-draft',
-        input: experience,
-        ctx: { user: null, staff: null, env: {} },
+      const duplicateIdentity = (await listCharacterDrafts()).some(({ packId }) => packId === imported.draft.packId)
+      const saved = await characterDrafts.create({
+        ...imported.draft,
+        id: crypto.randomUUID(),
+        revision: 0,
+        ...(duplicateIdentity ? { packId: `character-${crypto.randomUUID()}` } : {}),
+        published: undefined,
+        updatedAt: Date.now(),
       })
-      if (!result.ok) throw new Error(result.diagnostic.message ?? 'Experience Draft could not be restored')
-      const savedExperience = toExperienceDraft(result.data)
-      try {
-        await characterDrafts.put({ ...imported.draft, id: savedExperience.id, updatedAt: Date.now() })
-      } catch (error) {
-        await createIndexedDbEntryRepository(AUTHORING_NAMESPACE).delete({
-          id: savedExperience.id,
-          collection: 'experience-drafts',
-          expectedVersion: result.data.version,
-          expectedStatus: result.data.status,
-        })
-        throw error
-      }
       await requestPersistentStorage(browser?.navigator.storage)
-      return { kind: 'draft' as const, draftId: savedExperience.id }
+      return { kind: 'draft' as const, draftId: saved.id }
     },
   }
   async function createLocalCompanion(rawInput: unknown) {
@@ -640,14 +631,14 @@ export function createApplication(document: Document) {
           id,
           name: draftCharacter?.name ?? draftExperience?.story?.direction.name ?? 'Untitled Companion',
           updatedAt: Math.max(draftCharacter?.updatedAt ?? 0, draftExperience?.updatedAt ?? 0),
-          characterReady: Boolean(draftCharacter?.approvedAt),
+          characterReady: Boolean(draftCharacter?.published),
           experienceReady: Boolean(draftExperience?.character),
         })),
         characterDraft: character ? {
           id: character.id,
           name: character.name,
           updatedAt: character.updatedAt,
-          approved: Boolean(character.approvedAt),
+          approved: Boolean(character.published),
           selected: character.selected,
           missingTargets: missingCharacterTargets,
         } : null,
