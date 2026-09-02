@@ -3,6 +3,33 @@ import { CHARACTER_RIG, type CharacterAssetInspection, type ResolvedCharacterLay
 
 const hex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
 
+export function characterPixelStats(pixels: Uint8ClampedArray, width: number, height: number) {
+  let transparent = false
+  let visiblePixelCount = 0
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+  for (let index = 3; index < pixels.length; index += 4) {
+    if (pixels[index] < 255) transparent = true
+    if (pixels[index] > 0) {
+      visiblePixelCount++
+      const pixel = (index - 3) / 4
+      const x = pixel % width
+      const y = Math.floor(pixel / width)
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
+    }
+  }
+  return {
+    transparent,
+    visiblePixelCount,
+    ...(visiblePixelCount ? { visibleBounds: { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 } } : {}),
+  }
+}
+
 export async function inspectCharacterImage(blob: Blob): Promise<CharacterAssetInspection> {
   if (blob.type !== 'image/png') throw new Error('Character asset must be PNG')
   const bytes = new Uint8Array(await blob.arrayBuffer())
@@ -16,35 +43,15 @@ export async function inspectCharacterImage(blob: Blob): Promise<CharacterAssetI
   context.drawImage(bitmap, 0, 0)
   bitmap.close()
   const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
-  let transparent = false
-  let visible = false
-  let visiblePixelCount = 0
-  let minX = canvas.width
-  let minY = canvas.height
-  let maxX = -1
-  let maxY = -1
-  for (let index = 3; index < pixels.length; index += 4) {
-    if (pixels[index] < 255) transparent = true
-    if (pixels[index] > 0) {
-      visible = true
-      visiblePixelCount++
-      const pixel = (index - 3) / 4
-      const x = pixel % canvas.width
-      const y = Math.floor(pixel / canvas.width)
-      minX = Math.min(minX, x)
-      minY = Math.min(minY, y)
-      maxX = Math.max(maxX, x)
-      maxY = Math.max(maxY, y)
-    }
-  }
+  const stats = characterPixelStats(pixels, canvas.width, canvas.height)
   return {
     width: canvas.width,
     height: canvas.height,
-    hasTransparentPixels: transparent,
-    hasVisiblePixels: visible,
+    hasTransparentPixels: stats.transparent,
+    hasVisiblePixels: stats.visiblePixelCount > 0,
     genuineRgba: png && bytes[25] === 6,
-    ...(visible ? { visibleBounds: { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 } } : {}),
-    visiblePixelCount,
+    ...(stats.visibleBounds ? { visibleBounds: stats.visibleBounds } : {}),
+    visiblePixelCount: stats.visiblePixelCount,
     size: blob.size,
     sha256: hex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))),
   }

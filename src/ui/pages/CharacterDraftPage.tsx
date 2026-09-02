@@ -5,7 +5,7 @@ import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
 
 import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterRegistrationFrame, hasCurrentCharacterLayer, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, transformCharacterBounds } from '@/core/application/character-creation.ts'
 import { workspacePath, type WorkspaceDestination } from '@/core/application/workspace.ts'
-import { IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetTarget, type CharacterDraft, type CharacterDraftVariant, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
+import { IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetTarget, type CharacterDraft, type CharacterDraftVariant, type CharacterTextureAtlas, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
 import { CharacterAlignmentRenderer, CharacterAssetImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
 import { DataControls } from '@/ui/DataControls'
@@ -30,12 +30,13 @@ const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
 }
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
 
-export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, autoFitVariant, exportDraft, onReview }: {
+export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, autoFitVariant, compileAtlas, exportDraft, onReview }: {
   openDraft(): Promise<CharacterDraft>
   updateDraft(draft: CharacterDraft): Promise<CharacterDraft>
   saveAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string): Promise<CharacterDraft>
   setVariantTransform(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string, transform: CharacterVariantTransform): Promise<CharacterDraft>
   autoFitVariant(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string): Promise<CharacterDraft>
+  compileAtlas(draft: CharacterDraft): Promise<CharacterTextureAtlas | undefined>
   exportDraft(): Promise<Blob>
   onReview(draft: CharacterDraft): Promise<void>
 }) {
@@ -48,8 +49,10 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   const [loadError, setLoadError] = useState(false)
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
+  const [compiled, setCompiled] = useState<{ updatedAt: number; atlas?: CharacterTextureAtlas }>()
   const [selectedVariantKey, setSelectedVariantKey] = useState<string>()
   const [alignmentMode, setAlignmentMode] = useState<'composite' | 'overlay' | 'difference' | 'diagnostic'>('overlay')
+  const compiledAt = useRef<number | undefined>(undefined)
   const drag = useRef<{
     draft: CharacterDraft
     group: CharacterVariantGroup
@@ -75,6 +78,19 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
       window.removeEventListener('character-draft-updated', refresh)
     }
   }, [openDraft])
+
+  useEffect(() => {
+    if (!draft || compiledAt.current === draft.updatedAt) return
+    compiledAt.current = draft.updatedAt
+    let active = true
+    void compileAtlas(draft)
+      .then((atlas) => { if (active) setCompiled({ updatedAt: draft.updatedAt, atlas }) })
+      .catch((caught) => {
+        console.error('Character atlas compile failed', caught)
+        if (active) setCompiled({ updatedAt: draft.updatedAt })
+      })
+    return () => { active = false }
+  }, [compileAtlas, draft])
 
   if (!step || step === 'identity' || step === 'accessories') return <Navigate to={workspacePath('character-expressions', draftId)} state={location.state} replace />
   if (!category) return <Navigate to={workspacePath('character-expressions', draftId)} state={location.state} replace />
@@ -213,7 +229,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                 referenceBounds={referenceBounds}
                 footLine={registration.footLine}
               />
-            : <CharacterRenderer label={draft.name} layers={previewLayers} />}</div>
+            : <CharacterRenderer label={draft.name} layers={previewLayers} atlas={compiled?.updatedAt === draft.updatedAt ? compiled.atlas : undefined} />}</div>
         </div>
         {selectedVariant && <div className="mt-2 grid grid-cols-4 gap-1" aria-label={t('characterDraft.alignment.label')}>
           {(['composite', 'overlay', 'difference', 'diagnostic'] as const).map((mode) => <Button key={mode} type="button" size="sm" variant={alignmentMode === mode ? 'secondary' : 'ghost'} className="h-7 px-1 text-[10px] sm:text-xs" onClick={() => setAlignmentMode(mode)}>{t(`characterDraft.alignment.${mode}`)}</Button>)}

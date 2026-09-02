@@ -1,6 +1,6 @@
-import type { CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
-import { CHARACTER_RIG, IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetInspection, type CharacterVariantTransform } from '@/core/domain/character'
+import { CHARACTER_RIG, IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetInspection, type CharacterTextureAtlas, type CharacterVariantTransform } from '@/core/domain/character'
 import { BlobImage, CrossfadeBlobImage } from '@/ui/BlobImage'
 import { cn } from '@/ui/lib/utils'
 
@@ -26,11 +26,44 @@ const Layers = ({ layers, style }: { layers: Layer[]; style?: CSSProperties }) =
   style={layerStyle(layer, style)}
 />)
 
-export function CharacterRenderer({ label, layers, className }: { label: string; layers: Layer[]; className?: string }) {
+function AtlasLayers({ atlas, layers }: { atlas: CharacterTextureAtlas; layers: Layer[] }) {
+  const host = useRef<HTMLDivElement>(null)
+  const [ready, setReady] = useState(false)
+  const frameIds = layers.map(({ id }) => id).join('\n')
+
+  useEffect(() => {
+    let disposed = false
+    let dispose = () => {}
+    // oxlint-disable-next-line react/set-state-in-effect -- Pixi owns an external canvas lifecycle.
+    setReady(false)
+    void (async () => {
+      const { mountCharacterTextureAtlas } = await import('@/adapters/browser/pixi-character-atlas')
+      if (disposed || !host.current) return
+      const cleanup = await mountCharacterTextureAtlas(host.current, atlas, frameIds.split('\n'))
+      if (disposed) return cleanup()
+      dispose = cleanup
+      setReady(true)
+    })().catch((error) => {
+      dispose()
+      console.error('Character atlas render failed', error)
+    })
+    return () => {
+      disposed = true
+      dispose()
+    }
+  }, [atlas, frameIds])
+
+  return <>
+    {!ready && <Layers layers={layers} />}
+    <div ref={host} aria-hidden="true" className="absolute inset-0" />
+  </>
+}
+
+export function CharacterRenderer({ label, layers, atlas, className }: { label: string; layers: Layer[]; atlas?: CharacterTextureAtlas; className?: string }) {
   return (
     <div className={cn('relative aspect-2/3 w-full overflow-hidden rounded-3xl border bg-muted/40', className)} role="img" aria-label={label}>
       {!layers.length && <div className="absolute inset-0 p-8"><CharacterSlotPlaceholder src="/assets/character-slots/body-base.png" /></div>}
-      <Layers layers={layers} />
+      {atlas && layers.length ? <AtlasLayers atlas={atlas} layers={layers} /> : <Layers layers={layers} />}
     </div>
   )
 }

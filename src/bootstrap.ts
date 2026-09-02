@@ -40,6 +40,7 @@ import {
   characterAssetPlacement,
   characterHeadRegistration,
   characterRegistrationFrame,
+  resolveCharacterDraftAtlasSources,
   resolveCharacterDraftReferenceLayers,
   setCharacterVariantTransform,
   transformCharacterBounds,
@@ -49,6 +50,7 @@ import {
 } from './core/application/character-creation.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
 import { inspectCharacterImage, readCharacterAlphaMask, readCharacterVisualSample, renderCharacterCompositeDataUrl } from './adapters/browser/character-image.ts'
+import { compileCharacterTextureAtlas } from './adapters/browser/character-atlas.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
 import { planItemEffects } from './core/application/items.ts'
@@ -88,6 +90,12 @@ export function createApplication(document: Document) {
   const characterDrafts = createIndexedDbCharacterDraftRepository()
   const characterPacks = createIndexedDbCharacterPackLibraryRepository()
   const browser = document.defaultView
+  let runtimeAtlas: { key: string; value: ReturnType<typeof compileCharacterTextureAtlas> } | undefined
+  const compileRuntimeAtlas = (bundleId: string, layers: NonNullable<Awaited<ReturnType<typeof loadCharacterProjection>>>) => {
+    const key = `${bundleId}:${layers.map(({ id, transform }) => `${id}:${transform.x}:${transform.y}:${transform.scale}`).join('|')}`
+    if (runtimeAtlas?.key !== key) runtimeAtlas = { key, value: compileCharacterTextureAtlas(layers) }
+    return runtimeAtlas.value
+  }
   let starterPackages: ReturnType<typeof loadStarterCatalog> | undefined
   const loadStarters = () => starterPackages ??= loadStarterCatalog(
     browser?.fetch.bind(browser) ?? fetch,
@@ -261,17 +269,19 @@ export function createApplication(document: Document) {
       if (startup.savedCompanions.length) void requestPersistentStorage(document.defaultView?.navigator.storage)
       if (startup.status !== 'main') return { ...startup, pendingReview, authoringDrafts }
       const entries = createIndexedDbEntryRepository(startup.bundleId)
+      const character = await loadCharacterProjection(
+        entries,
+        createIndexedDbAssetRepository,
+        startup.bundleId,
+        inspectCharacterImage,
+        startup.stage.scene?.characterStateId,
+      )
       return {
         ...startup,
         pendingReview,
         authoringDrafts,
-        character: await loadCharacterProjection(
-          entries,
-          createIndexedDbAssetRepository,
-          startup.bundleId,
-          inspectCharacterImage,
-          startup.stage.scene?.characterStateId,
-        ),
+        character,
+        characterAtlas: character ? await compileRuntimeAtlas(startup.bundleId, character) : undefined,
         ...(startup.stage.scene?.compositionId ? {
           scene: await loadSceneProjection(
             entries,
@@ -335,6 +345,7 @@ export function createApplication(document: Document) {
       return setCharacterVariantTransform(characterDrafts, draft.id, group, variantId, draft.updatedAt, transform)
     },
     prepareCharacter: (draft: CharacterDraft) => reviewCharacterDraft(inspectCharacterImage, draft),
+    compileCharacterAtlas: (draft: CharacterDraft) => compileCharacterTextureAtlas(resolveCharacterDraftAtlasSources(draft)),
     listCharacterPacks: () => listInstalledCharacterPacks(characterPacks, inspectCharacterImage),
     async inspectCreation(draftId: string) {
       const { draft, character, candidate } = await resolveLocalCreation(draftId)
@@ -394,7 +405,12 @@ export function createApplication(document: Document) {
     async exportCharacterDraft(draftId: string) {
       const draft = await characterDrafts.get(draftId)
       if (!draft) throw new Error('Character draft not found')
-      return exportCharacterDraftZip(migrateCharacterDraft(draft), await openExperienceDraft(draftId))
+      const current = migrateCharacterDraft(draft)
+      return exportCharacterDraftZip(
+        current,
+        await openExperienceDraft(draftId),
+        await compileCharacterTextureAtlas(resolveCharacterDraftAtlasSources(current)),
+      )
     },
     async submitAction(actionId: string, expectedRevision: number, idempotencyKey: string = crypto.randomUUID()) {
       const { bundleId, runId, contractVersion } = await active()

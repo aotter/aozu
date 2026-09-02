@@ -106,6 +106,7 @@ export function AppRoutes({ application }: { application: Application }) {
     saveAsset={application.saveCharacterAsset}
     setVariantTransform={application.setCharacterVariantTransform}
     autoFitVariant={application.autoFitCharacterVariant}
+    compileAtlas={application.compileCharacterAtlas}
     exportDraft={() => application.exportCharacterDraft(draftId)}
     onReview={(draft) => prepareCharacterReview(application.prepareCharacter(draft))}
   /> : <Navigate to="/start" replace />
@@ -184,6 +185,7 @@ export function AppRoutes({ application }: { application: Application }) {
       dialogue={startup.dialogue}
       pendingTurns={startup.pendingTurns}
       character={startup.character}
+      characterAtlas={startup.characterAtlas}
       scene={startup.scene}
       onAction={async (actionId) => { await application.submitAction(actionId, startup.stage.revision); await refresh() }}
       onText={async (text) => { await application.submitText(text, startup.stage.revision); await refresh() }}
