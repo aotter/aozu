@@ -22,7 +22,8 @@ const repository = {
   },
 }
 let submittedInput: unknown
-let characterInput: unknown
+let replacementInput: unknown
+let repairInput: unknown
 let transformInput: unknown
 const runtime = await bootMantleRuntime({
   plan: compileAuthoringBackbone(),
@@ -38,8 +39,12 @@ const runtime = await bootMantleRuntime({
     'companion.create-local-companion': async () => ({ status: 'ok', data: { bundleId: 'bundle:local' } }),
     'companion.inspect-experience-contract': async () => ({ status: 'ok', data: {} }),
     'companion.inspect-character-contract': async () => ({ status: 'ok', data: {} }),
-    'companion.submit-character-asset-candidate': async (input) => {
-      characterInput = input
+    'companion.replace-character-asset': async (input) => {
+      replacementInput = input
+      return { status: 'ok', data: {} }
+    },
+    'companion.repair-character-asset': async (input) => {
+      repairInput = input
       return { status: 'ok', data: {} }
     },
     'companion.set-character-variant-transform': async (input) => {
@@ -106,24 +111,27 @@ assert.equal((await runtime.invokeTrigger({ trigger: 'inspect-character-contract
 const character = {
   characterId: 'character:triggered',
   group: 'body', variantId: 'base', label: 'Base', layer: 'body',
-  expectedRevision: 1, expectedEditSourceSha256: null,
+  expectedRevision: 1, expectedAssetSha256: null,
   filename: 'base.png', dataUrl: 'data:image/png;base64,AAAA',
 }
-assert.equal((await runtime.invokeTrigger({ trigger: 'submit-character-asset-candidate', input: character, ctx: context })).ok, true)
-assert.deepEqual(characterInput, character)
-characterInput = undefined
+assert.equal((await runtime.invokeTrigger({ trigger: 'replace-character-asset', input: character, ctx: context })).ok, true)
+assert.deepEqual(replacementInput, character)
+replacementInput = undefined
 const normalizedCharacter = { ...character, normalization: { resize: 'exact-aspect-downscale', align: 'none' } }
-assert.equal((await runtime.invokeTrigger({ trigger: 'submit-character-asset-candidate', input: normalizedCharacter, ctx: context })).ok, true)
-assert.deepEqual(characterInput, normalizedCharacter)
-characterInput = undefined
+assert.equal((await runtime.invokeTrigger({ trigger: 'replace-character-asset', input: normalizedCharacter, ctx: context })).ok, true)
+assert.deepEqual(replacementInput, normalizedCharacter)
+replacementInput = undefined
 assert.equal((await runtime.invokeTrigger({
-  trigger: 'submit-character-asset-candidate', input: { ...character, normalization: { resize: 'crop', align: 'none' } }, ctx: context,
+  trigger: 'replace-character-asset', input: { ...character, normalization: { resize: 'crop', align: 'none' } }, ctx: context,
 })).ok, false)
-assert.equal(characterInput, undefined)
+assert.equal(replacementInput, undefined)
 assert.equal((await runtime.invokeTrigger({
-  trigger: 'submit-character-asset-candidate', input: { ...character, group: 'hat' }, ctx: context,
+  trigger: 'replace-character-asset', input: { ...character, group: 'hat' }, ctx: context,
 })).ok, false)
-assert.equal(characterInput, undefined)
+assert.equal(replacementInput, undefined)
+const repair = { ...character, group: 'expression', variantId: 'happy', layer: 'head', expectedAssetSha256: 'a'.repeat(64) }
+assert.equal((await runtime.invokeTrigger({ trigger: 'repair-character-asset', input: repair, ctx: context })).ok, true)
+assert.deepEqual(repairInput, repair)
 const transform = { characterId: 'character:triggered', group: 'expression', variantId: 'happy', expectedRevision: 1, x: 2, y: -3, scale: 1.01 }
 assert.equal((await runtime.invokeTrigger({ trigger: 'set-character-variant-transform', input: transform, ctx: context })).ok, true)
 assert.deepEqual(transformInput, transform)

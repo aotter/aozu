@@ -115,7 +115,7 @@ assert.equal(characterRegistrationFrame(draft).head?.variantId, 'happy')
 assert.equal(characterRegistrationFrame(draft).head?.calibration.rebasesCurrentExpressions, true)
 assert.equal(characterRegistrationFrame(draft).editableRegions.expression?.basis, 'head-anchor')
 assert.equal(characterRegistrationFrame(draft).editableRegions.expression?.shape.kind, 'ellipse')
-assert.equal(characterRegistrationFrame(draft).editableRegions.outfit?.shape.kind, 'outside-ellipse')
+assert.equal(characterRegistrationFrame(draft).editableRegions.outfit?.shape.kind, 'outside-rectangle')
 const raincoatAsset = {
   ...asset,
   filename: 'raincoat.png',
@@ -128,14 +128,15 @@ assert.equal(raincoatSources.current, true)
 assert.equal(raincoatSources.editSource?.filename, 'raincoat.png')
 assert.equal(raincoatSources.alignmentReference?.filename, 'sprite.png')
 raincoatAsset.canonicalSha256 = 'c'.repeat(64)
-assert.equal(resolveCharacterAssetSources(raincoatDraft, { group: 'outfit', variantId: 'outfit-1', layer: 'body' }).editSource?.filename, 'sprite.png')
+assert.equal(resolveCharacterAssetSources(raincoatDraft, { group: 'outfit', variantId: 'outfit-1', layer: 'body' }).editSource, undefined)
 const fallbackRegistration = characterRegistrationFrame({
   ...draft,
   headRegistration: undefined,
   variants: draft.variants.filter(({ group }) => group !== 'expression'),
 })
 assert.equal(fallbackRegistration.editableRegions.expression?.basis, 'body-bounds-fallback')
-assert.ok((fallbackRegistration.editableRegions.outfit?.shape.rx ?? 0) > 0)
+assert.equal(fallbackRegistration.editableRegions.outfit?.shape.kind, 'outside-rectangle')
+assert.equal(resolveCharacterAssetSources({ ...draft, headRegistration: undefined }, { group: 'expression', variantId: 'sad', layer: 'head' }).editSource, undefined)
 const preview = await reviewCharacterDraft(async () => inspection, draft)
 assert.equal(preview.source, 'character')
 assert.equal('bundleId' in preview, false)
@@ -321,14 +322,6 @@ const stitchedEdit = stitchCharacterEditPixels(protectedReference, editProposal,
 assert.equal(stitchedEdit.rgba[(2 * 64 + 2) * 4], 64)
 assert.equal(stitchedEdit.rgba[(24 * 64 + 32) * 4], 255)
 assert.equal(measureProtectedRegionDelta(protectedReference, stitchedEdit, protectedRegion)?.protectedChangeRatio, 0)
-const outsideEllipseRegion = { ...protectedRegion, shape: { ...protectedRegion.shape, kind: 'outside-ellipse' as const } }
-const outsideEllipseProposal = structuredClone(protectedReference)
-outsideEllipseProposal.rgba[0] = 255
-outsideEllipseProposal.rgba[(24 * outsideEllipseProposal.width + 32) * 4] = 255
-const outsideEllipseStitch = stitchCharacterEditPixels(protectedReference, outsideEllipseProposal, outsideEllipseRegion)
-assert.equal(outsideEllipseStitch.rgba[0], 255)
-assert.equal(outsideEllipseStitch.rgba[(24 * outsideEllipseStitch.width + 32) * 4], 64)
-assert.equal(measureProtectedRegionDelta(protectedReference, outsideEllipseStitch, outsideEllipseRegion)?.changedPixels, 0)
 const transformed = setCharacterVariantTransform(savedDraft, 'expression', 'happy', { x: 2, y: -3, scale: 0.505 })
 assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 2, y: -3, scale: 0.505 })
 assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'angry')?.transform, { x: 2, y: -3, scale: 0.505 })

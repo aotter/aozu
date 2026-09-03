@@ -18,6 +18,7 @@ function CharacterEditor({ application, refresh }: { application: Application; r
     fitSuggestion={application.characterFitSuggestion}
     compileAtlas={application.compileCharacterAtlas}
     exportCharacter={() => application.exportCharacter(characterId)}
+    replaceAsset={(target, blob) => application.replaceCharacterAsset(characterId, target, blob)}
     deleteCharacter={async () => {
       await application.deleteCharacter(characterId)
       await refresh()

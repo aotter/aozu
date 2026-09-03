@@ -176,12 +176,13 @@ export function renderCharacterEditMaskDataUrl(region: CharacterEditableRegion) 
   const context = canvas.getContext('2d')
   if (!context) throw new Error('Canvas is unavailable')
   context.fillStyle = '#fff'
-  if (region.shape.kind !== 'outside-ellipse') {
+  const outside = region.shape.kind === 'outside-rectangle'
+  if (!outside) {
     context.fillRect(0, 0, canvas.width, canvas.height)
     context.globalCompositeOperation = 'destination-out'
   }
   context.beginPath()
-  if (region.shape.kind !== 'rectangle') {
+  if (region.shape.kind === 'ellipse') {
     context.ellipse(region.shape.cx, region.shape.cy, region.shape.rx, region.shape.ry, 0, 0, Math.PI * 2)
   } else {
     context.rect(region.shape.x, region.shape.y, region.shape.width, region.shape.height)
