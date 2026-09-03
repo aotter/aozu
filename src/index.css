@@ -422,19 +422,20 @@ body::before {
   }
 }
 
-/* The hovered card rises and grows about the fan pivot; its neighbours part to make room. */
-.companion-card:hover,
+/* The active card rises and grows about the fan pivot; its neighbours part to make room.
+   data-fan is set from the pointer's x position, since :hover cannot reach a card the raised one covers. */
+.companion-card[data-fan="active"],
 .companion-card:focus-within {
   --lift: 1.14;
   z-index: 20;
   filter: brightness(1.06) drop-shadow(0 0 1.1rem rgb(232 187 83 / 45%));
 }
 
-.companion-card:is(:hover, :focus-within) ~ .companion-card {
+.companion-card[data-fan="after"] {
   --push-x: 2.4rem;
 }
 
-.companion-card:has(~ .companion-card:is(:hover, :focus-within)) {
+.companion-card[data-fan="before"] {
   --push-x: -2.4rem;
 }
 

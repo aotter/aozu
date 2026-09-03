@@ -1,5 +1,5 @@
 import { CopyIcon, PlusIcon, Trash2Icon } from 'lucide-react'
-import { useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { CharacterDraft, ResolvedCharacterLayer } from '@/core/domain/character.ts'
@@ -18,6 +18,8 @@ import {
   AlertDialogTitle,
 } from '@/ui/components/ui/alert-dialog'
 
+// Fan geometry from the Design branch: 48px spread, 7px sag, 4.25° per step from the middle card.
+const FAN_SPREAD = 48
 export type CharacterLibraryItem = Pick<CharacterDraft, 'id' | 'name' | 'updatedAt'> & {
   /** The persisted Mantle entry version, projected together with `updatedAt` from one settled snapshot. */
   revision: number
@@ -39,6 +41,9 @@ export function CharacterLibraryPage({ characters, createCharacter, openCharacte
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [deleting, setDeleting] = useState<CharacterLibraryItem>()
+  // Overlapping, scaled cards make :hover unreliable (the raised card covers its neighbour), so the active
+  // card is whichever rest-position band the pointer's x falls in — the card-game way.
+  const [active, setActive] = useState<number>()
 
   const run = async (task: () => Promise<unknown>) => {
     setBusy(true); setError(undefined)
@@ -49,7 +54,15 @@ export function CharacterLibraryPage({ characters, createCharacter, openCharacte
 
   const fanned = characters.slice(0, 9)
   const overflow = characters.slice(9)
-  const card = (character: CharacterLibraryItem, style?: CSSProperties) => <article key={character.id} role="listitem" className="companion-card" style={style}>
+  const fanMiddle = (fanned.length - 1) / 2
+  const pickActive = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'touch') return
+    const { left, width } = event.currentTarget.getBoundingClientRect()
+    const index = Math.round((event.clientX - left - width / 2) / FAN_SPREAD + fanMiddle)
+    setActive(Math.max(0, Math.min(fanned.length - 1, index)))
+  }
+  const fanState = (index: number) => active === undefined ? undefined : index === active ? 'active' : index < active ? 'before' : 'after'
+  const card = (character: CharacterLibraryItem, style?: CSSProperties, fan?: 'active' | 'before' | 'after') => <article key={character.id} role="listitem" className="companion-card" data-fan={fan} style={style}>
     <button type="button" className="companion-card-open" aria-label={`${t('characters.edit')} ${character.name}`} onClick={() => openCharacter(character.id)}>
       <span className="companion-card-portrait"><CharacterRenderer label={character.name} layers={character.layers} /></span>
       <span className="companion-card-name">{character.name}</span>
@@ -82,11 +95,10 @@ export function CharacterLibraryPage({ characters, createCharacter, openCharacte
       {characters.length === 0
         ? <p className="mt-4 px-2 leading-6 text-muted-foreground">{t('characters.empty')}</p>
         : <div className="companion-fan-shell">
-          <div className="companion-fan" role="list" aria-label={t('characters.saved')}>
+          <div className="companion-fan" role="list" aria-label={t('characters.saved')} onPointerMove={pickActive} onPointerLeave={() => setActive(undefined)}>
             {fanned.map((character, index) => {
-              // Fan geometry from the Design branch: 48px spread, 7px sag, 4.25° per step from the middle card.
-              const offset = index - (fanned.length - 1) / 2
-              return card(character, { '--fan-i': index, '--fan-x': `${offset * 48}px`, '--fan-y': `${Math.abs(offset) * 7}px`, '--fan-r': `${offset * 4.25}deg` } as CSSProperties)
+              const offset = index - fanMiddle
+              return card(character, { '--fan-i': index, '--fan-x': `${offset * FAN_SPREAD}px`, '--fan-y': `${Math.abs(offset) * 7}px`, '--fan-r': `${offset * 4.25}deg` } as CSSProperties, fanState(index))
             })}
           </div>
         </div>}
