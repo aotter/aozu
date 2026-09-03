@@ -28,8 +28,8 @@ const categoryForGroup = (group: CharacterVariantGroup) => characterCategories.f
 const expressionIcons = ['happy', 'sad', 'angry', 'surprised', 'sleepy']
 const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
   if (group === 'expression') return `/assets/expression-placeholders/${expressionIcons.includes(variantId) ? variantId : 'happy'}.webp`
-  if (group === 'body') return '/assets/character-slots/body-base.png'
-  return '/assets/character-slots/body-outfit.png'
+  if (group === 'body') return '/assets/character-slots/body-base.webp'
+  return '/assets/character-slots/body-outfit.webp'
 }
 const CharacterVariantPlaceholder = ({ group, variantId, label }: { group: CharacterVariantGroup; variantId: string; label?: string }) => group === 'expression'
   ? <img className="expression-placeholder" src={characterSlotIcon(group, variantId)} alt={label ?? ''} />
@@ -349,11 +349,12 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
             type="button"
             variant={category?.id === id ? 'secondary' : 'ghost'}
             className="shrink-0"
+            title={t(`characterDraft.categories.${id}`)}
             aria-current={category?.id === id ? 'page' : undefined}
             onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${id}`)}
           >
             <AozuIcon name={icon} />
-            <span>{t(`characterDraft.categories.${id}`)}</span>
+            <span className="sr-only">{t(`characterDraft.categories.${id}`)}</span>
           </Button>)}
         </nav>}
 
