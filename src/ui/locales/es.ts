@@ -60,6 +60,13 @@ export const es: Messages = {
       conflict: 'Modificado en otro lugar',
       reload: 'Recargar',
     },
+    profile: {
+      title: 'Perfil del personaje', name: 'Nombre', description: 'Descripción', backstory: 'Historia', attributes: 'Atributos',
+      add: 'Añadir', text: 'Texto', number: 'Número', boolean: 'Sí / no', yes: 'Sí', no: 'No', value: 'Valor', update: 'Actualizar perfil',
+      attributeName: 'Nombre del atributo {{index}}', attributeType: 'Tipo del atributo {{index}}', attributeValue: 'Valor del atributo {{index}}', removeAttribute: 'Eliminar atributo {{index}}',
+      edit: 'Editar perfil del personaje', expand: 'Abrir perfil del personaje', collapse: 'Cerrar perfil del personaje',
+      noDescription: 'Aún no hay descripción.', noBackstory: 'Aún no hay historia.', noAttributes: 'Aún no hay atributos.',
+    },
     alignment: {
       label: 'Vista de alineación',
       composite: 'Compuesto',

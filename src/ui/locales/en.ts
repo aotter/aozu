@@ -63,6 +63,13 @@ export const en = {
       conflict: 'Changed elsewhere',
       reload: 'Reload',
     },
+    profile: {
+      title: 'Character profile', name: 'Name', description: 'Description', backstory: 'Backstory', attributes: 'Attributes',
+      add: 'Add', text: 'Text', number: 'Number', boolean: 'Yes / no', yes: 'Yes', no: 'No', value: 'Value', update: 'Update profile',
+      attributeName: 'Attribute {{index}} name', attributeType: 'Attribute {{index}} type', attributeValue: 'Attribute {{index}} value', removeAttribute: 'Remove attribute {{index}}',
+      edit: 'Edit character profile', expand: 'Expand character profile', collapse: 'Collapse character profile',
+      noDescription: 'No description yet.', noBackstory: 'No backstory yet.', noAttributes: 'No attributes yet.',
+    },
     alignment: {
       label: 'Alignment preview',
       composite: 'Composite',

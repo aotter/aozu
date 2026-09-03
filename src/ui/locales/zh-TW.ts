@@ -60,6 +60,13 @@ export const zhTW: Messages = {
       conflict: '已在其他地方被修改',
       reload: '重新載入',
     },
+    profile: {
+      title: '角色資料', name: '名稱', description: '簡介', backstory: '背景故事', attributes: '屬性',
+      add: '新增', text: '文字', number: '數字', boolean: '是／否', yes: '是', no: '否', value: '值', update: '更新角色資料',
+      attributeName: '屬性 {{index}} 名稱', attributeType: '屬性 {{index}} 類型', attributeValue: '屬性 {{index}} 的值', removeAttribute: '移除屬性 {{index}}',
+      edit: '編輯角色資料', expand: '展開角色資料', collapse: '收合角色資料',
+      noDescription: '尚未填寫簡介。', noBackstory: '尚未填寫背景故事。', noAttributes: '尚未設定屬性。',
+    },
     alignment: {
       label: '對齊預覽',
       composite: '合成',

@@ -8,12 +8,13 @@ import { CharacterDraftPage } from '@/ui/pages/CharacterDraftPage'
 import { CharacterLibraryPage } from '@/ui/pages/CharacterLibraryPage'
 import { StatusPage } from '@/ui/pages/StatusPage'
 
-function CharacterEditor({ application, refresh }: { application: Application; refresh(): Promise<void> }) {
+function CharacterEditor({ application, refresh, savedRevision }: { application: Application; refresh(): Promise<void>; savedRevision?: number }) {
   const navigate = useNavigate()
   const { characterId, step } = useParams()
   if (!characterId) return <Navigate to="/characters" replace />
   return <CharacterDraftPage
     editor={application.editor}
+    savedRevision={savedRevision}
     autoFitVariant={application.autoFitCharacterVariant}
     fitSuggestion={application.characterFitSuggestion}
     compileAtlas={application.compileCharacterAtlas}
@@ -62,6 +63,12 @@ export function AppRoutes({ application }: { application: Application }) {
   useEffect(() => application.editor.store.subscribe((state, previous) => {
     if (state.persistedRevision !== previous.persistedRevision) void refresh()
   }), [application, refresh])
+  useEffect(() => application.subscribeCharacterChanges(() => { void refresh() }), [application, refresh])
+  useEffect(() => {
+    const refreshWhenVisible = () => { if (document.visibilityState === 'visible') void refresh() }
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => document.removeEventListener('visibilitychange', refreshWhenVisible)
+  }, [refresh])
 
   if (loadError) return <><AppHeader webmcp={webmcp} /><StatusPage>{t('startup.error')}</StatusPage></>
   if (!library) return <><AppHeader webmcp={webmcp} /><StatusPage>{t('startup.loading')}</StatusPage></>
@@ -89,8 +96,8 @@ export function AppRoutes({ application }: { application: Application }) {
         refresh={refresh}
       />} />
       <Route path="/characters/:characterId" element={<Navigate to="expressions" replace />} />
-      <Route path="/characters/:characterId/:step" element={<CharacterEditor application={application} refresh={refresh} />} />
-      <Route path="/characters/:characterId/:step/:variantId" element={<CharacterEditor application={application} refresh={refresh} />} />
+      <Route path="/characters/:characterId/:step" element={<CharacterEditor application={application} refresh={refresh} savedRevision={character?.revision} />} />
+      <Route path="/characters/:characterId/:step/:variantId" element={<CharacterEditor application={application} refresh={refresh} savedRevision={character?.revision} />} />
       <Route path="*" element={<Navigate to="/characters" replace />} />
     </Routes>
   </>

@@ -50,6 +50,7 @@ import { inspectCharacterImage, readCharacterAlphaMask, readCharacterPixels, rea
 import { compileCharacterTextureAtlas } from './adapters/browser/character-atlas.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
+import { createCharacterWorkspaceEvents } from './adapters/browser/character-workspace-events.ts'
 import { exportCharacterDraftZip, readCharacterDraftZip } from './adapters/zip/character-draft.ts'
 import { type StarterCharacterSelection } from './core/domain/starter.ts'
 import { compileAuthoringBackbone, FIXED_BACKBONE_VERSION } from './core/mantle/backbone.ts'
@@ -105,6 +106,9 @@ const CHARACTER_WEBMCP_TRIGGERS = [
 export function createApplication(document: Document) {
   const legacyCharacterDrafts = createIndexedDbCharacterDraftRepository()
   const browser = document.defaultView
+  const characterChanges = createCharacterWorkspaceEvents(browser && 'BroadcastChannel' in browser
+    ? new browser.BroadcastChannel('aozu-character-workspaces')
+    : null)
   // Derived atlas output lives outside the tracked Character and outside the Mantle entry.
   let authoringAtlas: { key: string; value: ReturnType<typeof compileCharacterTextureAtlas> } | undefined
   const compileAuthoringAtlas = (draft: CharacterDraft) => {
@@ -141,7 +145,24 @@ export function createApplication(document: Document) {
       'companion.redo-character-change': characterHistoryTool('redo'),
     },
   })
-  const characterDrafts = createCharacterWorkspaceRepository(getAuthoringRuntime, createIndexedDbAssetRepository)
+  const storedCharacterDrafts = createCharacterWorkspaceRepository(getAuthoringRuntime, createIndexedDbAssetRepository)
+  const characterDrafts = {
+    ...storedCharacterDrafts,
+    async create(draft: CharacterDraft) {
+      const record = await storedCharacterDrafts.create(draft)
+      characterChanges.publish({ characterId: record.character.id, revision: record.version })
+      return record
+    },
+    async put(draft: CharacterDraft, expectedVersion: number) {
+      const persisted = await storedCharacterDrafts.put(draft, expectedVersion)
+      characterChanges.publish({ characterId: draft.id, revision: persisted.version })
+      return persisted
+    },
+    async delete(characterId: string) {
+      await storedCharacterDrafts.delete(characterId)
+      characterChanges.publish({ characterId, revision: null })
+    },
+  }
   const editor = createCharacterEditor(characterDrafts, createIndexedDbAssetRepository, inspectCharacterImage)
   const webmcp = createWebMcpController(document, authoringPlan, CHARACTER_WEBMCP_TRIGGERS, async (trigger, input) =>
     (await getAuthoringRuntime()).invokeTrigger({ trigger, input, ctx: invokeContext }))
@@ -192,6 +213,7 @@ export function createApplication(document: Document) {
   const application = {
     webmcp,
     editor,
+    subscribeCharacterChanges: characterChanges.subscribe,
     async loadCharacterLibrary() {
       return {
         characters: (await listCharacterDrafts()).map(({ character, version }) => ({
