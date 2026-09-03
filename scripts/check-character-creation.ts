@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { strFromU8, unzipSync, zipSync } from 'fflate'
 
-import { buildCharacterPack, characterDraftAtlasKey, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterAssetSources, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, characterDraftAtlasKey, characterHeadRegistration, characterRegistrationFrame, copyCharacter, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterAssetSources, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, stitchCharacterEditPixels, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
@@ -41,7 +41,6 @@ draft.selected = { expression: 'happy', outfit: 'outfit-1', props: ['prop-1', 'p
 draft.headRegistration = { variantId: 'happy' }
 draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.transform = { x: 2, y: -3, scale: 1.01 }
 
-const experience = { id: draft.id, schemaVersion: 1 as const, revision: 0, character: null, story: null, createdAt: 1, updatedAt: 1 }
 const atlas = {
   image: new Blob(['atlas'], { type: 'image/webp' }),
   data: {
@@ -49,12 +48,12 @@ const atlas = {
     meta: { app: 'Companion' as const, version: '1' as const, image: 'character.atlas.webp' as const, format: 'RGBA8888' as const, size: { w: 14, h: 24 }, scale: '1' as const },
   },
 }
-const draftZip = await exportCharacterDraftZip(draft, experience, atlas)
+const draftZip = await exportCharacterDraftZip(draft, atlas)
 const draftArchive = unzipSync(new Uint8Array(await draftZip.arrayBuffer()))
 const archivedDraft = JSON.parse(strFromU8(draftArchive['draft.json']!))
 const archivedPack = JSON.parse(strFromU8(draftArchive['character-pack.json']!))
 assert.equal(archivedDraft.id, draft.id)
-assert.equal(JSON.parse(strFromU8(draftArchive['experience-draft.json']!)).id, draft.id)
+assert.equal(draftArchive['experience-draft.json'], undefined)
 assert.deepEqual(archivedDraft.selected, draft.selected)
 assert.deepEqual(archivedDraft.headRegistration, draft.headRegistration)
 assert.deepEqual(archivedDraft.variants.find(({ group, id }: { group: string; id: string }) => group === 'expression' && id === 'happy').transform, { x: 2, y: -3, scale: 1.01 })
@@ -66,11 +65,10 @@ assert.equal(archivedPack.atlas.image, 'character.atlas.webp')
 assert.equal(archivedPack.assets.find(({ id }: { id: string }) => id === 'body-base-body').atlasFrame, 'body-base-body')
 const restored = await readCharacterDraftZip(draftZip, async () => inspection)
 assert.equal(restored.draft.id, draft.id)
-assert.equal(restored.draft.published, undefined)
+assert.equal('published' in restored.draft, false)
 assert.deepEqual(restored.draft.selected, draft.selected)
 assert.deepEqual(restored.draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 2, y: -3, scale: 1.01 })
 assert.equal(await restored.draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.layers.head!.blob.text(), 'sprite')
-assert.equal(restored.experience?.id, experience.id)
 const missingAssetArchive = { ...draftArchive }
 delete missingAssetArchive['assets/expression-happy-head.png']
 await assert.rejects(
@@ -79,6 +77,21 @@ await assert.rejects(
 )
 
 const pack = buildCharacterPack(draft)
+assert.equal(migrateCharacterDraft(draft), draft)
+const copied = copyCharacter(draft)
+assert.notEqual(copied.id, draft.id)
+assert.notEqual(copied.packId, draft.packId)
+assert.equal(await copied.variants[0]!.layers.body!.blob.text(), 'sprite')
+assert.equal(copied.name, 'Test Character copy')
+const migratedPublishedCharacter = migrateCharacterDraft({
+  ...draft,
+  revision: 7,
+  published: { version: 3, revision: 7 },
+})
+assert.equal('published' in migratedPublishedCharacter, false)
+assert.equal('revision' in migratedPublishedCharacter, false)
+assert.equal('revision' in restored.draft, false)
+assert.equal(await migratedPublishedCharacter.variants[0]!.layers.body!.blob.text(), 'sprite')
 assert.deepEqual(pack.defaultComposition.map(({ appearanceId }) => appearanceId), ['outfit-outfit-1', 'expression-happy', 'prop-prop-1', 'prop-prop-2'])
 assert.deepEqual(
   validateCharacterPack(pack, new Map(pack.assets.map(({ blobId }) => [blobId, inspection]))).map(({ slot }) => slot),
@@ -89,6 +102,7 @@ assert.deepEqual(resolveCharacterDraftLayers(draft).find(({ slot }) => slot === 
 assert.deepEqual(resolveCharacterDraftAtlasSources(draft).find(({ id }) => id === 'expression-happy-head')?.transform, { x: 2, y: -3, scale: 1.01 })
 const atlasKey = characterDraftAtlasKey(draft)
 assert.equal(characterDraftAtlasKey({ ...draft, name: 'Renamed', updatedAt: draft.updatedAt + 1, selected: { expression: undefined, outfit: undefined, props: [] } }), atlasKey)
+assert.equal('revision' in archivedDraft, false)
 const movedAtlasDraft = structuredClone(draft)
 movedAtlasDraft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.transform!.x += 1
 assert.notEqual(characterDraftAtlasKey(movedAtlasDraft), atlasKey)
@@ -214,47 +228,31 @@ const loaded = await loadCharacterProjection(
 )
 assert.deepEqual(loaded?.map(({ slot }) => slot), ['character-skin', 'expression-head'])
 
-let savedDraft = structuredClone(draft)
-const drafts = {
-  async list() { return [savedDraft] },
-  async get(id: string) { return id === savedDraft.id ? savedDraft : null },
-  async create(next: typeof savedDraft) { savedDraft = structuredClone(next); return savedDraft },
-  async put(next: typeof savedDraft) { savedDraft = structuredClone(next); return savedDraft },
-  async delete() {},
-}
 const replacementInspection = { ...inspection, sha256: 'b'.repeat(64), visibleBounds: { x: 40, y: 10, width: 430, height: 730 }, visiblePixelCount: 100 }
-const previousUpdatedAt = savedDraft.updatedAt
-savedDraft = await saveCharacterDraftAsset(
-  drafts,
-  async () => replacementInspection,
-  savedDraft,
+const before = structuredClone(draft)
+let savedDraft = saveCharacterDraftAsset(
+  before,
   { group: 'body', variantId: 'base', label: 'New base', layer: 'body' },
-  new Blob(['replacement'], { type: 'image/png' }),
-  'replacement.png',
-  'agent',
+  { blob: new Blob(['replacement'], { type: 'image/png' }), filename: 'replacement.png', source: 'agent', inspection: replacementInspection },
 )
-assert.ok(savedDraft.updatedAt > previousUpdatedAt)
+assert.notEqual(savedDraft, before)
+assert.equal(before.variants[0]!.layers.body!.filename, 'sprite.png')
 assert.equal(hasCurrentCharacterLayer(savedDraft, 'expression', 'happy', 'head'), false)
 assert.deepEqual(resolveCharacterDraftLayers(savedDraft).map(({ slot }) => slot), ['character-skin'])
-savedDraft = await saveCharacterDraftAsset(
-  drafts,
-  async () => ({ ...replacementInspection, sha256: 'c'.repeat(64), visibleBounds: { x: 60, y: 10, width: 390, height: 350 } }),
+assert.throws(() => saveCharacterDraftAsset(savedDraft, { group: 'body', variantId: 'other', label: 'Nope', layer: 'body' }, {
+  blob: new Blob(['x']), filename: 'x.png', source: 'agent', inspection: replacementInspection,
+}), /Unknown character asset target/)
+savedDraft = saveCharacterDraftAsset(
   savedDraft,
   { group: 'expression', variantId: 'happy', label: 'New happy', layer: 'head' },
-  new Blob(['happy'], { type: 'image/png' }),
-  'happy.png',
-  'agent',
+  { blob: new Blob(['happy'], { type: 'image/png' }), filename: 'happy.png', source: 'agent', inspection: { ...replacementInspection, sha256: 'c'.repeat(64), visibleBounds: { x: 60, y: 10, width: 390, height: 350 } } },
 )
 assert.equal(hasCurrentCharacterLayer(savedDraft, 'expression', 'happy', 'head'), true)
 assert.equal(savedDraft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.label, 'New happy')
-savedDraft = await saveCharacterDraftAsset(
-  drafts,
-  async () => ({ ...replacementInspection, sha256: 'd'.repeat(64), visibleBounds: { x: 62, y: 11, width: 388, height: 348 } }),
+savedDraft = saveCharacterDraftAsset(
   savedDraft,
   { group: 'expression', variantId: 'angry', label: 'New angry', layer: 'head' },
-  new Blob(['angry'], { type: 'image/png' }),
-  'angry.png',
-  'agent',
+  { blob: new Blob(['angry'], { type: 'image/png' }), filename: 'angry.png', source: 'agent', inspection: { ...replacementInspection, sha256: 'd'.repeat(64), visibleBounds: { x: 62, y: 11, width: 388, height: 348 } } },
 )
 const characterMask = (...rectangles: Array<{ x: number; y: number; width: number; height: number }>): CharacterAlphaMask => {
   const alpha = new Uint8Array(512 * 768)
@@ -328,16 +326,10 @@ const outsideEllipseStitch = stitchCharacterEditPixels(protectedReference, outsi
 assert.equal(outsideEllipseStitch.rgba[0], 255)
 assert.equal(outsideEllipseStitch.rgba[(24 * outsideEllipseStitch.width + 32) * 4], 64)
 assert.equal(measureProtectedRegionDelta(protectedReference, outsideEllipseStitch, outsideEllipseRegion)?.changedPixels, 0)
-const staleUpdatedAt = savedDraft.updatedAt
-const transformed = await setCharacterVariantTransform(
-  drafts,
-  savedDraft.id,
-  'expression',
-  'happy',
-  staleUpdatedAt,
-  { x: 2, y: -3, scale: 0.505 },
-)
+const transformed = setCharacterVariantTransform(savedDraft, 'expression', 'happy', { x: 2, y: -3, scale: 0.505 })
 assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 2, y: -3, scale: 0.505 })
 assert.deepEqual(transformed.variants.find(({ group, id }) => group === 'expression' && id === 'angry')?.transform, { x: 2, y: -3, scale: 0.505 })
-await assert.rejects(() => setCharacterVariantTransform(drafts, savedDraft.id, 'expression', 'happy', staleUpdatedAt, { x: 0, y: 0, scale: 1 }), /changed/)
+assert.equal(savedDraft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, undefined)
+assert.throws(() => setCharacterVariantTransform(savedDraft, 'body', 'base', { x: 0, y: 0, scale: 1 }), /locked/)
+assert.throws(() => setCharacterVariantTransform(savedDraft, 'expression', 'happy', { x: 9999, y: 0, scale: 1 }), /canvas/)
 console.log('character creation: ok')

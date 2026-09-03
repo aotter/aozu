@@ -14,7 +14,6 @@ import {
   type CharacterVariantLayer,
   type CharacterVariantTransform,
 } from '../../core/domain/character.ts'
-import type { ExperienceDraft } from '../../core/domain/starter.ts'
 import { companionArchiveKind, parseZipJson } from './bundle.ts'
 
 const json = (value: unknown) => strToU8(JSON.stringify(value, null, 2))
@@ -36,7 +35,7 @@ const string = (value: unknown, label: string, maxLength: number) => {
 export async function readCharacterDraftZip(
   blob: Blob,
   inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
-): Promise<{ draft: CharacterDraft; experience?: ExperienceDraft }> {
+): Promise<{ draft: CharacterDraft }> {
   const archive = new Uint8Array(await blob.arrayBuffer())
   if (companionArchiveKind(archive) !== 'character-draft') throw new Error('This ZIP is not a Companion authoring draft')
   const files = unzipSync(archive)
@@ -104,15 +103,10 @@ export async function readCharacterDraftZip(
   const headRegistration = raw.headRegistration === undefined ? undefined : object(raw.headRegistration, 'Character Draft head registration')
   if (headRegistration && !hasVariant('expression', headRegistration.variantId)) throw new Error('Registered Character Draft head is missing')
 
-  const experience = files['experience-draft.json']
-    ? object(parseZipJson(files['experience-draft.json'], 'Experience Draft manifest'), 'Experience Draft manifest')
-    : undefined
-  if (experience && experience.id !== sourceId) throw new Error('Character and Experience Draft IDs do not match')
   return {
     draft: {
       id: sourceId,
       schemaVersion: 4,
-      revision: typeof raw.revision === 'number' && Number.isSafeInteger(raw.revision) && raw.revision >= 0 ? raw.revision : 0,
       packId,
       rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
       name,
@@ -125,13 +119,11 @@ export async function readCharacterDraftZip(
       },
       updatedAt: Date.now(),
     },
-    ...(experience ? { experience: experience as unknown as ExperienceDraft } : {}),
   }
 }
 
 export async function exportCharacterDraftZip(
   draft: CharacterDraft,
-  experience?: ExperienceDraft | null,
   atlas?: CharacterTextureAtlas,
 ): Promise<Blob> {
   const files: Record<string, Uint8Array> = {}
@@ -161,12 +153,9 @@ export async function exportCharacterDraftZip(
     name: draft.name,
     headRegistration: draft.headRegistration,
     selected: draft.selected,
-    revision: draft.revision,
     updatedAt: draft.updatedAt,
-    published: draft.published,
     variants,
   })
-  if (experience) files['experience-draft.json'] = json(experience)
   try {
     const pack = buildCharacterPack(draft)
     files['character-pack.json'] = json({
@@ -175,12 +164,12 @@ export async function exportCharacterDraftZip(
       ...(atlas ? { atlas: { image: atlas.data.meta.image, data: 'character.atlas.json' } } : {}),
     })
   } catch {
-    // An unfinished draft is still a valid backup; character-pack.json appears once it is installable.
+    // A partially built Character is still a valid backup.
   }
   if (atlas) {
     files[atlas.data.meta.image] = new Uint8Array(await atlas.image.arrayBuffer())
     files['character.atlas.json'] = json(atlas.data)
   }
-  files['README.md'] = strToU8('# Companion Authoring Draft\n\nLossless local workspace backup. A TexturePacker/Pixi-compatible atlas is included when current layers can be compiled; `character-pack.json` is included once the draft is ready to install.\n')
+  files['README.md'] = strToU8('# Companion Character\n\nLossless local Character backup. A TexturePacker/Pixi-compatible atlas and `character-pack.json` are included when current layers can be compiled.\n')
   return new Blob([zipSync(files, { level: 0 })], { type: 'application/zip' })
 }

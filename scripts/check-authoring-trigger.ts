@@ -46,6 +46,8 @@ const runtime = await bootMantleRuntime({
       transformInput = input
       return { status: 'ok', data: {} }
     },
+    'companion.undo-character-change': async () => ({ status: 'nothing_to_undo', data: {} }),
+    'companion.redo-character-change': async () => ({ status: 'nothing_to_redo', data: {} }),
     'companion.submit-experience-candidate': async (input) => {
       submittedInput = input
       return { status: 'ok', data: { bundleId: 'bundle:triggered', revision: 1, replayed: false } }

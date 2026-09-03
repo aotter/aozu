@@ -50,18 +50,31 @@ const nextActionSchema = objectSchema({
   input: { type: 'object' },
 }, ['tool', 'required'])
 
+const toolEffectsSchema = objectSchema({
+  navigation: objectSchema({
+    path: { type: 'string', pattern: '^/characters(?:/|$)' },
+    mode: { const: 'push' },
+    reason: { type: 'string', minLength: 1 },
+  }, ['path', 'mode', 'reason']),
+})
+
 const toolResultSchema = objectSchema({
   status: { const: 'ok' },
   data: { type: 'object' },
   nextActions: { type: 'array', items: nextActionSchema },
-  effects: objectSchema({
-    navigation: objectSchema({
-      path: { type: 'string', pattern: '^/characters(?:/|$)' },
-      mode: { const: 'push' },
-      reason: { type: 'string', minLength: 1 },
-    }, ['path', 'mode', 'reason']),
-  }),
+  effects: toolEffectsSchema,
 }, ['status', 'data'])
+
+const characterHistoryResultSchema = objectSchema({
+  status: { enum: ['ok', 'no_active_history', 'not_settled', 'revision_conflict', 'nothing_to_undo', 'nothing_to_redo'] },
+  data: { type: 'object' },
+  effects: toolEffectsSchema,
+}, ['status', 'data'])
+
+const characterHistoryInputSchema = objectSchema({
+  characterId: { type: 'string', minLength: 1 },
+  expectedRevision: { type: 'integer', minimum: 1 },
+}, ['characterId', 'expectedRevision'])
 
 const stageProjectionSchema = objectSchema({
   stageId: { type: 'string', minLength: 1 },
@@ -197,7 +210,6 @@ const characterAssetDescriptorSchema = objectSchema({
 
 const characterWorkspaceProperties = {
   schemaVersion: { const: 4 },
-  revision: { type: 'integer', minimum: 0 },
   packId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' },
   rigProfile: objectSchema({
     id: { const: CHARACTER_RIG.id },
@@ -227,12 +239,8 @@ const characterWorkspaceProperties = {
     outfit: { type: 'string', minLength: 1, maxLength: 40 },
     props: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 40 } },
   }, ['props']),
-  published: objectSchema({
-    version: { type: 'integer', minimum: 1 },
-    revision: { type: 'integer', minimum: 0 },
-  }, ['version', 'revision']),
 }
-const characterWorkspaceRequired = ['schemaVersion', 'revision', 'packId', 'rigProfile', 'name', 'variants', 'selected']
+const characterWorkspaceRequired = ['schemaVersion', 'packId', 'rigProfile', 'name', 'variants', 'selected']
 
 export const FIXED_BACKBONE_VERSION = "6"
 
@@ -704,14 +712,14 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/submit-character-asset-candidate.yaml',
     envelope('Procedure', 'submit-character-asset-candidate', {
       title: 'Submit Character Asset Candidate',
-      description: 'Create or repair one Character variant layer after inspect_character_contract. Bind the submission to its exact Character revision and edit-source hash. Valid expression and outfit pixels are stitched into that edit source; props use full replacement. Rejected or stale input does not mutate or navigate. An accepted result opens the exact variant editor for visual review and is never published automatically.',
+      description: 'Create or repair one Character variant layer after inspect_character_contract. Bind the submission to its exact Character revision and edit-source hash. Valid expression and outfit pixels are stitched into that edit source; props use full replacement. Rejected or stale input does not mutate or navigate. An accepted result is saved and opens the exact variant editor for visual review.',
       input: objectSchema({
         characterId: { type: 'string', minLength: 1 },
         group: { enum: CHARACTER_VARIANT_GROUPS },
         variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
         label: { type: 'string', minLength: 1, maxLength: 80 },
         layer: { enum: ['body', 'head', 'back', 'front'] },
-        expectedRevision: { type: 'integer', minimum: 0 },
+        expectedRevision: { type: 'integer', minimum: 1 },
         expectedEditSourceSha256: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
         filename: { type: 'string', minLength: 1, maxLength: 200 },
         dataUrl: { type: 'string', pattern: '^data:image/png;base64,', maxLength: 7_100_000 },
@@ -736,7 +744,7 @@ const ALL_BACKBONE_SOURCES = [
         characterId: { type: 'string', minLength: 1 },
         group: { enum: ['expression', 'outfit', 'prop'] },
         variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
-        expectedRevision: { type: 'integer', minimum: 0 },
+        expectedRevision: { type: 'integer', minimum: 1 },
         x: { type: 'number', minimum: -512, maximum: 512 },
         y: { type: 'number', minimum: -768, maximum: 768 },
         scale: { type: 'number', minimum: 0.25, maximum: 4 },
@@ -750,6 +758,40 @@ const ALL_BACKBONE_SOURCES = [
     envelope('Trigger', 'set-character-variant-transform', {
       source: { kind: 'mcp', surface: 'public' },
       target: { procedure: 'set-character-variant-transform' },
+    }),
+  ),
+  source(
+    'authoring/undo-character-change.yaml',
+    envelope('Procedure', 'undo-character-change', {
+      title: 'Undo Character Change',
+      description: 'Undo the latest change of the active Character editing session. Requires the exact saved Character revision and a settled (saved) session; inactive, pending, failed, conflicted, stale, or empty-history requests return a structured status without mutation or navigation. Success persists the previous Character as a new revision and opens that Character editor.',
+      input: characterHistoryInputSchema,
+      output: characterHistoryResultSchema,
+      handler: { kind: 'ref', ref: 'companion.undo-character-change' },
+    }),
+  ),
+  source(
+    'authoring/undo-character-change-mcp.yaml',
+    envelope('Trigger', 'undo-character-change', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'undo-character-change' },
+    }),
+  ),
+  source(
+    'authoring/redo-character-change.yaml',
+    envelope('Procedure', 'redo-character-change', {
+      title: 'Redo Character Change',
+      description: 'Redo the most recently undone change of the active Character editing session. Same preconditions and structured statuses as undo_character_change. Success persists the next Character as a new revision and opens that Character editor.',
+      input: characterHistoryInputSchema,
+      output: characterHistoryResultSchema,
+      handler: { kind: 'ref', ref: 'companion.redo-character-change' },
+    }),
+  ),
+  source(
+    'authoring/redo-character-change-mcp.yaml',
+    envelope('Trigger', 'redo-character-change', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'redo-character-change' },
     }),
   ),
   source(
