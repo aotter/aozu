@@ -140,6 +140,9 @@ assert.equal(replacementInput, undefined)
 const repair = { ...character, group: 'expression', variantId: 'happy', layer: 'head', expectedAssetSha256: 'a'.repeat(64) }
 assert.equal((await runtime.invokeTrigger({ trigger: 'repair-character-asset', input: repair, ctx: context })).ok, true)
 assert.deepEqual(repairInput, repair)
+repairInput = undefined
+assert.equal((await runtime.invokeTrigger({ trigger: 'repair-character-asset', input: { ...repair, group: 'outfit', layer: 'body' }, ctx: context })).ok, false)
+assert.equal(repairInput, undefined)
 const transform = { characterId: 'character:triggered', group: 'expression', variantId: 'happy', expectedRevision: 1, x: 2, y: -3, scale: 1.01 }
 assert.equal((await runtime.invokeTrigger({ trigger: 'set-character-variant-transform', input: transform, ctx: context })).ok, true)
 assert.deepEqual(transformInput, transform)

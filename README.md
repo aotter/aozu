@@ -49,7 +49,7 @@ AOZU exposes nine public tools on every page:
 | `inspect_character_contract` | Obtain allowed operations, exact hashes, placement/alignment references, ownership, dimensions, and diagnostics for one target |
 | `rename_character` | Rename a saved character against its exact revision |
 | `replace_character_asset` | Install one complete body, head, outfit skin, or prop layer without preserving old pixels |
-| `repair_character_asset` | Mask-repair an existing expression or outfit against its exact asset hash |
+| `repair_character_asset` | Mask-repair an existing expression against its exact asset hash |
 | `set_character_variant_transform` | Apply an explicit translation and uniform scale when a generated layer needs a small alignment correction |
 | `undo_character_change` | Undo the latest settled change in the active editing session |
 | `redo_character_change` | Redo the most recently undone change in the active editing session |

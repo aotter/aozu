@@ -692,7 +692,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-character-contract.yaml',
     envelope('Procedure', 'inspect-character-contract', {
       title: 'Inspect Character Contract',
-      description: `Required before replacing or repairing character art. Optionally name one target to receive its allowed operations, exact current asset hash, visual alignment reference, layer ownership, generation size (${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height}) and final size (${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}), normalization, revision, z-order, and diagnostics. replace_character_asset installs a complete finished layer without preserving old pixels. repair_character_asset is available only for a current expression or outfit and stitches into that exact asset; it never falls back to the canonical body. Expressions contain only a complete whole head. Outfits contain the complete dressed character skin.`,
+      description: `Required before replacing or repairing character art. Optionally name one target to receive its allowed operations, exact current asset hash, visual alignment reference, layer ownership, generation size (${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height}) and final size (${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}), normalization, revision, z-order, and diagnostics. replace_character_asset installs a complete finished layer without preserving old pixels and is the only operation for outfits. repair_character_asset is available only for a current expression and stitches into that exact head asset. Expressions contain only a complete whole head. Outfits contain the complete dressed character skin.`,
       input: {
         ...objectSchema({
           characterId: { type: 'string', minLength: 1 },
@@ -766,13 +766,13 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/repair-character-asset.yaml',
     envelope('Procedure', 'repair-character-asset', {
       title: 'Repair Character Asset',
-      description: `Repair one existing expression or outfit after inspect_character_contract. The current variant asset and editable-region mask are the only edit source; this tool never falls back to the canonical body. Accepted pixels are deterministically stitched into that current asset, preserving protected pixels. Use replace_character_asset instead when you already have a complete finished layer.`,
+      description: `Repair one existing expression after inspect_character_contract. The current head asset and editable-region mask are the only edit source; this tool never falls back to the canonical body. Accepted pixels are deterministically stitched into that current asset, preserving protected pixels. Outfits and other complete layers must use replace_character_asset.`,
       input: objectSchema({
         characterId: { type: 'string', minLength: 1 },
-        group: { enum: ['expression', 'outfit'] },
+        group: { const: 'expression' },
         variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
         label: { type: 'string', minLength: 1, maxLength: 80 },
-        layer: { enum: ['head', 'body'] },
+        layer: { const: 'head' },
         expectedRevision: { type: 'integer', minimum: 1 },
         expectedAssetSha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
         filename: { type: 'string', minLength: 1, maxLength: 200 },

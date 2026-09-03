@@ -394,7 +394,7 @@ export function createApplication(document: Document) {
     const registrationFrame = characterRegistrationFrame(draft)
     const allowedOperations = [
       'replace' as const,
-      ...(current && (input.group === 'expression' || input.group === 'outfit') ? ['repair' as const] : []),
+      ...(current && input.group === 'expression' ? ['repair' as const] : []),
     ]
     const measurement = asset ? measureCharacterMaskAlignment(
       input.group,
@@ -419,8 +419,7 @@ export function createApplication(document: Document) {
     const visualFit = asset && canonical && input.group === 'expression' && headRegistration?.variant.id === input.variantId
       ? suggestCharacterVisualRegistration(await readCharacterVisualSample(canonical.blob), await readCharacterVisualSample(asset.blob), transform)
       : null
-    const editableRegion = current && input.group === 'expression' ? registrationFrame.editableRegions.expression
-      : current && input.group === 'outfit' ? registrationFrame.editableRegions.outfit : undefined
+    const editableRegion = current && input.group === 'expression' ? registrationFrame.editableRegions.expression : undefined
     const fit = suggestCharacterFit({
       measurement,
       visualFit,
@@ -453,7 +452,7 @@ export function createApplication(document: Document) {
         normalization: normalization.recommended,
       },
     }
-    const repairAction = current && (input.group === 'expression' || input.group === 'outfit') ? {
+    const repairAction = current && input.group === 'expression' ? {
       tool: 'repair_character_asset',
       required: false,
       reason: 'Repair only the editable region of this existing asset; protected pixels remain byte-identical.',
@@ -516,8 +515,8 @@ export function createApplication(document: Document) {
           ? transformCharacterBounds(editSource.inspection.visibleBounds, editSourceTransform)
           : editSource.inspection.visibleBounds,
         dataUrl: editSourceTransform ? await renderCharacterCompositeDataUrl([{
-          id: 'edit-source', blobId: 'edit-source', slot: input.group === 'expression' ? 'expression-head' : 'character-skin',
-          slotOrder: input.group === 'expression' ? 35 : 20, layerOrder: 0, transform: editSourceTransform, blob: editSource.blob,
+          id: 'edit-source', blobId: 'edit-source', slot: 'expression-head',
+          slotOrder: 35, layerOrder: 0, transform: editSourceTransform, blob: editSource.blob,
         }]) : await readDataUrl(editSource.blob),
       } : null,
       editableRegion: editableRegion ? {
@@ -620,8 +619,8 @@ export function createApplication(document: Document) {
             'An outfit replaces the character-skin slot: replace it with the complete dressed character, never a clothing-only overlay. Preserve pose, body center, head position, and foot line. Generate props against the returned current composite.',
             'Generate at 1024×1536. When the inspected target recommends exact-aspect-downscale, request it during submission; otherwise finalize externally at the exact 512×768 canvas. Never crop, reframe, or stretch.',
             'Before importing, remove the background outside the website and verify genuine alpha transparency. Never submit a painted transparency grid or matte background; the website validates but never repairs alpha.',
-            'Use replace_character_asset for a complete finished layer; it never preserves old pixels. Use repair_character_asset only for an existing expression or outfit; transparent mask pixels are editable, opaque pixels are protected, and protectedRegionDelta must be 0.',
-            'Submit only full-canvas RGBA PNG proposals, either already at 512×768 or with the explicit normalization allowed by the inspected target. The website never generates, removes backgrounds, or guesses geometry; it only compiles pixels authorized by the deterministic editable region.',
+            'Use replace_character_asset for every outfit and any other complete finished layer; it never preserves old pixels. Use repair_character_asset only for an existing expression; transparent mask pixels are editable, opaque pixels are protected, and protectedRegionDelta must be 0.',
+            'Submit only full-canvas RGBA PNG proposals, either already at 512×768 or with the explicit normalization allowed by the inspected target. The website never generates, removes backgrounds, or guesses geometry; expression repair alone uses the deterministic editable region.',
             'Expression layers contain only the whole aligned head, including the same fixed hairstyle and facial hair; every pixel outside head ownership must be transparent.',
             'No expression overlay means the default face baked into the body. Optional whole-head variants include happy, sad, angry, surprised, and sleepy; additional variants are allowed.',
             'Outfits are full-body variants. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. A prop may be positioned anywhere, including on the head or in a hand.',
@@ -670,8 +669,8 @@ export function createApplication(document: Document) {
       const sources = resolveCharacterAssetSources(current, target)
       const assetSha256 = sources.asset?.inspection.sha256 ?? null
       if (assetSha256 !== input.expectedAssetSha256) throw new Error('Character asset changed; inspect the target again')
-      if (mode === 'repair' && (!(target.group === 'expression' || target.group === 'outfit') || !sources.current || !sources.editSource)) {
-        throw new Error('Repair requires a current expression or outfit; use replace_character_asset for a complete layer')
+      if (mode === 'repair' && (target.group !== 'expression' || target.layer !== 'head' || !sources.current || !sources.editSource)) {
+        throw new Error('Repair requires a current expression head; use replace_character_asset for outfits and complete layers')
       }
       if (!(target.group === 'body' && target.variantId === 'base' && target.layer === 'body') && !sources.canonical) throw new Error('Submit body/base/body before derived character assets')
       const { filename } = input
@@ -687,8 +686,7 @@ export function createApplication(document: Document) {
       }
       const submittedInspection = await inspectCharacterImage(submitted)
       const registrationFrame = characterRegistrationFrame(current)
-      const editableRegion = mode === 'repair' ? target.group === 'expression' ? registrationFrame.editableRegions.expression
-        : registrationFrame.editableRegions.outfit : undefined
+      const editableRegion = mode === 'repair' ? registrationFrame.editableRegions.expression : undefined
       const referenceBounds = characterReferenceBounds(registrationFrame, target.group)
       const contract = characterNormalizationContract(Boolean(referenceBounds))
       const alignmentMode = target.group === 'expression' ? 'whole-head-bounds'
