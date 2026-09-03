@@ -555,7 +555,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-workspace.yaml',
     envelope('Procedure', 'inspect-workspace', {
       title: 'Inspect Workspace',
-      description: 'Start here on every page. Returns saved Character workspaces, the current Character and route, missing required art, and exact next tool or navigation actions without guessing routes.',
+      description: 'Start here on every page. Returns saved Character workspaces, the current Character and route, missing required art, exact next actions, and the alpha policy. AOZU rejects opaque artwork and does not remove backgrounds; if direct transparency is unavailable, generate on one flat high-contrast color, remove it with an image tool, and verify genuine alpha before submission.',
       input: emptyReadOnlyInput,
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.inspect-workspace' },
@@ -701,7 +701,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-character-contract.yaml',
     envelope('Procedure', 'inspect-character-contract', {
       title: 'Inspect Character Contract',
-      description: `Required before replacing or repairing character art. Optionally name one target to receive its allowed operations, exact current asset hash, visual alignment reference, layer ownership, generation size (${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height}) and final size (${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}), normalization, revision, z-order, and diagnostics. replace_character_asset installs a complete finished layer without preserving old pixels and is the only operation for outfits. repair_character_asset is available only for a current expression and stitches into that exact head asset. Expressions contain only a complete whole head. Outfits contain the complete dressed character skin.`,
+      description: `Required before replacing or repairing character art. Optionally name one target to receive its allowed operations, exact current asset hash, visual alignment reference, layer ownership, alpha policy, generation size (${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height}) and final size (${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}), normalization, revision, z-order, and diagnostics. replace_character_asset installs a complete finished layer without preserving old pixels and is the only operation for outfits. repair_character_asset is available only for a current expression and stitches into that exact head asset. Expressions contain only a complete whole head. Outfits contain the complete dressed character skin.`,
       input: {
         ...objectSchema({
           characterId: { type: 'string', minLength: 1 },
@@ -750,7 +750,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/replace-character-asset.yaml',
     envelope('Procedure', 'replace-character-asset', {
       title: 'Replace Character Asset',
-      description: `Install one complete canonical Character layer after inspect_character_contract. This is a true replacement: it never stitches or preserves pixels from the old asset. Expressions must contain only a complete whole head with transparency everywhere else. Outfits must contain the complete dressed character skin with no transparent holes over the canonical body. Rejected or stale input does not mutate or navigate. Submit exact ${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height} RGBA by default, or explicitly request the deterministic normalization returned by inspect_character_contract.`,
+      description: `Install one complete canonical Character layer after inspect_character_contract. This is a true replacement: it never stitches or preserves pixels from the old asset. Expressions must contain only a complete whole head with transparency everywhere else. Outfits must contain the complete dressed character skin with no transparent holes over the canonical body. Opaque input is rejected; AOZU never removes backgrounds. Rejected or stale input does not mutate or navigate. Submit exact ${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height} RGBA by default, or explicitly request the deterministic normalization returned by inspect_character_contract.`,
       input: objectSchema({
         characterId: { type: 'string', minLength: 1 },
         group: { enum: CHARACTER_VARIANT_GROUPS },
