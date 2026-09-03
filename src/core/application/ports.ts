@@ -81,6 +81,12 @@ export interface CharacterRecord {
   version: number
 }
 
+/** The settled entry facts one write produced; revision and `updatedAt` always come from the same snapshot. */
+export interface CharacterPersisted {
+  version: number
+  updatedAt: number
+}
+
 export class CharacterRevisionConflict extends Error {
   override readonly name = 'CharacterRevisionConflict'
 }
@@ -89,8 +95,8 @@ export interface CharacterDraftRepository {
   list(): Promise<CharacterRecord[]>
   get(id: string): Promise<CharacterRecord | null>
   create(draft: CharacterDraft): Promise<CharacterRecord>
-  /** Writes one whole snapshot against `expectedVersion`; resolves to the new version or rejects with CharacterRevisionConflict. */
-  put(draft: CharacterDraft, expectedVersion: number): Promise<number>
+  /** Writes one whole snapshot against `expectedVersion`; resolves to the settled entry facts or rejects with CharacterRevisionConflict. */
+  put(draft: CharacterDraft, expectedVersion: number): Promise<CharacterPersisted>
   delete(id: string): Promise<void>
 }
 

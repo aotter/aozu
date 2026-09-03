@@ -15,6 +15,7 @@ function CharacterEditor({ application, refresh }: { application: Application; r
   return <CharacterDraftPage
     editor={application.editor}
     autoFitVariant={application.autoFitCharacterVariant}
+    fitSuggestion={application.characterFitSuggestion}
     compileAtlas={application.compileCharacterAtlas}
     exportCharacter={() => application.exportCharacter(characterId)}
     saveAs={async () => {

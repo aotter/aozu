@@ -1,6 +1,10 @@
 import {
+  CHARACTER_GENERATION_CANVAS,
   CHARACTER_RIG,
   IDENTITY_CHARACTER_TRANSFORM,
+  validateCharacterVariantTransform,
+  type CharacterAlignMode,
+  type CharacterResizeMode,
   type CharacterVariantGroup,
   type CharacterVariantTransform,
 } from '../domain/character.ts'
@@ -164,16 +168,20 @@ const compareMasks = (reference: CharacterAlphaMask, candidate: CharacterAlphaMa
   }
 }
 
+/** One uniform scale plus translation fitting `candidate` visible bounds onto `reference` bounds. Never stretches an axis. */
+export function fitCharacterBoundsTransform(reference: Bounds, candidate: Bounds): CharacterVariantTransform {
+  const scale = Math.min(reference.width / candidate.width, reference.height / candidate.height)
+  return {
+    scale: round(scale),
+    x: round(reference.x - candidate.x * scale),
+    y: round(reference.y - candidate.y * scale),
+  }
+}
+
 const suggestedTransform = (reference: CharacterAlphaMask, candidate: CharacterAlphaMask): CharacterVariantTransform | null => {
   const expected = maskStats(reference).bounds
   const actual = maskStats(candidate).bounds
-  if (!expected || !actual) return null
-  const scale = Math.min(expected.width / actual.width, expected.height / actual.height)
-  return {
-    scale: round(scale),
-    x: round(expected.x - actual.x * scale),
-    y: round(expected.y - actual.y * scale),
-  }
+  return expected && actual ? fitCharacterBoundsTransform(expected, actual) : null
 }
 
 export function measureCharacterMaskAlignment(
@@ -352,5 +360,120 @@ export function suggestCharacterVisualRegistration(
     currentScore: round(currentScore),
     improvement: round(improvement),
     suggestedTransform: best.score >= 0.4 && improvement >= 0.08 ? best.transform : null,
+  }
+}
+
+type NormalizationRejection = { ok: false; code: string; message: string }
+const reject = (code: string, message: string): NormalizationRejection => ({ ok: false, code, message })
+
+/**
+ * Pure: the deterministic whole-canvas downscale for one inspected candidate. Only genuine RGBA images with the
+ * exact rig aspect and at least the rig canvas size qualify; upscaling and reframing are never offered.
+ * `scale: null` means no resize happens, and strict inspection still rejects a non-canvas candidate.
+ */
+export function planCharacterResize(
+  mode: CharacterResizeMode,
+  inspection: { width: number; height: number; genuineRgba: boolean },
+): { ok: true; scale: number | null } | NormalizationRejection {
+  const canvas = CHARACTER_RIG.canvas
+  const { width, height, genuineRgba } = inspection
+  if (mode !== 'exact-aspect-downscale' || (width === canvas.width && height === canvas.height)) return { ok: true, scale: null }
+  if (!genuineRgba) return reject('NORMALIZATION_REQUIRES_GENUINE_RGBA', 'Only genuine RGBA images can be normalized; a painted transparency grid is not alpha.')
+  if (width * canvas.height !== height * canvas.width) {
+    return reject('NORMALIZATION_REQUIRES_EXACT_ASPECT', `Normalization needs the exact ${canvas.width}:${canvas.height} canvas aspect; ${width}×${height} would have to be cropped.`)
+  }
+  if (width < canvas.width || height < canvas.height) {
+    return reject('NORMALIZATION_CANNOT_UPSCALE', `Normalization never upscales; generate at ${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height} instead of ${width}×${height}.`)
+  }
+  return { ok: true, scale: round(canvas.width / width) }
+}
+
+/**
+ * Pure: the one uniform scale plus translation that fits an already-canvas-sized candidate onto the contract's
+ * deterministic reference bounds. Body establishment and props stay explicit-canvas submissions.
+ */
+export function planCharacterAlignment(
+  mode: CharacterAlignMode,
+  group: CharacterVariantGroup,
+  candidateBounds: Bounds | undefined,
+  referenceBounds: Bounds | undefined,
+): { ok: true; transform: CharacterVariantTransform | null; bounds?: Bounds } | NormalizationRejection {
+  if (mode !== 'reference-visible-bounds') return { ok: true, transform: null }
+  if (group !== 'expression' && group !== 'outfit') {
+    return reject('ALIGNMENT_TARGET_NOT_SUPPORTED', 'Reference alignment applies only to expression and outfit targets.')
+  }
+  if (!referenceBounds || !candidateBounds) {
+    return reject('ALIGNMENT_REFERENCE_UNAVAILABLE', 'This target has no deterministic reference visible bounds; submit an exact-canvas asset instead.')
+  }
+  const transform = fitCharacterBoundsTransform(referenceBounds, candidateBounds)
+  try {
+    validateCharacterVariantTransform(transform)
+  } catch {
+    return reject('ALIGNMENT_TRANSFORM_OUT_OF_RANGE', 'The fitted alignment transform is outside the supported canvas range.')
+  }
+  const bounds = {
+    x: referenceBounds.x,
+    y: referenceBounds.y,
+    width: round(candidateBounds.width * transform.scale),
+    height: round(candidateBounds.height * transform.scale),
+  }
+  if (bounds.x < 0 || bounds.y < 0 || bounds.x + bounds.width > CHARACTER_RIG.canvas.width || bounds.y + bounds.height > CHARACTER_RIG.canvas.height) {
+    return reject('ALIGNMENT_LEAVES_CANVAS', 'The fitted alignment transform would move visible pixels outside the canvas.')
+  }
+  return { ok: true, transform, bounds }
+}
+
+export type CharacterFitMetrics = { iou: number | null; footLineDelta: number | null; score: number | null }
+export type CharacterFitSuggestion =
+  | { status: 'aligned' }
+  | { status: 'unavailable' }
+  | {
+      status: 'suggested'
+      source: 'mask-alignment' | 'visual-correlation'
+      confidence: 'high'
+      transform: CharacterVariantTransform
+      before: CharacterFitMetrics
+      after: CharacterFitMetrics
+    }
+
+const fitMetrics = (
+  metrics: ReturnType<typeof compareMasks> | { candidateBounds?: Bounds; edgeTouchPixels: number } | undefined,
+  score: number | null,
+): CharacterFitMetrics => ({
+  iou: metrics && 'iou' in metrics ? metrics.iou : null,
+  footLineDelta: metrics && 'footLineDelta' in metrics ? metrics.footLineDelta : null,
+  score,
+})
+
+/**
+ * The one high-confidence fit both the editor's `Apply suggested fit` action and the WebMCP results offer,
+ * read straight from the existing alignment diagnostics. No new scoring, and marginal suggestions stay unavailable.
+ */
+export function suggestCharacterFit({ measurement, visualFit, headAnchor }: {
+  measurement?: ReturnType<typeof measureCharacterMaskAlignment> | null
+  visualFit?: ReturnType<typeof suggestCharacterVisualRegistration> | null
+  headAnchor?: boolean
+}): CharacterFitSuggestion {
+  const metrics = measurement && 'metrics' in measurement ? measurement.metrics : undefined
+  if (visualFit?.suggestedTransform) {
+    return {
+      status: 'suggested',
+      source: 'visual-correlation',
+      confidence: 'high',
+      transform: visualFit.suggestedTransform,
+      before: fitMetrics(metrics, visualFit.currentScore),
+      after: fitMetrics(undefined, visualFit.score),
+    }
+  }
+  if ((headAnchor && visualFit) || measurement?.status === 'aligned') return { status: 'aligned' }
+  const transform = highConfidenceCharacterAutoFit(measurement)
+  if (!transform) return { status: 'unavailable' }
+  return {
+    status: 'suggested',
+    source: 'mask-alignment',
+    confidence: 'high',
+    transform,
+    before: fitMetrics(metrics, null),
+    after: fitMetrics(measurement && 'suggestedMetrics' in measurement ? measurement.suggestedMetrics : undefined, null),
   }
 }

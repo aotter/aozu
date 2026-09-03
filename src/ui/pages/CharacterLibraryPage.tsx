@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import type { CharacterDraft } from '@/core/domain/character.ts'
+import type { CharacterDraft, ResolvedCharacterLayer } from '@/core/domain/character.ts'
+import { CharacterRenderer } from '@/ui/CharacterRenderer'
 import { DataControls } from '@/ui/DataControls'
 import { Button } from '@/ui/components/ui/button'
 import {
@@ -15,7 +16,13 @@ import {
   AlertDialogTitle,
 } from '@/ui/components/ui/alert-dialog'
 
-export type CharacterLibraryItem = Pick<CharacterDraft, 'id' | 'name' | 'updatedAt'>
+export type CharacterLibraryItem = Pick<CharacterDraft, 'id' | 'name' | 'updatedAt'> & {
+  /** The persisted Mantle entry version, projected together with `updatedAt` from one settled snapshot. */
+  revision: number
+  layers: Array<ResolvedCharacterLayer & { blob: Blob }>
+}
+
+const updatedAtFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 
 export function CharacterLibraryPage({ characters, createCharacter, openCharacter, copyCharacter, deleteCharacter, exportCharacter, importCharacter, refresh }: {
   characters: CharacterLibraryItem[]
@@ -52,8 +59,14 @@ export function CharacterLibraryPage({ characters, createCharacter, openCharacte
       <h2 className="font-heading text-lg font-medium">{t('characters.saved')}</h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">{characters.map((character) => {
         return <article key={character.id} className="rounded-2xl border bg-background p-4 shadow-sm">
-          <button className="w-full text-left" onClick={() => openCharacter(character.id)}>
-            <h3 className="truncate font-heading font-medium">{character.name}</h3>
+          <button className="flex w-full items-center gap-3 text-left" onClick={() => openCharacter(character.id)}>
+            <span className="w-14 shrink-0"><CharacterRenderer label={character.name} layers={character.layers} className="rounded-xl" /></span>
+            <span className="min-w-0 flex-1">
+              <h3 className="truncate font-heading font-medium">{character.name}</h3>
+              <span className="mt-1 block truncate text-xs text-muted-foreground">
+                {t('characters.revision', { revision: character.revision })} · {t('characters.updated', { updated: updatedAtFormat.format(character.updatedAt) })}
+              </span>
+            </span>
           </button>
           <div className="mt-4 flex items-center justify-end gap-2">
             <DataControls exportData={() => exportCharacter(character.id)} exportFilename={`${character.name}-character.zip`} exportIconOnly exportLabel={t('draft.download')} />

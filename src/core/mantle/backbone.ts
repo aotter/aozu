@@ -10,7 +10,7 @@ import {
   PROGRESS_LOOP_IDS,
   PROGRESS_BINDING_SCHEMA,
 } from '../domain/playbook.ts'
-import { CHARACTER_RIG, CHARACTER_VARIANT_GROUPS } from '../domain/character.ts'
+import { CHARACTER_ALIGN_MODES, CHARACTER_GENERATION_CANVAS, CHARACTER_RESIZE_MODES, CHARACTER_RIG, CHARACTER_VARIANT_GROUPS } from '../domain/character.ts'
 import { compileBundle } from '../bundle.ts'
 
 const source = (sourceId: string, manifest: object): ManifestSource => ({
@@ -182,6 +182,11 @@ const characterTransformSchema = objectSchema({
   y: { type: 'number', minimum: -768, maximum: 768 },
   scale: { type: 'number', minimum: 0.25, maximum: 4 },
 }, ['x', 'y', 'scale'])
+
+const characterNormalizationSchema = objectSchema({
+  resize: { enum: CHARACTER_RESIZE_MODES },
+  align: { enum: CHARACTER_ALIGN_MODES },
+}, ['resize', 'align'])
 
 const characterInspectionSchema = objectSchema({
   width: { const: CHARACTER_RIG.canvas.width },
@@ -687,7 +692,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-character-contract.yaml',
     envelope('Procedure', 'inspect-character-contract', {
       title: 'Inspect Character Contract',
-      description: 'Required before generating, replacing, or repairing character art. Optionally name one target to receive its exact edit source, stable alignment reference, deterministic editable-region mask, current Character revision, z-order, and alignment diagnostics. Existing current assets are repaired from their own pixels. Mask transparency marks editable pixels; opaque pixels are protected. Outfits are complete dressed character-skin replacements. Props use full replacement. The website validates and stitches but never generates, removes backgrounds, resizes, or guesses geometry.',
+      description: `Required before generating, replacing, or repairing character art. Optionally name one target to receive its exact edit source and hash, stable alignment reference and transform, deterministic editable-region mask, reference visible bounds, generation size (${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height}) and final size (${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}), the allowed and recommended submission normalization, the current Character revision, z-order, and alignment diagnostics. Existing current assets are repaired from their own pixels. Mask transparency marks editable pixels; opaque pixels are protected. Outfits are complete dressed character-skin replacements. Props use full replacement. The website validates, deterministically normalizes only what a submission explicitly requests, and stitches, but never generates, removes backgrounds, recovers fake alpha, or guesses geometry.`,
       input: {
         ...objectSchema({
           characterId: { type: 'string', minLength: 1 },
@@ -712,7 +717,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/submit-character-asset-candidate.yaml',
     envelope('Procedure', 'submit-character-asset-candidate', {
       title: 'Submit Character Asset Candidate',
-      description: 'Create or repair one Character variant layer after inspect_character_contract. Bind the submission to its exact Character revision and edit-source hash. Valid expression and outfit pixels are stitched into that edit source; props use full replacement. Rejected or stale input does not mutate or navigate. An accepted result is saved and opens the exact variant editor for visual review.',
+      description: `Create or repair one Character variant layer after inspect_character_contract. Bind the submission to its exact Character revision and edit-source hash. Valid expression and outfit pixels are stitched into that edit source; props use full replacement. Rejected or stale input does not mutate or navigate. An accepted result is saved and opens the exact variant editor for visual review. Submit exact ${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height} RGBA by default, or explicitly request the deterministic normalization returned by inspect_character_contract to submit a genuine-RGBA ${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height} render; every applied normalization is reported back. The website never removes backgrounds, recovers fake alpha, upscales, crops, or accepts another aspect ratio.`,
       input: objectSchema({
         characterId: { type: 'string', minLength: 1 },
         group: { enum: CHARACTER_VARIANT_GROUPS },
@@ -723,6 +728,7 @@ const ALL_BACKBONE_SOURCES = [
         expectedEditSourceSha256: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
         filename: { type: 'string', minLength: 1, maxLength: 200 },
         dataUrl: { type: 'string', pattern: '^data:image/png;base64,', maxLength: 7_100_000 },
+        normalization: characterNormalizationSchema,
       }, ['characterId', 'group', 'variantId', 'label', 'layer', 'expectedRevision', 'expectedEditSourceSha256', 'filename', 'dataUrl']),
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.submit-character-asset-candidate' },

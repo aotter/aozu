@@ -71,8 +71,9 @@ assert.equal('published' in read!.character, false)
 assert.equal(row!.data.revision, 4)
 assert.equal(writes, writesBeforeRead)
 
-const version = await repository.put({ ...created.character, name: 'Boar' }, created.version)
-assert.equal(version, 2)
+// A write reports the revision and updatedAt of the same settled entry snapshot.
+const saved = await repository.put({ ...created.character, name: 'Boar' }, created.version)
+assert.deepEqual(saved, { version: 2, updatedAt: row!.updatedAt })
 assert.equal(row!.data.name, 'Boar')
 assert.equal('revision' in row!.data, false)
 assert.equal('published' in row!.data, false)

@@ -99,7 +99,7 @@ export function createCharacterWorkspaceRepository(
         const message = result.diagnostic.message ?? 'Character could not be saved'
         throw result.diagnostic.code === 'CONFLICT' ? new CharacterRevisionConflict(message) : new Error(message)
       }
-      return result.data.version
+      return { version: result.data.version, updatedAt: result.data.updatedAt }
     },
     async delete(id) {
       const current = await (await entries()).readById(id)

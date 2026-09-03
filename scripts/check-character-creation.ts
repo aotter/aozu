@@ -83,6 +83,9 @@ assert.notEqual(copied.id, draft.id)
 assert.notEqual(copied.packId, draft.packId)
 assert.equal(await copied.variants[0]!.layers.body!.blob.text(), 'sprite')
 assert.equal(copied.name, 'Test Character copy')
+assert.equal(copyCharacter(draft, ['Test Character copy']).name, 'Test Character copy 2')
+assert.equal(copyCharacter(draft, ['Test Character copy', 'Test Character copy 2']).name, 'Test Character copy 3')
+assert.equal(copyCharacter({ ...draft, name: '' }, ['Untitled Character copy']).name, 'Untitled Character copy 2')
 const migratedPublishedCharacter = migrateCharacterDraft({
   ...draft,
   revision: 7,
