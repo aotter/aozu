@@ -6,7 +6,11 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: "Iowan Old Style", Georgia, serif;
+    --text-xs: 1rem;
+    --text-xs--line-height: 1.5rem;
+    --text-sm: 1rem;
+    --text-sm--line-height: 1.5rem;
+    --font-heading: "Iowan Old Style", "Noto Serif TC", "Songti TC", Georgia, serif;
     --font-sans: 'Geist Variable', sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
@@ -122,29 +126,72 @@
     @apply border-border outline-ring/50;
     }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
     min-width: 320px;
+    background-color: #d7b878;
     background-image:
-      radial-gradient(circle at 18% 12%, rgb(255 244 205 / 36%) 0 8%, transparent 28%),
-      radial-gradient(circle at 84% 30%, rgb(107 63 32 / 9%) 0 5%, transparent 25%),
-      repeating-linear-gradient(8deg, transparent 0 5px, rgb(91 54 30 / 2%) 6px 7px),
-      repeating-linear-gradient(97deg, transparent 0 7px, rgb(255 255 255 / 3%) 8px 9px);
+      radial-gradient(ellipse at 12% 9%, rgb(255 245 203 / 72%), transparent 28%),
+      radial-gradient(ellipse at 88% 18%, rgb(91 52 28 / 13%), transparent 34%),
+      radial-gradient(ellipse at 52% 88%, rgb(113 69 35 / 14%), transparent 40%),
+      repeating-linear-gradient(82deg, transparent 0 3px, rgb(74 43 23 / 2%) 4px 5px),
+      repeating-linear-gradient(7deg, transparent 0 7px, rgb(255 255 255 / 4%) 8px 9px);
     background-attachment: fixed;
     }
   html {
     @apply font-sans;
+    font-size: 16px;
     }
 }
 
-/* AOZU shell: the parchment page, its book-page border, and the card treatment.
-   Attribute-driven so pages keep their Tailwind layout classes. */
-#root > header {
-  border-color: rgb(108 70 37 / 45%);
-  background: rgb(224 198 143 / 88%);
-  color: #4b2e1c;
-  box-shadow: 0 2px 16px rgb(64 37 20 / 14%);
+/* ---------------------------------------------------------------------------
+   AOZU page: parchment ground, the fixed grain overlay, and one text scale.
+   Ported from the Design branch; the application contract stays on main.
+   --------------------------------------------------------------------------- */
+
+body::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.32;
+  background-image:
+    repeating-radial-gradient(ellipse at 20% 30%, transparent 0 2px, rgb(73 42 22 / 6%) 3px 4px, transparent 5px 8px),
+    repeating-linear-gradient(103deg, rgb(255 248 220 / 5%) 0 1px, transparent 1px 6px);
+  mix-blend-mode: multiply;
+  content: "";
 }
 
+#root button,
+#root input,
+#root textarea,
+#root select,
+#root small {
+  font-size: 1rem;
+}
+
+/* Header: the dark leather spine with a gilt edge. */
+#root > header {
+  border-bottom: 1px solid rgb(92 53 27 / 50%);
+  background:
+    linear-gradient(180deg, rgb(79 46 29 / 96%), rgb(93 54 31 / 94%)),
+    repeating-linear-gradient(90deg, transparent 0 6px, rgb(255 255 255 / 4%) 7px 8px);
+  color: #f6dd9c;
+  box-shadow: 0 3px 0 rgb(218 173 69 / 40%), 0 8px 24px rgb(58 30 16 / 20%);
+}
+
+#root > header nav {
+  max-width: 72rem;
+}
+
+#root > header [data-slot="button"] {
+  color: #f6dd9c;
+}
+
+#root > header .text-muted-foreground {
+  color: #e8d8b0;
+}
+
+/* Main: every page sits on one book page. */
 #root main {
   position: relative;
   isolation: isolate;
@@ -155,13 +202,18 @@
   position: absolute;
   inset: 0.75rem;
   z-index: -1;
-  border: 2px dashed rgb(118 73 38 / 38%);
+  border: 1px solid rgb(125 77 35 / 34%);
   border-radius: 1.5rem;
   background:
-    radial-gradient(ellipse at 12% 8%, rgb(255 248 219 / 48%), transparent 32%),
-    radial-gradient(ellipse at 88% 92%, rgb(99 55 25 / 8%), transparent 36%),
-    rgb(226 202 151 / 22%);
-  box-shadow: inset 0 0 3rem rgb(92 52 25 / 8%);
+    linear-gradient(104deg, rgb(255 249 224 / 42%), transparent 38%),
+    radial-gradient(ellipse at 78% 18%, rgb(226 181 76 / 12%), transparent 32%),
+    radial-gradient(ellipse at 22% 84%, rgb(105 60 27 / 9%), transparent 35%),
+    rgb(232 209 160 / 38%);
+  box-shadow:
+    inset 0 1px rgb(255 248 219 / 68%),
+    inset 0 0 4rem rgb(91 51 27 / 8%),
+    0 1.2rem 3rem rgb(72 39 20 / 8%),
+    0 0 2rem rgb(232 187 83 / 9%);
   content: "";
 }
 
@@ -170,13 +222,17 @@
   letter-spacing: 0.02em;
 }
 
+/* Cards: any bordered rounded-2xl panel becomes a parchment scroll. */
 #root main :is(article, section).rounded-2xl.border,
 #root main button.rounded-2xl.border {
-  border-width: 2px;
-  border-style: dashed;
-  border-color: rgb(112 70 38 / 50%);
+  border: 1px solid rgb(128 79 35 / 40%);
   background-color: rgb(244 225 181 / 58%);
   box-shadow: inset 0 0 0 4px rgb(255 246 216 / 14%), 0 0.7rem 1.6rem rgb(63 36 18 / 7%);
+}
+
+#root main button.rounded-2xl.border[aria-pressed="true"] {
+  border-color: #9a681d;
+  box-shadow: 0 0 0 3px rgb(177 124 40 / 18%), inset 0 0 0 4px rgb(255 246 216 / 18%);
 }
 
 #root :is(input, textarea, select) {
@@ -184,20 +240,17 @@
   background-color: rgb(249 233 194 / 58%);
 }
 
-@media (max-width: 640px) {
-  #root main::before {
-    inset: 0.35rem;
-    border-radius: 1rem;
-  }
-}
+/* ---------------------------------------------------------------------------
+   AOZU icon language
+   --------------------------------------------------------------------------- */
 
-/* AOZU brand icons */
 .aozu-icon {
   display: inline-grid;
   width: 2rem;
   height: 2rem;
   place-items: center;
   flex: 0 0 auto;
+  overflow: visible;
   vertical-align: middle;
   filter: drop-shadow(0 0.2rem 0.35rem rgb(74 40 18 / 22%));
 }
@@ -208,15 +261,29 @@
   object-fit: contain;
 }
 
+.aozu-icon.is-placeholder {
+  width: 64%;
+  height: 64%;
+  opacity: 0.58;
+}
+
+/* ---------------------------------------------------------------------------
+   Book opening: kicker, hero rule, and the wax seal
+   --------------------------------------------------------------------------- */
+
 .forge-kicker {
   display: flex;
   align-items: center;
   gap: 0.55rem;
   margin-bottom: 0.65rem;
   color: #95651f;
-  font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.12em;
+}
+
+.forge-kicker svg {
+  width: 1.15rem;
+  height: 1.15rem;
 }
 
 .forge-kicker .aozu-icon {
@@ -224,7 +291,6 @@
   height: 2.15rem;
 }
 
-/* Book-page opening: a torn rule above, a dashed page edge below. */
 .forge-hero {
   position: relative;
   display: flex;
@@ -232,8 +298,9 @@
   justify-content: space-between;
   gap: 2rem;
   min-height: 10rem;
-  padding: 1.5rem 1rem;
-  border-block: 2px dashed rgb(108 65 33 / 42%);
+  padding: 1.5rem 2rem;
+  border-block: 1px solid rgb(128 79 35 / 40%);
+  box-shadow: inset 0 1px rgb(255 244 207 / 45%), inset 0 -1px rgb(91 51 25 / 12%);
 }
 
 .forge-hero::before {
@@ -252,43 +319,26 @@
   filter: drop-shadow(0 0.8rem 1rem rgb(69 37 17 / 24%)) drop-shadow(0 0 1.1rem rgb(232 180 69 / 18%));
 }
 
-@media (max-width: 640px) {
-  .forge-hero {
-    gap: 1rem;
-    min-height: 0;
-    padding: 1.25rem 0.5rem;
-  }
+/* ---------------------------------------------------------------------------
+   Character Library: the archive vault, character cards, and the two gates
+   --------------------------------------------------------------------------- */
 
-  .forge-seal.aozu-icon {
-    width: 4.5rem;
-    height: 4.5rem;
-  }
-
-  .forge-kicker {
-    font-size: 0.7rem;
-    letter-spacing: 0.08em;
-  }
-
-  .forge-kicker .aozu-icon {
-    width: 1.6rem;
-    height: 1.6rem;
-  }
-
-  /* Page border + vault + card would stack three dashed frames on a phone. */
-  .character-vault {
-    padding: 0;
-    border: 0;
-    background: none;
-    box-shadow: none;
-  }
+.companion-vault {
+  padding: 1.5rem 1rem;
+  border: 1px solid rgb(128 79 35 / 40%);
+  border-radius: 1.25rem;
+  background:
+    radial-gradient(ellipse at 20% 8%, rgb(255 249 222 / 38%), transparent 38%),
+    linear-gradient(135deg, rgb(249 231 188 / 34%), rgb(219 190 132 / 18%));
+  box-shadow: inset 0 1px rgb(255 249 223 / 58%), inset 0 0 2.5rem rgb(87 48 23 / 6%), 0 0.8rem 1.7rem rgb(68 37 18 / 7%);
 }
 
-.character-vault {
-  padding: 1.5rem 1rem;
-  border: 2px dashed rgb(107 63 31 / 45%);
-  border-radius: 1.25rem;
-  background: linear-gradient(180deg, rgb(255 243 207 / 30%), rgb(112 68 35 / 7%));
-  box-shadow: inset 0 0 2rem rgb(86 48 24 / 8%);
+.vault-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-inline: 0.5rem;
 }
 
 .vault-count {
@@ -301,27 +351,789 @@
   font-weight: 700;
 }
 
-/* Empty slots read as faint parchment line art, not solid blocks. */
-.character-slot-placeholder {
-  background: linear-gradient(150deg, #f4e3ba 8%, #dcbb80 58%, #b58c4a);
-  filter: drop-shadow(0 0.15rem 0.5rem rgb(112 68 30 / 28%));
-}
-
-/* Character card: the portrait sits in a page-shaped frame. */
-.character-portrait {
+/* Saved characters fan out from the middle like a hand of cards; the card itself opens the editor. */
+.companion-fan-shell {
+  position: relative;
   overflow: hidden;
-  border: 1px dashed rgb(105 62 30 / 46%);
-  border-radius: 0.9rem;
-  background:
-    radial-gradient(ellipse at center 72%, rgb(120 73 35 / 12%) 0 24%, transparent 25%),
-    rgb(247 228 182 / 32%);
+  min-height: 25rem;
+  margin-top: 0.5rem;
+  border-radius: 1rem;
 }
 
-.character-portrait [role="img"] {
+.companion-fan-shell::after {
+  position: absolute;
+  inset: auto 8% 0;
+  height: 4rem;
+  border-top: 2px solid rgb(111 65 31 / 36%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgb(91 51 24 / 16%), transparent 68%);
+  pointer-events: none;
+  content: "";
+}
+
+.companion-fan {
+  position: relative;
+  width: min(100%, 58rem);
+  height: 24rem;
+  margin-inline: auto;
+}
+
+.companion-card {
+  position: absolute;
+  left: 50%;
+  bottom: 2rem;
+  z-index: 1;
+  width: 9.4rem;
+  padding: 0.55rem;
+  border: 2px solid #7f5128;
+  border-radius: 0.85rem;
+  background:
+    radial-gradient(circle at 50% 34%, rgb(255 232 154 / 82%), transparent 35%),
+    linear-gradient(150deg, #f2d38b, #c98c3d 58%, #8c5428);
+  color: #4f2f1b;
+  box-shadow: inset 0 1px rgb(255 247 211 / 78%), inset 0 0 0 4px rgb(100 57 25 / 22%), 0 0.8rem 1.4rem rgb(63 33 15 / 18%);
+  transform: translate(calc(-50% + var(--fan-x, 0px)), var(--fan-y, 0px)) rotate(var(--fan-r, 0deg));
+  transform-origin: 50% 145%;
+  transition: translate 180ms ease, filter 180ms ease;
+  animation: companion-deal 560ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation-delay: calc(var(--fan-i, 0) * 45ms);
+}
+
+/* Dealt from a face-down stack at the centre into each card's fan position. */
+@keyframes companion-deal {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 1.5rem) rotate(0deg);
+  }
+}
+
+.companion-card:hover,
+.companion-card:focus-within {
+  z-index: 20;
+  filter: brightness(1.06);
+  translate: 0 -1.5rem;
+}
+
+.companion-card::before {
+  position: absolute;
+  inset: 0.85rem;
+  border: 1px dashed rgb(94 54 28 / 58%);
+  border-radius: 0.55rem;
+  pointer-events: none;
+  content: "";
+}
+
+.saved-overflow {
+  margin: -1rem 0 0;
+  padding: 0.5rem;
+  border-top: 1px dashed rgb(111 65 31 / 36%);
+}
+
+.saved-overflow > summary {
+  width: fit-content;
+  margin-inline: auto;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.55rem;
+  color: #68431f;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.companion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.4rem, 1fr));
+  gap: 1rem;
+  margin-top: 0.6rem;
+  padding: 0.4rem;
+}
+
+.companion-grid .companion-card {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  width: auto;
+  transform: none;
+  animation: none;
+}
+
+.companion-grid .companion-card:hover,
+.companion-grid .companion-card:focus-within {
+  translate: 0 -0.35rem;
+}
+
+.companion-card-open {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1rem 0.65rem 0.5rem;
+  text-align: center;
+}
+
+.companion-card-portrait {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid rgb(94 54 28 / 40%);
+  border-radius: 0.6rem;
+  background: radial-gradient(circle at center, rgb(255 241 197 / 46%), rgb(225 196 137 / 12%) 72%, transparent);
+}
+
+.companion-card-portrait [role="img"] {
   border: 0;
   border-radius: 0;
   background-color: transparent;
 }
+
+.companion-card-name {
+  overflow: hidden;
+  max-width: 100%;
+  color: #4e2d19;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.companion-card-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.65rem 0.7rem;
+}
+
+.companion-card-actions [data-slot="button"] {
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid rgb(113 68 30 / 38%);
+  background: rgb(255 243 205 / 34%);
+  color: #5a361d;
+  box-shadow: inset 0 1px rgb(255 247 211 / 60%);
+}
+
+.companion-card-actions [data-variant="destructive"] {
+  border-color: rgb(113 44 30 / 30%);
+  background: rgb(130 54 36 / 12%);
+  color: #7a2f1f;
+}
+
+.start-gate {
+  display: grid;
+  grid-template-columns: 4rem minmax(0, 1fr);
+  gap: 1.15rem;
+  align-items: start;
+  padding: 1.25rem !important;
+  border: 1px solid rgb(123 74 32 / 34%) !important;
+  background: rgb(244 224 178 / 62%) !important;
+  box-shadow: inset 0 1px rgb(255 248 216 / 55%), 0 0.65rem 1.4rem rgb(70 38 18 / 7%) !important;
+}
+
+.gate-icon,
+.gate-icon .aozu-icon {
+  display: grid;
+  width: 4rem;
+  height: 4rem;
+  place-items: center;
+}
+
+.gate-action {
+  grid-column: 1 / -1;
+}
+
+.gate-action [data-slot="button"],
+button.gate-action {
+  min-height: 2.75rem;
+  width: 100%;
+  border: 1px solid #82501f;
+  background: linear-gradient(#8a582d, #684021);
+  color: #fae7ab;
+  box-shadow: inset 0 1px rgb(255 235 172 / 26%), 0 0.35rem 0.8rem rgb(72 38 18 / 14%);
+}
+
+.parchment-notice {
+  background: rgb(244 224 178 / 72%) !important;
+}
+
+/* ---------------------------------------------------------------------------
+   Character Workshop: ChatGPT guide, the stage, and the doll workbench
+   --------------------------------------------------------------------------- */
+
+.draft-workshop-shell {
+  height: calc(100svh - 3.5rem);
+  overflow: hidden;
+}
+
+.character-spell-guide {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1.2rem;
+  align-items: center;
+  padding: 0.75rem 1.1rem;
+  border: 1px solid #7b4b25;
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at 88% 14%, rgb(224 176 76 / 20%), transparent 28%),
+    linear-gradient(145deg, #654128, #432a1b);
+  color: #f3dfaa;
+  box-shadow: inset 0 0 0 3px rgb(255 224 145 / 8%), 0 0.8rem 1.8rem rgb(61 32 16 / 20%);
+}
+
+.character-spell-guide h1,
+.character-spell-guide .forge-kicker {
+  color: #f0cd75 !important;
+}
+
+.character-spell-guide .forge-kicker {
+  margin-bottom: 0.15rem;
+}
+
+.character-spell-guide p:not(.forge-kicker) {
+  margin-top: 0.15rem;
+  color: #eadbb9;
+  line-height: 1.4;
+}
+
+.spell-icon {
+  display: grid;
+  width: 3.2rem;
+  height: 3.2rem;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 0.75rem;
+  color: #ffe59a;
+}
+
+.character-spell-guide > .spell-icon {
+  width: 5rem;
+  height: 5rem;
+}
+
+.spell-icon .aozu-icon,
+.dialogue-portrait .aozu-icon {
+  width: 100%;
+  height: 100%;
+}
+
+.draft-workshop-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(7rem, 1fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+@media (min-width: 900px) {
+  .draft-workshop-grid {
+    grid-template-columns: minmax(0, 1.2fr) minmax(22rem, 0.8fr);
+  }
+}
+
+.character-stage-panel,
+.doll-workbench {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding: 1rem;
+}
+
+.character-stage-heading,
+.workbench-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.character-stage-heading {
+  justify-content: space-between;
+}
+
+.character-stage-heading > div,
+.workbench-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.character-stage-heading > div > span,
+.workbench-heading > span {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid #9b6929;
+  border-radius: 0.6rem;
+  background: #d8ad50;
+  color: #543219;
+  font-family: var(--font-heading);
+  font-weight: 800;
+}
+
+.character-stage-heading strong,
+.workbench-heading h2 {
+  color: #5b361b;
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.character-stage-heading > p {
+  overflow: hidden;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid #a5722d;
+  border-radius: 0.55rem;
+  background: #6a4225;
+  color: #f5dc91;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-stage-canvas {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  margin-top: 0.75rem;
+  border: 1px solid rgb(128 79 35 / 40%);
+  border-radius: 1rem;
+  background:
+    linear-gradient(90deg, transparent 49.9%, rgb(105 62 30 / 10%) 50%, transparent 50.1%),
+    radial-gradient(circle at center 42%, rgb(255 239 187 / 30%), transparent 64%);
+  box-shadow: inset 0 0 2rem rgb(83 47 23 / 5%), 0 0 1.5rem rgb(231 183 73 / 7%);
+}
+
+.character-stage-canvas [role="img"] {
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
+}
+
+.character-empty-placeholder {
+  display: grid;
+  place-items: center;
+}
+
+.character-empty-placeholder img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0.3;
+  filter: sepia(0.08) saturate(0.82) drop-shadow(0 0 0.7rem rgb(225 174 63 / 24%));
+  mix-blend-mode: multiply;
+}
+
+.alignment-switch {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.character-first-dialogue {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #7d4b25;
+  border-radius: 0.8rem;
+  background: #50311f;
+  color: #f4dfaa;
+  box-shadow: inset 0 0 0 2px rgb(255 228 157 / 8%);
+}
+
+.dialogue-portrait {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 0.65rem;
+  color: #f8df93;
+}
+
+.character-first-dialogue label > span {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-family: var(--font-heading);
+  font-weight: 700;
+}
+
+.character-first-dialogue input {
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.45rem 0.65rem;
+  border-color: rgb(237 203 117 / 48%) !important;
+  background: rgb(255 240 196 / 10%) !important;
+  color: #fff0c1;
+}
+
+.character-first-dialogue input::placeholder {
+  color: #cbbd99;
+}
+
+.workbench-heading {
+  align-items: flex-start;
+}
+
+.workbench-heading p {
+  margin-top: 0.2rem;
+  color: #765133;
+  line-height: 1.45;
+}
+
+.workbench-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin-top: 0.8rem;
+  padding-block: 0.6rem;
+  border: 1px solid rgb(128 79 35 / 40%);
+}
+
+.workbench-tabs button {
+  min-width: 0;
+  border-radius: 0.6rem;
+}
+
+.workbench-tabs .aozu-icon {
+  width: 2.35rem;
+  height: 2.35rem;
+}
+
+.workbench-content {
+  margin-top: 0.75rem;
+}
+
+.workbench-content > h3 {
+  font-family: var(--font-heading);
+  font-size: 1.2rem;
+  font-weight: 800;
+}
+
+.variant-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+}
+
+.variant-card {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgb(128 79 35 / 40%);
+  border-radius: 0.7rem;
+  background: rgb(248 229 182 / 45%);
+  color: #6d4927;
+}
+
+.variant-card.is-selected {
+  border-color: #aa7428;
+  box-shadow: 0 0 0 2px rgb(181 126 38 / 18%);
+}
+
+.variant-preview {
+  display: flex;
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0.45rem;
+  background: rgb(112 68 34 / 8%);
+}
+
+.variant-preview.is-expression {
+  padding: 0.15rem;
+}
+
+.expression-placeholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 0.45rem;
+  object-fit: cover;
+  object-position: center 43%;
+  opacity: 0.8;
+  filter: drop-shadow(0 0 0.45rem rgb(195 137 38 / 18%));
+  mix-blend-mode: multiply;
+}
+
+.variant-label {
+  display: block;
+  overflow: hidden;
+  padding: 0.4rem 0.3rem;
+  color: #65411f;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.variant-edit {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border: 1px solid #94632d;
+  border-radius: 0.5rem;
+  background: rgb(244 222 170 / 92%);
+}
+
+.add-variant {
+  display: flex;
+  flex-direction: column;
+  border-style: dashed;
+}
+
+.variant-editor-heading {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.variant-editor-heading input {
+  min-height: 2.5rem;
+  padding: 0.4rem 0.55rem;
+}
+
+.required-status {
+  color: #8a5c22;
+  font-size: 0.7rem !important;
+  font-weight: 800;
+}
+
+.transform-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
+
+.transform-grid input {
+  min-height: 2.5rem;
+}
+
+.asset-upload-card {
+  display: block;
+  overflow: hidden;
+  margin-top: 0.75rem;
+  border: 1px dashed #93612c;
+  border-radius: 0.8rem;
+  background: rgb(249 231 187 / 38%);
+  cursor: pointer;
+}
+
+.asset-upload-preview {
+  display: flex;
+  aspect-ratio: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  background: rgb(112 68 34 / 8%);
+}
+
+.asset-upload-card > span:nth-child(2) {
+  display: block;
+  padding: 0.6rem;
+  font-weight: 700;
+}
+
+.back-layer-upload {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+  padding: 0.6rem;
+  border: 1px dashed #93612c;
+  border-radius: 0.7rem;
+  cursor: pointer;
+}
+
+.workbench-footer {
+  margin-top: 0.8rem;
+  padding-top: 0.75rem;
+}
+
+/* Empty slots read as faint parchment line art, not solid blocks. */
+.character-slot-placeholder {
+  background: linear-gradient(145deg, #fffdf6 12%, #f7e9c6 62%, #e7c77e);
+  filter: drop-shadow(0 0 0.5rem rgb(224 174 69 / 30%));
+}
+
+/* ---------------------------------------------------------------------------
+   Responsive
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 700px) {
+  #root > header nav {
+    gap: 0.5rem;
+  }
+
+  #root > header nav > div:first-child > span {
+    max-width: 7.5rem;
+  }
+
+  #root > header nav > div:last-child > span {
+    display: none;
+  }
+
+  .forge-hero {
+    align-items: flex-start;
+    padding: 1.2rem 0.8rem;
+  }
+
+  .companion-vault {
+    padding-inline: 0.6rem;
+  }
+
+  /* No room to fan on a phone: one snap-scrolling row instead. */
+  .companion-fan-shell {
+    overflow-x: auto;
+    min-height: 0;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximity;
+  }
+
+  .companion-fan-shell::after {
+    display: none;
+  }
+
+  .companion-fan {
+    display: flex;
+    width: max-content;
+    height: auto;
+    gap: 0.75rem;
+    padding: 1rem 0.6rem 2rem;
+  }
+
+  .companion-card {
+    position: relative;
+    left: auto;
+    bottom: auto;
+    width: 8.8rem;
+    flex: 0 0 auto;
+    transform: none !important;
+    animation: none;
+    scroll-snap-align: center;
+  }
+
+  .companion-card:hover,
+  .companion-card:focus-within {
+    translate: 0 -0.35rem;
+  }
+}
+
+@media (max-width: 640px) {
+  #root main::before {
+    inset: 0.35rem;
+    border-radius: 1rem;
+  }
+
+  .forge-seal.aozu-icon {
+    width: 5rem;
+    height: 5rem;
+  }
+
+  .character-spell-guide {
+    grid-template-columns: 1fr;
+  }
+
+  .character-spell-guide > .spell-icon {
+    display: none;
+  }
+
+  .character-stage-panel,
+  .doll-workbench {
+    padding: 0.5rem;
+  }
+
+  .character-stage-heading > div > span,
+  .workbench-heading > span {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .character-stage-heading strong,
+  .workbench-heading h2 {
+    font-size: 1.05rem;
+  }
+
+  .character-stage-heading > p,
+  .character-spell-guide p:not(.forge-kicker),
+  .workbench-heading p,
+  .workbench-tabs button > span:not(.aozu-icon) {
+    display: none;
+  }
+
+  /* The right column is ~7rem wide here; headings truncate instead of wrapping. */
+  .character-stage-heading > div,
+  .workbench-heading > div {
+    min-width: 0;
+  }
+
+  .character-stage-heading strong,
+  .workbench-heading h2,
+  .workbench-content > h3 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workbench-tabs {
+    gap: 0.2rem;
+  }
+
+  .workbench-tabs .aozu-icon {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .variant-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .variant-edit {
+    width: 1.6rem;
+    height: 1.6rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .forge-hero h1 {
+    font-size: 2rem;
+  }
+
+  .forge-kicker {
+    letter-spacing: 0.07em;
+  }
+
+  .forge-seal {
+    display: none;
+  }
+
+  .vault-heading {
+    align-items: flex-start;
+  }
+
+  .vault-count {
+    padding-inline: 0.5rem;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Character layer crossfade (unchanged from main)
+   --------------------------------------------------------------------------- */
 
 .character-layer-exit {
   animation: 180ms ease-out both character-fade-out;
@@ -341,7 +1153,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .character-layer-exit,
-  .character-layer-enter {
+  .character-layer-enter,
+  .companion-card {
     animation: none;
   }
 }

@@ -1,5 +1,5 @@
-import { PlusIcon } from 'lucide-react'
-import { useState } from 'react'
+import { CopyIcon, PlusIcon, Trash2Icon } from 'lucide-react'
+import { useState, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { CharacterDraft, ResolvedCharacterLayer } from '@/core/domain/character.ts'
@@ -47,45 +47,75 @@ export function CharacterLibraryPage({ characters, createCharacter, openCharacte
     finally { setBusy(false) }
   }
 
-  return <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 sm:py-12">
+  const fanned = characters.slice(0, 9)
+  const overflow = characters.slice(9)
+  const card = (character: CharacterLibraryItem, style?: CSSProperties) => <article key={character.id} role="listitem" className="companion-card" style={style}>
+    <button type="button" className="companion-card-open" aria-label={`${t('characters.edit')} ${character.name}`} onClick={() => openCharacter(character.id)}>
+      <span className="companion-card-portrait"><CharacterRenderer label={character.name} layers={character.layers} /></span>
+      <span className="companion-card-name">{character.name}</span>
+      <span className="companion-card-meta">
+        {t('characters.revision', { revision: character.revision })} · {t('characters.updated', { updated: updatedAtFormat.format(character.updatedAt) })}
+      </span>
+    </button>
+    <div className="companion-card-actions">
+      <Button size="icon" variant="outline" disabled={busy} aria-label={`${t('characters.copy')} ${character.name}`} title={t('characters.copy')} onClick={() => void run(() => copyCharacter(character.id).then(refresh))}><CopyIcon aria-hidden="true" /></Button>
+      <DataControls exportData={() => exportCharacter(character.id)} exportFilename={`${character.name}-character.zip`} exportIconOnly exportLabel={t('draft.download')} />
+      <Button size="icon" variant="destructive" disabled={busy} aria-label={`${t('characters.delete')} ${character.name}`} title={t('characters.delete')} onClick={() => setDeleting(character)}><Trash2Icon aria-hidden="true" /></Button>
+    </div>
+  </article>
+
+  return <main className="mx-auto min-h-[calc(100svh-3.5rem)] w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
     <section className="forge-hero" aria-labelledby="characters-title">
-      <div className="min-w-0">
+      <div>
         <p className="forge-kicker"><AozuIcon name="archive" /> {t('characters.kicker')}</p>
         <h1 id="characters-title" className="font-heading text-4xl font-semibold tracking-tight sm:text-5xl">{t('characters.title')}</h1>
-        <p className="mt-3 max-w-xl leading-7 text-muted-foreground">{t('characters.description')}</p>
+        <p className="mt-4 max-w-2xl leading-7 text-muted-foreground">{t('characters.description')}</p>
       </div>
       <AozuIcon name="book" className="forge-seal" />
     </section>
 
-    <div className="mt-6 flex flex-wrap items-center gap-3">
-      <Button size="lg" disabled={busy} onClick={() => void run(async () => openCharacter((await createCharacter()).id))}>
-        <PlusIcon aria-hidden="true" />{t('characters.new')}
-      </Button>
-      <DataControls prepareImport={async (blob) => { await importCharacter(blob); await refresh() }} />
-      <span className="vault-count ml-auto">{t('characters.count', { count: characters.length })}</span>
-    </div>
-
-    <section className="character-vault mt-6" aria-label={t('characters.title')}>
+    <section className="companion-vault mt-10" aria-labelledby="saved-characters-title">
+      <div className="vault-heading">
+        <h2 id="saved-characters-title" className="font-heading text-2xl font-medium">{t('characters.saved')}</h2>
+        <span className="vault-count">{t('characters.count', { count: characters.length })}</span>
+      </div>
       {characters.length === 0
-        ? <p className="leading-6 text-muted-foreground">{t('characters.empty')}</p>
-        : <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{characters.map((character) => <article key={character.id} className="rounded-2xl border p-3">
-          <button type="button" className="character-portrait block w-full" aria-label={character.name} onClick={() => openCharacter(character.id)}>
-            <CharacterRenderer label={character.name} layers={character.layers} />
-          </button>
-          <h3 className="mt-3 truncate font-heading text-lg font-semibold">{character.name}</h3>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
-            {t('characters.revision', { revision: character.revision })} · {t('characters.updated', { updated: updatedAtFormat.format(character.updatedAt) })}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={() => openCharacter(character.id)}>{t('characters.edit')}</Button>
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(() => copyCharacter(character.id).then(refresh))}>{t('characters.copy')}</Button>
-            <DataControls exportData={() => exportCharacter(character.id)} exportFilename={`${character.name}-character.zip`} exportIconOnly exportLabel={t('draft.download')} />
-            <Button size="sm" variant="destructive" className="ml-auto" onClick={() => setDeleting(character)}>{t('characters.delete')}</Button>
+        ? <p className="mt-4 px-2 leading-6 text-muted-foreground">{t('characters.empty')}</p>
+        : <div className="companion-fan-shell">
+          <div className="companion-fan" role="list" aria-label={t('characters.saved')}>
+            {fanned.map((character, index) => {
+              // Fan geometry from the Design branch: 48px spread, 7px sag, 4.25° per step from the middle card.
+              const offset = index - (fanned.length - 1) / 2
+              return card(character, { '--fan-i': index, '--fan-x': `${offset * 48}px`, '--fan-y': `${Math.abs(offset) * 7}px`, '--fan-r': `${offset * 4.25}deg` } as CSSProperties)
+            })}
           </div>
-        </article>)}</div>}
+        </div>}
+      {overflow.length > 0 && <details className="saved-overflow">
+        <summary>{t('characters.more', { count: overflow.length })}</summary>
+        <div className="companion-grid">{overflow.map((character) => card(character))}</div>
+      </details>}
     </section>
 
-    <section className="mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5">
+    <div className="start-gates mt-8 grid gap-4 sm:grid-cols-2">
+      <section className="start-gate rounded-2xl border bg-background p-5 shadow-sm">
+        <div className="gate-icon"><AozuIcon name="book" /></div>
+        <div className="min-w-0">
+          <h2 className="font-heading text-xl font-medium">{t('characters.new')}</h2>
+          <p className="mt-2 leading-6 text-muted-foreground">{t('characters.gates.create')}</p>
+        </div>
+        <Button className="gate-action" disabled={busy} onClick={() => void run(async () => openCharacter((await createCharacter()).id))}><PlusIcon aria-hidden="true" />{t('characters.new')}</Button>
+      </section>
+      <section className="start-gate rounded-2xl border bg-background p-5 shadow-sm">
+        <div className="gate-icon"><AozuIcon name="import" /></div>
+        <div className="min-w-0">
+          <h2 className="font-heading text-xl font-medium">{t('data.import')}</h2>
+          <p className="mt-2 leading-6 text-muted-foreground">{t('characters.gates.import')}</p>
+        </div>
+        <div className="gate-action"><DataControls prepareImport={async (blob) => { await importCharacter(blob); await refresh() }} /></div>
+      </section>
+    </div>
+
+    <section className="parchment-notice mt-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5">
       <div className="min-w-0">
         <h2 className="font-heading text-xl font-medium">{t('characters.story.title')}</h2>
         <p className="mt-1 text-muted-foreground">{t('characters.story.description')}</p>

@@ -15,11 +15,17 @@ const en = {
   },
   draft: { name: 'Character name', download: 'Export character' },
   characters: {
-    kicker: 'AOZU character archive',
+    kicker: 'AOZU CHARACTER ARCHIVE',
     title: 'Your characters',
     description: 'Create and manage reusable characters stored in this browser.',
+    saved: 'Saved characters',
     count: '{{count}} saved',
+    more: 'Show {{count}} more',
     new: 'Create character',
+    gates: {
+      create: 'Start a blank character, then shape it in the editor or with ChatGPT.',
+      import: 'Restore a character you exported earlier.',
+    },
     edit: 'Edit',
     copy: 'Duplicate',
     delete: 'Delete',
@@ -121,6 +127,13 @@ const en = {
     discardDescription: 'This removes the staged bundle and its local assets. Saved companions are not affected.',
   },
   characterDraft: {
+    kicker: 'AOZU CHARACTER WORKSHOP',
+    chatgpt: {
+      title: 'Create with ChatGPT',
+      description: 'Describe the character you want. ChatGPT can add a base character, aligned expressions, outfits, and props directly to this character.',
+    },
+    stageTitle: 'Full-body preview',
+    workbenchDescription: 'Choose a slot, then upload artwork or let ChatGPT add it.',
     required: 'Required',
     missingRequired: 'Add a base character to establish the pose and alignment.',
     validating: 'Checking…',

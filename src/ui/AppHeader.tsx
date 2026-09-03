@@ -28,7 +28,7 @@ export function AppHeader({ webmcp, title, onBack, actions }: AppHeaderProps) {
         <div className="flex min-w-0 items-center gap-1">
           {onBack && <Button type="button" size="icon" variant="ghost" onClick={onBack} aria-label={t('common.back')}><ArrowLeftIcon /></Button>}
           <AozuIcon name="book" />
-          <span className="truncate font-heading text-lg font-semibold tracking-wide">
+          <span className="truncate font-heading text-lg font-semibold">
             {title ?? t('common.productName')}
           </span>
         </div>

@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, CircleSlash2Icon, Layers2Icon, PencilIcon, PlusIcon, Redo2Icon, ShapesIcon, ShirtIcon, SmileIcon, Undo2Icon } from 'lucide-react'
+import { ArrowLeftIcon, CircleSlash2Icon, Layers2Icon, PencilIcon, PlusIcon, Redo2Icon, Undo2Icon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, useNavigate, useParams } from 'react-router'
@@ -8,6 +8,7 @@ import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterDraftAt
 import type { CharacterFitSuggestion } from '@/core/application/character-alignment.ts'
 import type { CharacterEditor } from '@/core/application/character-editor.ts'
 import { IDENTITY_CHARACTER_TRANSFORM, type CharacterDraft, type CharacterDraftVariant, type CharacterTextureAtlas, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
+import { AozuIcon, type AozuIconName } from '@/ui/AozuIcon'
 import { CharacterAlignmentRenderer, CharacterAssetImage, CharacterAtlasFrameImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/components/ui/tooltip'
@@ -16,20 +17,23 @@ import { StatusPage } from '@/ui/pages/StatusPage'
 import { useBlobUrl } from '@/ui/useBlobUrl'
 
 type CharacterCategoryId = 'expressions' | 'outfits' | 'props'
-type CharacterCategory = { id: CharacterCategoryId; group: CharacterVariantGroup; icon: ComponentType<{ className?: string }> }
+type CharacterCategory = { id: CharacterCategoryId; group: CharacterVariantGroup; icon: AozuIconName }
 
 const characterCategories: CharacterCategory[] = [
-  { id: 'expressions', group: 'expression', icon: SmileIcon },
-  { id: 'outfits', group: 'outfit', icon: ShirtIcon },
-  { id: 'props', group: 'prop', icon: ShapesIcon },
+  { id: 'expressions', group: 'expression', icon: 'expressions' },
+  { id: 'outfits', group: 'outfit', icon: 'outfits' },
+  { id: 'props', group: 'prop', icon: 'props' },
 ]
 const categoryForGroup = (group: CharacterVariantGroup) => characterCategories.find((category) => category.group === group)!.id
 const expressionIcons = ['happy', 'sad', 'angry', 'surprised', 'sleepy']
 const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
-  if (group === 'expression') return `/assets/character-slots/expression-${expressionIcons.includes(variantId) ? variantId : 'happy'}.png`
+  if (group === 'expression') return `/assets/expression-placeholders/${expressionIcons.includes(variantId) ? variantId : 'happy'}.webp`
   if (group === 'body') return '/assets/character-slots/body-base.png'
   return '/assets/character-slots/body-outfit.png'
 }
+const CharacterVariantPlaceholder = ({ group, variantId, label }: { group: CharacterVariantGroup; variantId: string; label?: string }) => group === 'expression'
+  ? <img className="expression-placeholder" src={characterSlotIcon(group, variantId)} alt={label ?? ''} />
+  : <CharacterSlotPlaceholder src={characterSlotIcon(group, variantId)} label={label} />
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error)
 const sameTransform = (left: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM, right: CharacterVariantTransform) =>
@@ -279,10 +283,24 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
     return <Tooltip><TooltipTrigger asChild><Button type="button" size="icon" variant="ghost" aria-label={label} disabled={!enabled} onClick={run}><Icon /></Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>
   }
 
-  return <div className="h-[calc(100svh-3.5rem)] overflow-hidden bg-muted/30">
-    <main className="mx-auto grid h-[calc(100svh-3.5rem)] w-full max-w-5xl grid-cols-[minmax(0,2fr)_minmax(7rem,1fr)] gap-2 p-2 sm:w-[calc(100%-4rem)] sm:gap-4 sm:p-4 lg:w-[calc(100%-8rem)]">
-      <section className="flex min-h-0 min-w-0 flex-col rounded-2xl border bg-background p-2 sm:p-4">
-        <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+  return <div className="draft-workshop-shell">
+    <main className="draft-workshop mx-auto flex h-full w-full max-w-6xl flex-col p-3 sm:p-6">
+      <aside className="character-spell-guide" aria-labelledby="character-spell-title">
+        <div className="spell-icon"><AozuIcon name="book" /></div>
+        <div className="min-w-0 flex-1">
+          <p className="forge-kicker">{t('characterDraft.kicker')}</p>
+          <h1 id="character-spell-title" className="font-heading text-2xl font-semibold">{t('characterDraft.chatgpt.title')}</h1>
+          <p>{t('characterDraft.chatgpt.description')}</p>
+        </div>
+      </aside>
+
+      <div className="draft-workshop-grid mt-4 min-h-0 flex-1">
+      <section className="character-stage-panel rounded-2xl border bg-background">
+        <div className="character-stage-heading">
+          <div><span>01</span><strong>{t('characterDraft.stageTitle')}</strong></div>
+          {draft.name.trim() && <p>{draft.name}</p>}
+        </div>
+        <div className="character-stage-canvas">
           <div
             className={`aspect-2/3 h-full max-h-full max-w-full ${draggable ? 'cursor-move touch-none' : ''}`}
             title={draggable ? t('characterDraft.transform.dragHead') : undefined}
@@ -290,7 +308,7 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
             onPointerMove={moveDrag}
             onPointerUp={finishDrag}
             onPointerCancel={finishDrag}
-          >{selectedVariant
+          >{selectedVariant && selectedAsset
             ? <CharacterAlignmentRenderer
                 label={draft.name}
                 candidateLayers={previewLayers}
@@ -302,47 +320,49 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
               />
             : <CharacterRenderer label={draft.name} layers={previewLayers} atlas={atlas} />}</div>
         </div>
-        {selectedVariant && <div className="mt-2 grid grid-cols-4 gap-1" aria-label={t('characterDraft.alignment.label')}>
-          {(['composite', 'overlay', 'difference', 'diagnostic'] as const).map((mode) => <Button key={mode} type="button" size="sm" variant={alignmentMode === mode ? 'secondary' : 'ghost'} className="h-7 px-1 text-[10px] sm:text-xs" onClick={() => setAlignmentMode(mode)}>{t(`characterDraft.alignment.${mode}`)}</Button>)}
+        {selectedVariant && selectedAsset && <div className="alignment-switch" aria-label={t('characterDraft.alignment.label')}>
+          {(['composite', 'overlay', 'difference', 'diagnostic'] as const).map((mode) => <Button key={mode} type="button" size="sm" variant={alignmentMode === mode ? 'secondary' : 'ghost'} onClick={() => setAlignmentMode(mode)}>{t(`characterDraft.alignment.${mode}`)}</Button>)}
         </div>}
-        <label className="mt-2 min-w-0">
-          <span className="sr-only">{t('draft.name')}</span>
-          <input
-            className="h-9 w-full rounded-md border bg-background px-2 text-sm"
-            aria-label={t('draft.name')}
-            value={draft.name}
-            onChange={(event) => edit({ ...draft, name: event.target.value })}
-            onBlur={(event) => {
-              const name = event.currentTarget.value
-              commit((current) => current.name === name || !name.trim() ? current : { ...current, name })
-            }}
-            onKeyDown={textKeys}
-          />
-        </label>
+        <div className="character-first-dialogue">
+          <span className="dialogue-portrait"><AozuIcon name="profile" /></span>
+          <label className="min-w-0 flex-1">
+            <span>{t('draft.name')}</span>
+            <input
+              aria-label={t('draft.name')}
+              value={draft.name}
+              onChange={(event) => edit({ ...draft, name: event.target.value })}
+              onBlur={(event) => {
+                const name = event.currentTarget.value
+                commit((current) => current.name === name || !name.trim() ? current : { ...current, name })
+              }}
+              onKeyDown={textKeys}
+            />
+          </label>
+        </div>
       </section>
 
-      <section className="flex min-h-0 min-w-0 flex-col rounded-2xl border bg-background p-1.5 sm:p-4" aria-label={t('characterDraft.customizeTitle')}>
-        <nav aria-label={t('characterDraft.categorySwitcher')} className="flex shrink-0 gap-1 border-b bg-background pb-2 sm:gap-2">
-          {characterCategories.map(({ id, icon: Icon }) => <Button
+      <section className="doll-workbench rounded-2xl border bg-background" aria-label={t('characterDraft.customizeTitle')}>
+        <div className="workbench-heading"><span>02</span><div><h2>{t('characterDraft.customizeTitle')}</h2><p>{t('characterDraft.workbenchDescription')}</p></div></div>
+        {!selectedVariant && <nav aria-label={t('characterDraft.categorySwitcher')} className="workbench-tabs">
+          {characterCategories.map(({ id, icon }) => <Button
             key={id}
             type="button"
             variant={category?.id === id ? 'secondary' : 'ghost'}
-            size="icon"
-            className="size-8 shrink-0 rounded-lg sm:size-9"
+            className="shrink-0"
             aria-current={category?.id === id ? 'page' : undefined}
             onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${id}`)}
           >
-            <Icon className="size-4" />
-            <span className="sr-only">{t(`characterDraft.categories.${id}`)}</span>
+            <AozuIcon name={icon} />
+            <span>{t(`characterDraft.categories.${id}`)}</span>
           </Button>)}
-        </nav>
+        </nav>}
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="workbench-content min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {!selectedVariant && <>
-          <h2 className="mt-1 truncate text-sm font-medium sm:text-lg">{t(`characterDraft.categories.${category.id}`)}</h2>
-          <div className="mt-2 grid grid-cols-2 gap-1.5 sm:mt-4 sm:gap-3">
-            <button type="button" aria-label={t('characterDraft.none')} title={t('characterDraft.none')} aria-pressed={!hasSelection(category.group)} className={`relative aspect-square min-w-0 overflow-hidden rounded-xl border bg-background transition-colors hover:border-foreground/40 ${!hasSelection(category.group) ? 'border-foreground ring-1 ring-foreground' : ''}`} onClick={() => clearVariant(category.group)}>
-              <span className="flex aspect-square items-center justify-center bg-muted/40"><CircleSlash2Icon className="size-1/3 text-muted-foreground" /></span>
+          <h3>{t(`characterDraft.categories.${category.id}`)}</h3>
+          <div className="variant-grid">
+            <button type="button" aria-label={t('characterDraft.none')} title={t('characterDraft.none')} aria-pressed={!hasSelection(category.group)} className={`variant-card ${!hasSelection(category.group) ? 'is-selected' : ''}`} onClick={() => clearVariant(category.group)}>
+              <span className="variant-preview"><CircleSlash2Icon className="size-1/3 text-muted-foreground" /></span><span className="variant-label">{t('characterDraft.none')}</span>
             </button>
             {visibleVariants.map((variant) => {
               const group = CHARACTER_CREATION_GROUPS.find(({ group }) => group === variant.group)!
@@ -352,20 +372,20 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
               const thumbnail = thumbnailLayer ? variant.layers[thumbnailLayer] : undefined
               const frameId = thumbnailLayer && `${variant.group}-${variant.id}-${thumbnailLayer}`
               const selected = isSelected(variant)
-              return <div key={variantKey(variant)} className={`relative min-w-0 overflow-hidden rounded-xl border bg-background transition-colors hover:border-foreground/40 ${selected ? 'border-foreground ring-1 ring-foreground' : ''}`}>
+              return <div key={variantKey(variant)} className={`variant-card ${selected ? 'is-selected' : ''}`}>
                 <button type="button" aria-label={variant.label} title={variant.label} aria-pressed={selected} className="block w-full" onClick={() => toggleVariant(variant)}>
-                  <span className="flex aspect-square items-center justify-center bg-muted/40 p-1 sm:p-2">{thumbnail
+                  <span className={`variant-preview ${variant.group === 'expression' ? 'is-expression' : ''}`}>{thumbnail
                     ? atlas && atlasSrc && frameId && atlas.data.frames[frameId]
                       ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={frameId} label={variant.label} />
                       : <CharacterAssetImage blob={thumbnail.blob} bounds={thumbnail.inspection.visibleBounds} label={variant.label} />
-                    : variant.group === 'prop' ? <ShapesIcon className="size-1/2 text-muted-foreground" />
-                      : <CharacterSlotPlaceholder src={characterSlotIcon(variant.group, variant.id)} label={variant.label} />}</span>
+                    : variant.group === 'prop' ? <AozuIcon name="props" className="is-placeholder" />
+                      : <CharacterVariantPlaceholder group={variant.group} variantId={variant.id} label={variant.label} />}</span><span className="variant-label">{variant.label}</span>
                 </button>
-                <button type="button" title={t('characterDraft.editVariant', { name: variant.label })} className="absolute right-1 top-1 flex size-7 items-center justify-center rounded-md border bg-background/90 text-muted-foreground hover:text-foreground" aria-label={t('characterDraft.editVariant', { name: variant.label })} onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${category.id}/${encodeURIComponent(variant.id)}`)}><PencilIcon className="size-3.5" /></button>
+                <button type="button" title={t('characterDraft.editVariant', { name: variant.label })} className="variant-edit" aria-label={t('characterDraft.editVariant', { name: variant.label })} onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${category.id}/${encodeURIComponent(variant.id)}`)}><PencilIcon className="size-4" /></button>
               </div>
             })}
-            <button type="button" title={t(`characterDraft.groups.${category.group}.add`)} className="flex aspect-square items-center justify-center rounded-xl border border-dashed text-muted-foreground hover:border-foreground/40 hover:text-foreground" aria-label={t(`characterDraft.groups.${category.group}.add`)} onClick={() => addVariant(category.group)}>
-              <PlusIcon className="size-5" />
+            <button type="button" title={t(`characterDraft.groups.${category.group}.add`)} className="variant-card add-variant" aria-label={t(`characterDraft.groups.${category.group}.add`)} onClick={() => addVariant(category.group)}>
+              <span className="variant-preview"><PlusIcon className="size-6" /></span><span className="variant-label">{t(`characterDraft.groups.${category.group}.add`)}</span>
             </button>
           </div>
         </>}
@@ -376,7 +396,6 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
           const primaryLayer = layeredAccessory ? 'front' : group.layers[0]
           const primaryAsset = isCharacterDraftAssetCurrent(draft, selectedVariant, primaryLayer) ? selectedVariant.layers[primaryLayer] : undefined
           const behindAsset = layeredAccessory && isCharacterDraftAssetCurrent(draft, selectedVariant, 'back') ? selectedVariant.layers.back : undefined
-          const PlaceholderIcon = selectedVariant.group === 'prop' ? ShapesIcon : undefined
           const required = REQUIRED_CHARACTER_TARGETS.some((target) => target.group === selectedVariant.group && target.variantId === selectedVariant.id)
           const transform = selectedVariant.transform ?? IDENTITY_CHARACTER_TRANSFORM
           const changeTransform = (field: keyof CharacterVariantTransform, value: number) => {
@@ -384,11 +403,11 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
             edit(withVariant(draft, selectedVariant, { transform: { ...transform, [field]: value } }))
           }
           return <>
-            <div className="mt-1 flex items-center gap-1 sm:gap-2">
-              <Button type="button" size="icon" variant="ghost" className="size-8 shrink-0" aria-label={t('characterDraft.backToVariants')} onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${category.id}`)}><ArrowLeftIcon /></Button>
+            <div className="variant-editor-heading">
+              <Button type="button" size="icon" variant="ghost" aria-label={t('characterDraft.backToVariants')} onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${category.id}`)}><ArrowLeftIcon /></Button>
               <input
                 aria-label={t('characterDraft.variantLabel')}
-                className="min-w-0 flex-1 rounded-md border-0 bg-transparent px-1 py-1 text-xs font-medium sm:text-sm"
+                className="min-w-0"
                 value={selectedVariant.label}
                 onChange={(event) => edit(withVariant(draft, selectedVariant, { label: event.target.value }))}
                 onBlur={(event) => {
@@ -400,10 +419,10 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
                 }}
                 onKeyDown={textKeys}
               />
-              {required && <span className="text-[9px] text-muted-foreground sm:text-xs">{t('characterDraft.required')}</span>}
+              {required && <span className="required-status">{t('characterDraft.required')}</span>}
             </div>
-            {(primaryAsset || behindAsset) && <div className="mt-2 grid grid-cols-3 gap-1" aria-label={t('characterDraft.transform.label')}>
-              {(['x', 'y', 'scale'] as const).map((field) => <label key={field} className="min-w-0 text-[9px] text-muted-foreground sm:text-xs">
+            {(primaryAsset || behindAsset) && <div className="transform-grid" aria-label={t('characterDraft.transform.label')}>
+              {(['x', 'y', 'scale'] as const).map((field) => <label key={field} className="min-w-0 text-muted-foreground">
                 <span className="sr-only">{t(`characterDraft.transform.${field}`)}</span>
                 <input
                   type="number"
@@ -412,7 +431,7 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
                   max={field === 'scale' ? 4 : field === 'x' ? 512 : 768}
                   aria-label={t(`characterDraft.transform.${field}`)}
                   title={t(`characterDraft.transform.${field}`)}
-                  className="h-8 w-full rounded-md border bg-background px-1 text-center text-xs text-foreground"
+                  className="w-full rounded-md border bg-background px-1 text-center text-foreground"
                   value={transform[field]}
                   onChange={(event) => changeTransform(field, Number(event.target.value))}
                   onBlur={(event) => {
@@ -445,23 +464,23 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
                 {t(suggestion.status === 'aligned' ? 'characterDraft.transform.fitAligned' : 'characterDraft.transform.fitUnavailable')}
               </p>}
             </div>}
-            <label className="mt-2 block cursor-pointer overflow-hidden rounded-xl border hover:border-foreground/40 sm:mt-4">
-              <span className="flex aspect-square items-center justify-center bg-muted/40 p-2">{primaryAsset
+            <label className="asset-upload-card">
+              <span className="asset-upload-preview">{primaryAsset
                 ? atlas && atlasSrc && atlas.data.frames[`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`]
                   ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`} />
                   : <CharacterAssetImage blob={primaryAsset.blob} bounds={primaryAsset.inspection.visibleBounds} />
-                : PlaceholderIcon ? <PlaceholderIcon className="size-1/2 text-muted-foreground" />
-                  : <CharacterSlotPlaceholder src={characterSlotIcon(selectedVariant.group, selectedVariant.id)} />}</span>
-              <span className="block truncate p-1.5 text-[10px] sm:p-2 sm:text-xs">{t(layeredAccessory ? 'characterDraft.layers.primary' : `characterDraft.layers.${primaryLayer}`)}</span>
+                : layeredAccessory ? <AozuIcon name="props" className="is-placeholder" />
+                  : <CharacterVariantPlaceholder group={selectedVariant.group} variantId={selectedVariant.id} />}</span>
+              <span>{t(layeredAccessory ? 'characterDraft.layers.primary' : `characterDraft.layers.${primaryLayer}`)}</span>
               {fileInput(selectedVariant, primaryLayer)}
             </label>
-            {layeredAccessory && <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-xl border border-dashed p-2 hover:border-foreground/40">
+            {layeredAccessory && <label className="back-layer-upload">
               <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted/40">{behindAsset
                 ? atlas && atlasSrc && atlas.data.frames[`${selectedVariant.group}-${selectedVariant.id}-back`]
                   ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={`${selectedVariant.group}-${selectedVariant.id}-back`} />
                   : <CharacterAssetImage blob={behindAsset.blob} bounds={behindAsset.inspection.visibleBounds} />
                 : <Layers2Icon className="size-5 text-muted-foreground" />}</span>
-              <span className="min-w-0 truncate text-[9px] sm:text-xs">{t('characterDraft.layers.behindOptional')}</span>
+              <span className="min-w-0 truncate">{t('characterDraft.layers.behindOptional')}</span>
               {fileInput(selectedVariant, 'back')}
             </label>}
           </>
@@ -469,21 +488,22 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
 
         {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
         </div>
-        <div className="shrink-0 border-t pt-2">
-          {missing.length > 0 && <p className="mb-2 text-[10px] leading-4 text-muted-foreground sm:text-xs">{t('characterDraft.missingRequired')}</p>}
+        <div className="workbench-footer">
+          {missing.length > 0 && <p className="mb-2 text-muted-foreground">{t('characterDraft.missingRequired')}</p>}
           <TooltipProvider><div className="flex flex-wrap items-center gap-1">
             {iconAction(t('characterDraft.undo'), Undo2Icon, canUndo, () => void editor.undo())}
             {iconAction(t('characterDraft.redo'), Redo2Icon, canRedo, () => void editor.redo())}
             <DataControls exportData={exportCharacter} exportFilename="companion-character.zip" exportIconOnly exportLabel={t('draft.download')} />
             <Button size="sm" variant="outline" disabled={Boolean(busy) || !draft.name.trim()} onClick={() => void runBusy('save-as', saveAs)}>{busy === 'save-as' ? t('characterDraft.savingAs') : t('characterDraft.saveAs')}</Button>
           </div></TooltipProvider>
-          <p role="status" title={saveError} className={`mt-1 text-[10px] sm:text-xs ${saveStatus === 'failed' || saveStatus === 'conflict' ? 'text-destructive' : 'text-muted-foreground'}`}>
+          <p role="status" title={saveError} className={`mt-1 ${saveStatus === 'failed' || saveStatus === 'conflict' ? 'text-destructive' : 'text-muted-foreground'}`}>
             {t(`characterDraft.status.${saveStatus}`)}
             {saveStatus === 'failed' && <> · <button type="button" className="underline" onClick={() => void editor.retry()}>{t('characterDraft.status.retry')}</button></>}
             {saveStatus === 'conflict' && <> · <button type="button" className="underline" onClick={() => void runBusy('reload', () => editor.reload())}>{t('characterDraft.status.reload')}</button> / <button type="button" className="underline" onClick={() => void runBusy('save-as', saveAs)}>{t('characterDraft.saveAs')}</button></>}
           </p>
         </div>
       </section>
+      </div>
     </main>
   </div>
 }
