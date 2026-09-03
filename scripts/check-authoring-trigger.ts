@@ -24,6 +24,7 @@ const repository = {
 let submittedInput: unknown
 let replacementInput: unknown
 let repairInput: unknown
+let renameInput: unknown
 let transformInput: unknown
 const runtime = await bootMantleRuntime({
   plan: compileAuthoringBackbone(),
@@ -36,6 +37,10 @@ const runtime = await bootMantleRuntime({
   handlers: {
     'companion.inspect-workspace': async () => ({ status: 'ok', data: {} }),
     'companion.navigate-character': async (input) => ({ status: 'ok', data: input }),
+    'companion.rename-character': async (input) => {
+      renameInput = input
+      return { status: 'ok', data: input }
+    },
     'companion.create-local-companion': async () => ({ status: 'ok', data: { bundleId: 'bundle:local' } }),
     'companion.inspect-experience-contract': async () => ({ status: 'ok', data: {} }),
     'companion.inspect-character-contract': async () => ({ status: 'ok', data: {} }),
@@ -73,6 +78,9 @@ assert.equal(selected.ok, true)
 assert.equal(createdEntry?.collection, 'experience-drafts')
 assert.equal((await runtime.invokeTrigger({ trigger: 'inspect-workspace', input: {}, ctx: context })).ok, true)
 assert.equal((await runtime.invokeTrigger({ trigger: 'navigate-character', input: { destination: 'characters' }, ctx: context })).ok, true)
+const rename = { characterId: 'character:triggered', expectedRevision: 1, name: 'Renamed' }
+assert.equal((await runtime.invokeTrigger({ trigger: 'rename-character', input: rename, ctx: context })).ok, true)
+assert.deepEqual(renameInput, rename)
 assert.equal((await runtime.invokeTrigger({ trigger: 'create-local-companion', input: { draftId: 'draft:triggered' }, ctx: context })).ok, true)
 const candidate = {
   name: 'Triggered', seed: (await loadFocusStudioFixture()).starter.directions[0]!.seed,

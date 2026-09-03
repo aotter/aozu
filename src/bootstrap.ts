@@ -92,6 +92,7 @@ const CHARACTER_WEBMCP_TRIGGERS = [
   'inspect-workspace',
   'navigate-character',
   'inspect-character-contract',
+  'rename-character',
   'replace-character-asset',
   'repair-character-asset',
   'set-character-variant-transform',
@@ -126,6 +127,7 @@ export function createApplication(document: Document) {
     handlers: {
       'companion.inspect-workspace': inspectWorkspace,
       'companion.navigate-character': navigateCharacter,
+      'companion.rename-character': renameCharacter,
       'companion.create-local-companion': storyModeUnavailable,
       'companion.inspect-experience-contract': storyModeUnavailable,
       'companion.submit-experience-candidate': storyModeUnavailable,
@@ -360,6 +362,24 @@ export function createApplication(document: Document) {
     if (variantId && !character.variants.some((variant) => variant.group === group && variant.id === variantId)) throw new Error('Character variant not found')
     const path = characterPath(character.id, group, variantId)
     return { status: 'ok', data: { destination, characterId: character.id, variantId: variantId ?? null, path }, nextActions: [], effects: { navigation: { path, mode: 'push', reason: variantId ? 'Open the exact Character variant.' : 'Open the Character category.' } } }
+  }
+
+  async function renameCharacter(rawInput: unknown) {
+    const input = rawInput as { characterId: string; expectedRevision: number; name: string }
+    const name = input.name.trim()
+    if (!name || name.length > 80) throw new Error('Character name must be 1–80 characters')
+    await editor.open(input.characterId)
+    const changed = await editor.dispatch((character) => character.name === name ? character : { ...character, name }, input.expectedRevision)
+    const character = activeCharacter().character
+    const revision = settledRevision('Character name')
+    const route = browser?.location.pathname ?? ''
+    const path = routeSelection(route)?.characterId === character.id ? route : characterPath(character.id)
+    return {
+      status: 'ok',
+      data: { characterId: character.id, name: character.name, revision, changed },
+      nextActions: characterNextActions(character),
+      effects: { navigation: { path, mode: 'push', reason: 'Open the renamed Character.' } },
+    }
   }
 
   const characterTarget = async (draft: CharacterDraft, revision: number, rawInput: unknown) => {

@@ -7,7 +7,7 @@ import { bindMantleWebMcpTools, createAgentCapability } from '../src/adapters/we
 import { compileAuthoringBackbone } from '../src/core/mantle/backbone.ts'
 
 const plan = compileAuthoringBackbone()
-const triggers = new Set(['inspect-workspace', 'navigate-character', 'inspect-character-contract', 'replace-character-asset', 'repair-character-asset', 'set-character-variant-transform', 'undo-character-change', 'redo-character-change'])
+const triggers = new Set(['inspect-workspace', 'navigate-character', 'inspect-character-contract', 'rename-character', 'replace-character-asset', 'repair-character-asset', 'set-character-variant-transform', 'undo-character-change', 'redo-character-change'])
 assert.equal(createAgentCapability({} as Document).isAvailable(), false)
 assert.equal(await bindMantleWebMcpTools({} as Document, plan, async () => ({ ok: true, data: null }), triggers), null)
 
@@ -38,12 +38,13 @@ const invoke = async (trigger: string, input: unknown) => ({
 })
 const controller = createWebMcpController(document, plan, [...triggers], invoke)
 await controller.ready
-assert.deepEqual(controller.getState(), { status: 'ready', toolCount: 8 })
+assert.deepEqual(controller.getState(), { status: 'ready', toolCount: 9 })
 assert.deepEqual([...registered.keys()].sort(), [
   'inspect_character_contract',
   'inspect_workspace',
   'navigate_character',
   'redo_character_change',
+  'rename_character',
   'repair_character_asset',
   'replace_character_asset',
   'set_character_variant_transform',

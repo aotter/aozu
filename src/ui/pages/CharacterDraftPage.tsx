@@ -347,8 +347,8 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
               value={draft.name}
               onChange={(event) => edit({ ...draft, name: event.target.value })}
               onBlur={(event) => {
-                const name = event.currentTarget.value
-                commit((current) => current.name === name || !name.trim() ? current : { ...current, name })
+                const name = event.currentTarget.value.trim()
+                commit((current) => current.name === name || !name ? current : { ...current, name })
               }}
               onKeyDown={textKeys}
             />
