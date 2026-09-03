@@ -112,13 +112,9 @@ assert.equal(fullBodyExpression.status === 'invalid' && fullBodyExpression.code,
 const shiftedHead = inspectCharacterAssetOwnership('expression', mask({ ...head, x: 0 }), { headBounds: head })
 assert.equal(shiftedHead.status === 'invalid' && shiftedHead.code, 'PIXELS_OUTSIDE_LAYER_OWNERSHIP')
 const completeSkin = mask(bounds(150, 80, 220, 650))
-assert.equal(inspectCharacterAssetOwnership('outfit', completeSkin, { reference: completeSkin }).status, 'valid')
-const skinWithHole = structuredClone(completeSkin)
-for (let y = 300; y < 340; y++) for (let x = 230; x < 270; x++) skinWithHole.alpha[y * canvas.width + x] = 0
-const incompleteSkin = inspectCharacterAssetOwnership('outfit', skinWithHole, { reference: completeSkin })
-assert.equal(incompleteSkin.status, 'invalid')
-assert.equal(incompleteSkin.status === 'invalid' && incompleteSkin.code, 'OUTFIT_INCOMPLETE_CHARACTER_SKIN')
-
+const skinWithTransparentDetail = structuredClone(completeSkin)
+for (let y = 300; y < 340; y++) for (let x = 230; x < 270; x++) skinWithTransparentDetail.alpha[y * canvas.width + x] = 0
+assert.notEqual(measureCharacterMaskAlignment('outfit', completeSkin, skinWithTransparentDetail).status, 'invalid')
 // One shared read of the existing diagnostics decides the fit the editor offers and WebMCP reports.
 assert.deepEqual(suggestCharacterFit({ measurement: measureCharacterMaskAlignment('expression', mask(head), mask(head)) }), { status: 'aligned' })
 assert.deepEqual(suggestCharacterFit({ measurement: measureCharacterMaskAlignment('expression', null, mask(head)) }), { status: 'unavailable' })

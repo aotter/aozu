@@ -65,14 +65,39 @@ const readDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
 type CharacterBounds = NonNullable<CharacterAssetInspection['visibleBounds']>
 type CharacterAlignmentMeasurement = ReturnType<typeof measureCharacterMaskAlignment>
 
-const CHARACTER_ALPHA_POLICY = {
-  required: true,
-  websiteRemovesBackground: false,
-  opaqueInput: 'reject',
-  fallback: {
-    generateOn: 'one flat high-contrast color absent from the subject',
-    avoid: ['gradient', 'shadow', 'glow', 'texture', 'cropped silhouette'],
-    beforeSubmission: ['remove the background with an available image tool', 'verify genuine alpha', 'submit PNG'],
+const CHARACTER_ASSET_POLICY = {
+  workflow: {
+    inspectBeforeMutation: true,
+    exactRevisionAndAssetSha256: 'required',
+    canonicalBodyBeforeDerivedLayers: 'required',
+  },
+  input: {
+    mediaType: 'image/png',
+    finalCanvas: { ...CHARACTER_RIG.canvas },
+    visiblePixels: 'required',
+    canvasEdge: { body: 'reject', expression: 'reject', outfit: 'reject', prop: 'warning' },
+    alpha: {
+      required: true,
+      websiteRemovesBackground: false,
+      opaqueInput: 'reject',
+      fallback: {
+        generateOn: 'one flat high-contrast color absent from the subject',
+        avoid: ['gradient', 'shadow', 'glow', 'texture', 'cropped silhouette'],
+        beforeSubmission: ['remove the background with an available image tool', 'verify genuine alpha', 'submit PNG'],
+      },
+    },
+  },
+  layers: {
+    body: { content: 'complete-character-skin' },
+    expression: { content: 'complete-whole-head-only', outsideHeadOwnership: 'transparent', referenceOverlap: 'required' },
+    outfit: {
+      content: 'complete-dressed-character-skin',
+      clothingOnlyOverlay: 'reject',
+      referenceSilhouetteCompatibility: 'required',
+      exactCanonicalPixelCoverage: 'not-required',
+      preserve: ['pose', 'body center', 'head position', 'foot line'],
+    },
+    prop: { content: 'independent-transparent-overlay' },
   },
 } as const
 
@@ -382,7 +407,7 @@ export function createApplication(document: Document) {
         } : null,
         history: historyStatus(),
         navigation,
-        assetPolicy: { alpha: CHARACTER_ALPHA_POLICY },
+        assetPolicy: CHARACTER_ASSET_POLICY,
       },
       nextActions,
     }
@@ -549,6 +574,7 @@ export function createApplication(document: Document) {
         transform,
       } : { filled: false, current: false, transform },
       required: REQUIRED_CHARACTER_TARGETS.some((target) => target.group === input.group && target.variantId === input.variantId && target.layer === input.layer),
+      acceptance: CHARACTER_ASSET_POLICY.layers[input.group],
       placement: { slot: placement.slot, slotOrder: CHARACTER_RIG.slots.find(({ id }) => id === placement.slot)!.order, layerOrder: placement.order },
       alignmentReference: alignmentReference ? {
         filename: alignmentReference.filename,
@@ -584,7 +610,8 @@ export function createApplication(document: Document) {
         bounds: registrationFrame.headEnvelope?.bounds ?? null,
       } : input.group === 'outfit' ? {
         assetRole: 'complete-character-skin',
-        transparentHolesOverCanonicalBody: 'forbidden',
+        referenceSilhouetteCompatibility: 'required',
+        exactCanonicalPixelCoverage: 'not-required',
       } : {
         assetRole: input.group === 'body' ? 'complete-character-skin' : 'prop-layer',
       },
@@ -683,7 +710,7 @@ export function createApplication(document: Document) {
             'No expression overlay means the default face baked into the body. Optional whole-head variants include happy, sad, angry, surprised, and sleepy; additional variants are allowed.',
             'Outfits are full-body variants. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. A prop may be positioned anywhere, including on the head or in a hand.',
           ],
-          alphaPolicy: CHARACTER_ALPHA_POLICY,
+          assetPolicy: CHARACTER_ASSET_POLICY,
           target,
         },
         nextActions: target?.nextActions ?? characterNextActions(draft),
@@ -851,13 +878,15 @@ export function createApplication(document: Document) {
 
       // 3. The existing safety diagnostics decide, on the normalized pixels.
       const alignment = afterAlignment ?? afterResize
-      if (alignment.status === 'invalid') return rejected(alignment.diagnostics[0]?.message ?? 'Regenerate the rejected character asset.')
+      if (alignment.status === 'invalid') {
+        const diagnostic = alignment.diagnostics[0]
+        return rejected(diagnostic?.message ?? 'Regenerate the rejected character asset.', diagnostic && { code: diagnostic.code, message: diagnostic.message })
+      }
 
       // A requested alignment is baked into the stitched pixels, so it never competes with a mask auto-fit.
       const autoFit = alignTransform ?? highConfidenceCharacterAutoFit(alignment)
       ownership = inspectCharacterAssetOwnership(target.group, candidateMask, {
         headBounds: registrationFrame.headEnvelope?.bounds,
-        reference: target.group === 'outfit' ? referenceMask : null,
         transform: autoFit ?? undefined,
       })
       if (ownership.status === 'invalid') return rejected(ownership.message, { code: ownership.code, message: ownership.message })
