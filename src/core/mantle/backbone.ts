@@ -714,6 +714,27 @@ const ALL_BACKBONE_SOURCES = [
     }),
   ),
   source(
+    'authoring/rename-character.yaml',
+    envelope('Procedure', 'rename-character', {
+      title: 'Rename Character',
+      description: 'Rename one saved Character using its exact revision. A successful call saves one undoable change and opens that Character editor.',
+      input: objectSchema({
+        characterId: { type: 'string', minLength: 1 },
+        expectedRevision: { type: 'integer', minimum: 1 },
+        name: { type: 'string', minLength: 1, maxLength: 80 },
+      }, ['characterId', 'expectedRevision', 'name']),
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.rename-character' },
+    }),
+  ),
+  source(
+    'authoring/rename-character-mcp.yaml',
+    envelope('Trigger', 'rename-character', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'rename-character' },
+    }),
+  ),
+  source(
     'authoring/replace-character-asset.yaml',
     envelope('Procedure', 'replace-character-asset', {
       title: 'Replace Character Asset',
