@@ -115,7 +115,6 @@ assert.equal(characterRegistrationFrame(draft).head?.variantId, 'happy')
 assert.equal(characterRegistrationFrame(draft).head?.calibration.rebasesCurrentExpressions, true)
 assert.equal(characterRegistrationFrame(draft).editableRegions.expression?.basis, 'head-anchor')
 assert.equal(characterRegistrationFrame(draft).editableRegions.expression?.shape.kind, 'ellipse')
-assert.equal(characterRegistrationFrame(draft).editableRegions.outfit?.shape.kind, 'outside-rectangle')
 const raincoatAsset = {
   ...asset,
   filename: 'raincoat.png',
@@ -125,17 +124,16 @@ const raincoatDraft = structuredClone(draft)
 raincoatDraft.variants.find(({ group, id }) => group === 'outfit' && id === 'outfit-1')!.layers.body = raincoatAsset
 const raincoatSources = resolveCharacterAssetSources(raincoatDraft, { group: 'outfit', variantId: 'outfit-1', layer: 'body' })
 assert.equal(raincoatSources.current, true)
-assert.equal(raincoatSources.editSource?.filename, 'raincoat.png')
+assert.equal(raincoatSources.editSource, undefined)
 assert.equal(raincoatSources.alignmentReference?.filename, 'sprite.png')
 raincoatAsset.canonicalSha256 = 'c'.repeat(64)
-assert.equal(resolveCharacterAssetSources(raincoatDraft, { group: 'outfit', variantId: 'outfit-1', layer: 'body' }).editSource, undefined)
+assert.equal(resolveCharacterAssetSources(raincoatDraft, { group: 'outfit', variantId: 'outfit-1', layer: 'body' }).current, false)
 const fallbackRegistration = characterRegistrationFrame({
   ...draft,
   headRegistration: undefined,
   variants: draft.variants.filter(({ group }) => group !== 'expression'),
 })
 assert.equal(fallbackRegistration.editableRegions.expression?.basis, 'body-bounds-fallback')
-assert.equal(fallbackRegistration.editableRegions.outfit?.shape.kind, 'outside-rectangle')
 assert.equal(resolveCharacterAssetSources({ ...draft, headRegistration: undefined }, { group: 'expression', variantId: 'sad', layer: 'head' }).editSource, undefined)
 const preview = await reviewCharacterDraft(async () => inspection, draft)
 assert.equal(preview.source, 'character')

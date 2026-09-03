@@ -95,10 +95,7 @@ type Bounds = NonNullable<CharacterAssetInspection['visibleBounds']>
 export type CharacterEditableRegion = {
   source: 'registration-derived'
   basis: 'head-anchor' | 'body-bounds-fallback'
-  shape:
-    | { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
-    | { kind: 'rectangle'; x: number; y: number; width: number; height: number }
-    | { kind: 'outside-rectangle'; x: number; y: number; width: number; height: number }
+  shape: { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
 }
 
 const regionNumber = (value: number) => Math.round(value * 100) / 100
@@ -128,17 +125,6 @@ const editableRegions = (bodyBounds?: Bounds, headBounds?: Bounds) => {
         cy: regionNumber(head.y + head.height * 0.55),
         rx: regionNumber(head.width * 0.3),
         ry: regionNumber(head.height * 0.28),
-      },
-    },
-    outfit: {
-      source: 'registration-derived' as const,
-      basis,
-      shape: {
-        kind: 'outside-rectangle' as const,
-        x: regionNumber(head.x),
-        y: regionNumber(head.y),
-        width: regionNumber(head.width),
-        height: regionNumber(head.height),
       },
     },
   }
@@ -511,8 +497,8 @@ export function resolveCharacterAssetSources(
       ? expressionReference
       : input.group === 'outfit' ? canonical : undefined,
     referenceTransform: input.group === 'expression' ? headRegistration?.transform : undefined,
-    editSource: current && (input.group === 'expression' || input.group === 'outfit') ? asset : undefined,
-    editSourceTransform: current && (input.group === 'expression' || input.group === 'outfit') ? transform : undefined,
+    editSource: current && input.group === 'expression' ? asset : undefined,
+    editSourceTransform: current && input.group === 'expression' ? transform : undefined,
   }
 }
 

@@ -29,11 +29,8 @@ const round = (value: number) => Math.round(value * 10_000) / 10_000
 
 const characterEditWeight = (region: CharacterEditableRegion, x: number, y: number) => {
   const shape = region.shape
-  const outside = shape.kind === 'outside-rectangle'
-  const distance = shape.kind === 'rectangle' || shape.kind === 'outside-rectangle'
-    ? Math.min(x - shape.x, shape.x + shape.width - x, y - shape.y, shape.y + shape.height - y)
-    : (1 - Math.hypot((x - shape.cx) / shape.rx, (y - shape.cy) / shape.ry)) * Math.min(shape.rx, shape.ry)
-  return Math.max(0, Math.min(1, distance / 4 * (outside ? -1 : 1)))
+  const distance = (1 - Math.hypot((x - shape.cx) / shape.rx, (y - shape.cy) / shape.ry)) * Math.min(shape.rx, shape.ry)
+  return Math.max(0, Math.min(1, distance / 4))
 }
 
 export function measureProtectedRegionDelta(
