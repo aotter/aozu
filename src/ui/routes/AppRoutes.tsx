@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
 
@@ -41,6 +41,7 @@ export function AppRoutes({ application }: { application: Application }) {
   const [webmcp, setWebmcp] = useState(application.webmcp.getState())
   const [library, setLibrary] = useState<Awaited<ReturnType<Application['loadCharacterLibrary']>>>()
   const [loadError, setLoadError] = useState(false)
+  const creatingFirstCharacter = useRef(false)
   useLayoutEffect(() => { document.getElementById('root')?.scrollTo(0, 0) }, [location.pathname])
   const refresh = useCallback(async () => {
     setLibrary(await application.loadCharacterLibrary())
@@ -69,9 +70,23 @@ export function AppRoutes({ application }: { application: Application }) {
     document.addEventListener('visibilitychange', refreshWhenVisible)
     return () => document.removeEventListener('visibilitychange', refreshWhenVisible)
   }, [refresh])
+  useEffect(() => {
+    if (!library || library.characters.length > 0 || location.pathname !== '/characters' || creatingFirstCharacter.current) return
+    creatingFirstCharacter.current = true
+    void application.createCharacter(null)
+      .then(async (character) => {
+        await refresh()
+        navigate(`/characters/${encodeURIComponent(character.id)}/expressions`, { replace: true })
+      })
+      .catch(() => {
+        creatingFirstCharacter.current = false
+        setLoadError(true)
+      })
+  }, [application, library, location.pathname, navigate, refresh])
 
   if (loadError) return <><AppHeader webmcp={webmcp} /><StatusPage>{t('startup.error')}</StatusPage></>
   if (!library) return <><AppHeader webmcp={webmcp} /><StatusPage>{t('startup.loading')}</StatusPage></>
+  if (library.characters.length === 0 && location.pathname === '/characters') return <><AppHeader webmcp={webmcp} /><StatusPage>{t('startup.loading')}</StatusPage></>
 
   const editing = /^\/characters\/[^/]+/.test(location.pathname)
   const characterId = editing ? decodeURIComponent(location.pathname.split('/')[2] ?? '') : undefined

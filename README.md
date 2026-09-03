@@ -2,7 +2,7 @@
 
 **Build layered character assets with an AI agent—in the same browser workspace.**
 
-[Try AOZU](https://companion.phsu-31c.workers.dev) · [The WebMCP Challenge](https://webmcp.devpost.com/)
+[Try AOZU](https://companion.aozu.workers.dev) · [The WebMCP Challenge](https://webmcp.devpost.com/)
 
 AOZU is an agent-native character workshop. A human directs the character and reviews the result; an AI agent creates and repairs artwork; the website supplies the shared state, visual constraints, validation, and reversible editing needed to make the assets work together.
 
@@ -115,7 +115,7 @@ pnpm install
 pnpm dev
 ```
 
-Then open the local URL in ChatGPT's in-app browser or another WebMCP-compatible browser. The header reports whether the seven tools are ready.
+Then open the local URL in ChatGPT's in-app browser or another WebMCP-compatible browser. The header reports whether the nine tools are ready.
 
 ```bash
 pnpm lint
