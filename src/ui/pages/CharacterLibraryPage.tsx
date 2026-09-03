@@ -22,8 +22,6 @@ export type CharacterLibraryItem = Pick<CharacterDraft, 'id' | 'name' | 'updated
   layers: Array<ResolvedCharacterLayer & { blob: Blob }>
 }
 
-const updatedAtFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-
 export function CharacterLibraryPage({ characters, createCharacter, openCharacter, copyCharacter, deleteCharacter, exportCharacter, importCharacter, refresh }: {
   characters: CharacterLibraryItem[]
   createCharacter(): Promise<CharacterDraft>
@@ -34,7 +32,8 @@ export function CharacterLibraryPage({ characters, createCharacter, openCharacte
   importCharacter(blob: Blob): Promise<void>
   refresh(): Promise<void>
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const updatedAtFormat = new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, { dateStyle: 'medium', timeStyle: 'short' })
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [deleting, setDeleting] = useState<CharacterLibraryItem>()

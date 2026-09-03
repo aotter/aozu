@@ -111,8 +111,7 @@ export function createCharacterEditor(
 
   /** Copies stay distinguishable in the library: `<name> copy`, then the smallest free numeric suffix. */
   const createCopy = async (source: CharacterDraft) => {
-    // ponytail: one unreadable Character must not block copying a healthy one, so an unusable listing just skips the suffix.
-    const names = await characters.list().then((rows) => rows.map(({ character }) => character.name), () => [])
+    const names = (await characters.list()).map(({ character }) => character.name)
     return characters.create(copyCharacter(source, names))
   }
 

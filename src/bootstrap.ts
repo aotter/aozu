@@ -78,7 +78,7 @@ const characterNormalizationContract = (alignAvailable: boolean) => ({
   generateAt: { ...CHARACTER_GENERATION_CANVAS },
   finalizeAt: { ...CHARACTER_RIG.canvas },
   requirements: [
-    `Submit genuine RGBA PNG with real alpha. A painted transparency grid, a matte colour, or any opaque background is rejected and never repaired.`,
+    `Submit genuine RGBA PNG with real alpha. Opaque input is rejected. Painted transparency grids and matte backgrounds are forbidden and never repaired.`,
     `Default submissions must already be exactly ${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}.`,
     `"exact-aspect-downscale" accepts only genuine RGBA at the exact ${CHARACTER_RIG.canvas.width}:${CHARACTER_RIG.canvas.height} aspect and at least that size; it never upscales, crops, or reframes.`,
     alignAvailable
@@ -257,7 +257,7 @@ export function createApplication(document: Document) {
   const categoryFor = (group: CharacterVariantGroup) => group === 'expression' ? 'expressions'
     : group === 'outfit' ? 'outfits' : group === 'prop' ? 'props' : 'expressions'
   const characterPath = (characterId: string, group: CharacterVariantGroup = 'expression', variantId?: string) =>
-    `/characters/${encodeURIComponent(characterId)}/${categoryFor(group)}${variantId ? `/${encodeURIComponent(variantId)}` : ''}`
+    `/characters/${encodeURIComponent(characterId)}/${categoryFor(group)}${variantId && group !== 'body' ? `/${encodeURIComponent(variantId)}` : ''}`
   const routeSelection = (path: string) => {
     const match = /^\/characters\/([^/]+)(?:\/(expressions|outfits|props)(?:\/([^/]+))?)?$/.exec(path)
     if (!match) return null
@@ -424,8 +424,10 @@ export function createApplication(document: Document) {
       : maskFit ? fitActions
       : fitActions.length ? [...fitActions, submissionAction]
       : [submissionAction, {
-        tool: 'navigate_character', required: false, reason: 'Open this exact variant for visual preflight.', input: {
-          destination: `character-${categoryFor(input.group)}`, characterId: draft.id, variantId: input.variantId,
+        tool: 'navigate_character', required: false,
+        reason: input.group === 'body' ? 'Open the Character editor for canonical-body preflight.' : 'Open this exact variant for visual preflight.', input: {
+          destination: `character-${categoryFor(input.group)}`, characterId: draft.id,
+          ...(input.group === 'body' ? {} : { variantId: input.variantId }),
         },
       }]
     return {
@@ -548,10 +550,10 @@ export function createApplication(document: Document) {
             'The first body/base/body candidate establishes the canonical character and registration frame.',
             'The canonical body includes the default face. The first accepted whole-head expression establishes head registration; visually preflight it, then edit that returned expression reference for later expressions.',
             'An outfit replaces the character-skin slot: generate the complete dressed character, never a clothing-only overlay. Preserve pose, body center, head position, and foot line. Generate props against the returned current composite.',
-            'Generate at 1024×1536 and deterministically downsample 50% to the exact 512×768 canvas. Never crop, reframe, or recenter.',
-            'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
+            'Generate at 1024×1536. When the inspected target recommends exact-aspect-downscale, request it during submission; otherwise finalize externally at the exact 512×768 canvas. Never crop, reframe, or stretch.',
+            'Before importing, remove the background outside the website and verify genuine alpha transparency. Never submit a painted transparency grid or matte background; the website validates but never repairs alpha.',
             'When the target returns an editableRegion mask, transparent pixels are editable and opaque pixels are protected. The website deterministically stitches accepted expression and outfit proposals into their edit source; protectedRegionDelta must then be 0.',
-            'Submit only full-canvas RGBA PNG proposals. The website never generates, removes backgrounds, or guesses geometry; it only compiles pixels authorized by the deterministic editable region.',
+            'Submit only full-canvas RGBA PNG proposals, either already at 512×768 or with the explicit normalization allowed by the inspected target. The website never generates, removes backgrounds, or guesses geometry; it only compiles pixels authorized by the deterministic editable region.',
             'Expression layers replace the whole aligned head, including the same fixed hairstyle and facial hair. Hair and facial hair are not customizable slots.',
             'No expression overlay means the default face baked into the body. Optional whole-head variants include happy, sad, angry, surprised, and sleepy; additional variants are allowed.',
             'Outfits are full-body variants. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. A prop may be positioned anywhere, including on the head or in a hand.',
@@ -682,7 +684,13 @@ export function createApplication(document: Document) {
       const resized = resize.scale === null ? submitted : await renderCharacterCanvasDownscale(submitted)
       const inspection = resize.scale === null ? submittedInspection : await inspectCharacterImage(resized)
       resizedBounds = inspection.visibleBounds
-      validateCharacterAssetInspection(inspection)
+      finalSize = { width: inspection.width, height: inspection.height }
+      try {
+        validateCharacterAssetInspection(inspection)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return rejected(message, { code: 'INVALID_CHARACTER_ASSET', message })
+      }
 
       // 2. One uniform scale plus translation onto the reference bounds this contract published.
       const referenceMask = sources.alignmentReference ? await readCharacterAlphaMask(sources.alignmentReference.blob) : null
@@ -713,7 +721,6 @@ export function createApplication(document: Document) {
         : null
       const savedBlob = stitchedBlob ?? resized
       const savedInspection = stitchedBlob ? await inspectCharacterImage(stitchedBlob) : inspection
-      finalSize = { width: savedInspection.width, height: savedInspection.height }
       // Blob first; then one command (asset swap plus optional auto-fit) creates exactly one history frame.
       const asset = await editor.stageAsset(savedBlob, filename, 'agent', savedInspection)
       await editor.dispatch((character) => {

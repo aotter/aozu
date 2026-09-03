@@ -51,7 +51,7 @@ const fitMetrics = (t: (key: string) => string, suggestion: Extract<CharacterFit
     const key = field === 'iou' ? 'iou' : field === 'footLine' ? 'footLineDelta' : 'score'
     const before = suggestion.before[key]
     const after = suggestion.after[key]
-    return before === null && after === null ? [] : [`${t(`characterDraft.transform.${field}`)} ${fitNumber(before)} → ${fitNumber(after)}`]
+    return before === null || after === null ? [] : [`${t(`characterDraft.transform.${field}`)} ${fitNumber(before)} → ${fitNumber(after)}`]
   }),
   `x ${suggestion.transform.x} · y ${suggestion.transform.y} · ×${suggestion.transform.scale}`,
 ]

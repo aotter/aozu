@@ -67,6 +67,16 @@ assert.equal(rejection(planCharacterAlignment('reference-visible-bounds', 'outfi
 const aligned = planCharacterAlignment('reference-visible-bounds', 'outfit', bounds(60, 80, 200, 400), bounds(40, 20, 300, 600))
 assert.deepEqual(aligned, { ok: true, transform: { scale: 1.5, x: -50, y: -100 }, bounds: bounds(40, 20, 300, 600) })
 
+// Report the bounds produced by the rounded transform, not idealized reference coordinates.
+assert.deepEqual(
+  planCharacterAlignment('reference-visible-bounds', 'expression', bounds(7, 11, 123, 234), bounds(20, 30, 100, 190)),
+  {
+    ok: true,
+    transform: { scale: 0.812, x: 14.3162, y: 21.0684 },
+    bounds: { x: 20.0002, y: 30.0004, width: 99.876, height: 190.008 },
+  },
+)
+
 // A reference that would push visible pixels off the canvas is rejected, never clamped.
 assert.equal(
   rejection(planCharacterAlignment('reference-visible-bounds', 'outfit', bounds(0, 0, 100, 100), bounds(canvas.width - 40, 10, 80, 80))).code,

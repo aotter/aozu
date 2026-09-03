@@ -112,6 +112,14 @@ const character = {
 assert.equal((await runtime.invokeTrigger({ trigger: 'submit-character-asset-candidate', input: character, ctx: context })).ok, true)
 assert.deepEqual(characterInput, character)
 characterInput = undefined
+const normalizedCharacter = { ...character, normalization: { resize: 'exact-aspect-downscale', align: 'none' } }
+assert.equal((await runtime.invokeTrigger({ trigger: 'submit-character-asset-candidate', input: normalizedCharacter, ctx: context })).ok, true)
+assert.deepEqual(characterInput, normalizedCharacter)
+characterInput = undefined
+assert.equal((await runtime.invokeTrigger({
+  trigger: 'submit-character-asset-candidate', input: { ...character, normalization: { resize: 'crop', align: 'none' } }, ctx: context,
+})).ok, false)
+assert.equal(characterInput, undefined)
 assert.equal((await runtime.invokeTrigger({
   trigger: 'submit-character-asset-candidate', input: { ...character, group: 'hat' }, ctx: context,
 })).ok, false)

@@ -412,8 +412,8 @@ export function planCharacterAlignment(
     return reject('ALIGNMENT_TRANSFORM_OUT_OF_RANGE', 'The fitted alignment transform is outside the supported canvas range.')
   }
   const bounds = {
-    x: referenceBounds.x,
-    y: referenceBounds.y,
+    x: round(transform.x + candidateBounds.x * transform.scale),
+    y: round(transform.y + candidateBounds.y * transform.scale),
     width: round(candidateBounds.width * transform.scale),
     height: round(candidateBounds.height * transform.scale),
   }
