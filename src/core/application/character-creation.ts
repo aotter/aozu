@@ -12,10 +12,12 @@ import {
   type CharacterAssetTarget,
   type CharacterAtlasSource,
   type CharacterAssetInspection,
+  type CharacterAttributeValue,
   type CharacterDraft,
   type CharacterDraftAsset,
   type CharacterDraftVariant,
   type CharacterPack,
+  type CharacterProfilePatch,
   type ResolvedCharacterLayer,
   type CharacterVariantGroup,
   type CharacterVariantLayer,
@@ -85,6 +87,48 @@ export const copyCharacter = (character: CharacterDraft, existingNames: readonly
 }
 
 export const isCharacterDraftPopulated = (draft: CharacterDraft) => draft.variants.some(({ layers }) => Object.keys(layers).length > 0)
+
+const optionalProfileText = (value: string, maxLength: number, label: string) => {
+  const normalized = value.trim()
+  if (normalized.length > maxLength) throw new Error(`${label} is too long`)
+  return normalized || undefined
+}
+
+const normalizedAttributes = (attributes: Record<string, CharacterAttributeValue>) => {
+  const entries = Object.entries(attributes)
+  if (entries.length > 32) throw new Error('Character attributes are limited to 32 entries')
+  const normalized = entries.map(([rawKey, rawValue]) => {
+    const key = rawKey.trim()
+    if (!key || key.length > 40) throw new Error('Character attribute names must be 1–40 characters')
+    if (typeof rawValue === 'number' && !Number.isFinite(rawValue)) throw new Error(`Character attribute ${key} must be finite`)
+    const value = typeof rawValue === 'string' ? rawValue.trim() : rawValue
+    if (typeof value === 'string' && value.length > 200) throw new Error(`Character attribute ${key} is too long`)
+    return [key, value] as const
+  }).sort(([left], [right]) => left.localeCompare(right))
+  if (new Set(normalized.map(([key]) => key)).size !== normalized.length) throw new Error('Character attribute names must be unique')
+  return Object.fromEntries(normalized) as Record<string, CharacterAttributeValue>
+}
+
+/** One profile command shared by the UI and WebMCP; omitted fields stay unchanged. */
+export function updateCharacterProfile(draft: CharacterDraft, patch: CharacterProfilePatch): CharacterDraft {
+  const name = patch.name === undefined ? draft.name : patch.name.trim()
+  if (!name || name.length > 80) throw new Error('Character name must be 1–80 characters')
+  const description = patch.description === undefined ? draft.description : optionalProfileText(patch.description, 500, 'Character description')
+  const backstory = patch.backstory === undefined ? draft.backstory : optionalProfileText(patch.backstory, 8_000, 'Character backstory')
+  const attributes = patch.attributes === undefined ? draft.attributes : normalizedAttributes(patch.attributes)
+  if (
+    name === draft.name && description === draft.description && backstory === draft.backstory &&
+    JSON.stringify(attributes ?? {}) === JSON.stringify(draft.attributes ?? {})
+  ) return draft
+  const { description: _description, backstory: _backstory, attributes: _attributes, ...rest } = draft
+  return {
+    ...rest,
+    name,
+    ...(description ? { description } : {}),
+    ...(backstory ? { backstory } : {}),
+    ...(attributes && Object.keys(attributes).length ? { attributes } : {}),
+  }
+}
 
 const boundsCenter = ({ x, y, width, height }: NonNullable<CharacterAssetInspection['visibleBounds']>) => ({
   x: x + width / 2,

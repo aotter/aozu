@@ -17,6 +17,7 @@ import {
   type CharacterAssetTarget,
   type CharacterDraft,
   type CharacterNormalization,
+  type CharacterProfilePatch,
   type CharacterVariantGroup,
   type CharacterVariantLayer,
   type CharacterVariantTransform,
@@ -39,6 +40,7 @@ import {
   resolveCharacterAssetSources,
   setCharacterVariantTransform,
   transformCharacterBounds,
+  updateCharacterProfile,
   validateCharacterAssetInspection,
   saveCharacterDraftAsset,
 } from './core/application/character-creation.ts'
@@ -92,7 +94,7 @@ const CHARACTER_WEBMCP_TRIGGERS = [
   'inspect-workspace',
   'navigate-character',
   'inspect-character-contract',
-  'rename-character',
+  'update-character-profile',
   'replace-character-asset',
   'repair-character-asset',
   'set-character-variant-transform',
@@ -127,7 +129,7 @@ export function createApplication(document: Document) {
     handlers: {
       'companion.inspect-workspace': inspectWorkspace,
       'companion.navigate-character': navigateCharacter,
-      'companion.rename-character': renameCharacter,
+      'companion.update-character-profile': updateProfile,
       'companion.create-local-companion': storyModeUnavailable,
       'companion.inspect-experience-contract': storyModeUnavailable,
       'companion.submit-experience-candidate': storyModeUnavailable,
@@ -195,6 +197,7 @@ export function createApplication(document: Document) {
         characters: (await listCharacterDrafts()).map(({ character, version }) => ({
           id: character.id,
           name: character.name,
+          description: character.description ?? '',
           revision: version,
           updatedAt: character.updatedAt,
           layers: resolveCharacterDraftLayers(character),
@@ -329,12 +332,16 @@ export function createApplication(document: Document) {
         characters: records.map(({ character: draft, version }) => ({
           id: draft.id,
           name: draft.name,
+          description: draft.description ?? '',
           revision: version,
           updatedAt: draft.updatedAt,
         })),
         currentCharacter: character && current ? {
           id: character.id,
           name: character.name,
+          description: character.description ?? '',
+          backstory: character.backstory ?? '',
+          attributes: character.attributes ?? {},
           revision: current.version,
           updatedAt: character.updatedAt,
           selected: character.selected,
@@ -364,21 +371,30 @@ export function createApplication(document: Document) {
     return { status: 'ok', data: { destination, characterId: character.id, variantId: variantId ?? null, path }, nextActions: [], effects: { navigation: { path, mode: 'push', reason: variantId ? 'Open the exact Character variant.' : 'Open the Character category.' } } }
   }
 
-  async function renameCharacter(rawInput: unknown) {
-    const input = rawInput as { characterId: string; expectedRevision: number; name: string }
-    const name = input.name.trim()
-    if (!name || name.length > 80) throw new Error('Character name must be 1–80 characters')
-    await editor.open(input.characterId)
-    const changed = await editor.dispatch((character) => character.name === name ? character : { ...character, name }, input.expectedRevision)
+  async function updateProfile(rawInput: unknown) {
+    const { characterId, expectedRevision, ...patch } = rawInput as CharacterProfilePatch & { characterId: string; expectedRevision: number }
+    if (!Object.keys(patch).length) throw new Error('At least one Character profile field is required')
+    await editor.open(characterId)
+    const changed = await editor.dispatch((character) => updateCharacterProfile(character, patch), expectedRevision)
     const character = activeCharacter().character
-    const revision = settledRevision('Character name')
+    const revision = settledRevision('Character profile')
     const route = browser?.location.pathname ?? ''
     const path = routeSelection(route)?.characterId === character.id ? route : characterPath(character.id)
     return {
       status: 'ok',
-      data: { characterId: character.id, name: character.name, revision, changed },
+      data: {
+        characterId: character.id,
+        profile: {
+          name: character.name,
+          description: character.description ?? '',
+          backstory: character.backstory ?? '',
+          attributes: character.attributes ?? {},
+        },
+        revision,
+        changed,
+      },
       nextActions: characterNextActions(character),
-      effects: { navigation: { path, mode: 'push', reason: 'Open the renamed Character.' } },
+      effects: { navigation: { path, mode: 'push', reason: 'Open the updated Character profile.' } },
     }
   }
 
@@ -606,7 +622,15 @@ export function createApplication(document: Document) {
               current: isCharacterDraftAssetCurrent(draft, variant, layer),
             })),
           })),
-          character: { id: draft.id, name: draft.name, selected: draft.selected, revision: version },
+          character: {
+            id: draft.id,
+            name: draft.name,
+            description: draft.description ?? '',
+            backstory: draft.backstory ?? '',
+            attributes: draft.attributes ?? {},
+            selected: draft.selected,
+            revision: version,
+          },
           registrationFrame: characterRegistrationFrame(draft),
           canonicalReference: canonical ? {
             filename: canonical.filename,

@@ -213,6 +213,12 @@ const characterAssetDescriptorSchema = objectSchema({
   canonicalSha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
 }, ['blobId', 'filename', 'source', 'inspection'])
 
+const characterAttributesSchema: JsonSchema = {
+  type: 'object',
+  maxProperties: 32,
+  additionalProperties: { type: ['string', 'number', 'boolean'], maxLength: 200 },
+}
+
 const characterWorkspaceProperties = {
   schemaVersion: { const: 4 },
   packId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' },
@@ -221,6 +227,9 @@ const characterWorkspaceProperties = {
     version: { const: CHARACTER_RIG.version },
   }, ['id', 'version']),
   name: { type: 'string', minLength: 1, maxLength: 200 },
+  description: { type: 'string', maxLength: 500 },
+  backstory: { type: 'string', maxLength: 8_000 },
+  attributes: characterAttributesSchema,
   variants: {
     type: 'array',
     minItems: 1,
@@ -714,24 +723,27 @@ const ALL_BACKBONE_SOURCES = [
     }),
   ),
   source(
-    'authoring/rename-character.yaml',
-    envelope('Procedure', 'rename-character', {
-      title: 'Rename Character',
-      description: 'Rename one saved Character using its exact revision. A successful call saves one undoable change and opens that Character editor.',
+    'authoring/update-character-profile.yaml',
+    envelope('Procedure', 'update-character-profile', {
+      title: 'Update Character Profile',
+      description: 'Update one or more identity fields of a saved Character using its exact revision. Omitted fields stay unchanged; empty description, backstory, or attributes clear that field. A successful call saves one undoable change and opens that Character editor.',
       input: objectSchema({
         characterId: { type: 'string', minLength: 1 },
         expectedRevision: { type: 'integer', minimum: 1 },
         name: { type: 'string', minLength: 1, maxLength: 80 },
-      }, ['characterId', 'expectedRevision', 'name']),
+        description: { type: 'string', maxLength: 500 },
+        backstory: { type: 'string', maxLength: 8_000 },
+        attributes: characterAttributesSchema,
+      }, ['characterId', 'expectedRevision']),
       output: toolResultSchema,
-      handler: { kind: 'ref', ref: 'companion.rename-character' },
+      handler: { kind: 'ref', ref: 'companion.update-character-profile' },
     }),
   ),
   source(
-    'authoring/rename-character-mcp.yaml',
-    envelope('Trigger', 'rename-character', {
+    'authoring/update-character-profile-mcp.yaml',
+    envelope('Trigger', 'update-character-profile', {
       source: { kind: 'mcp', surface: 'public' },
-      target: { procedure: 'rename-character' },
+      target: { procedure: 'update-character-profile' },
     }),
   ),
   source(

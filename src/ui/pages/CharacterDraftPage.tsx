@@ -1,10 +1,10 @@
-import { ArrowLeftIcon, CircleSlash2Icon, CopyIcon, Layers2Icon, LoaderCircleIcon, PencilIcon, PlusIcon, Redo2Icon, Trash2Icon, Undo2Icon } from 'lucide-react'
+import { ArrowLeftIcon, ChevronDownIcon, ChevronUpIcon, CircleSlash2Icon, CopyIcon, Layers2Icon, LoaderCircleIcon, PencilIcon, PlusIcon, Redo2Icon, Trash2Icon, Undo2Icon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, useNavigate, useParams } from 'react-router'
 import { useStore } from 'zustand'
 
-import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterDraftAtlasKey, characterRegistrationFrame, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, setCharacterVariantTransform, transformCharacterBounds } from '@/core/application/character-creation.ts'
+import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterDraftAtlasKey, characterRegistrationFrame, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, setCharacterVariantTransform, transformCharacterBounds, updateCharacterProfile } from '@/core/application/character-creation.ts'
 import type { CharacterFitSuggestion } from '@/core/application/character-alignment.ts'
 import type { CharacterEditor } from '@/core/application/character-editor.ts'
 import { IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetTarget, type CharacterDraft, type CharacterDraftVariant, type CharacterTextureAtlas, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
@@ -73,6 +73,15 @@ const fitMetrics = (t: (key: string) => string, suggestion: Extract<CharacterFit
 const isTextEntry = (target: EventTarget | null) => target instanceof HTMLElement
   && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
 
+type ProfileAttributeForm = { key: string; type: 'string' | 'number' | 'boolean'; value: string }
+type ProfileForm = { name: string; description: string; backstory: string; attributes: ProfileAttributeForm[] }
+const profileFormFor = (draft: CharacterDraft): ProfileForm => ({
+  name: draft.name,
+  description: draft.description ?? '',
+  backstory: draft.backstory ?? '',
+  attributes: Object.entries(draft.attributes ?? {}).map(([key, value]) => ({ key, type: typeof value as ProfileAttributeForm['type'], value: String(value) })),
+})
+
 export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, compileAtlas, exportCharacter, replaceAsset, saveAs, deleteCharacter }: {
   editor: CharacterEditor
   autoFitVariant(group: CharacterVariantGroup, variantId: string): Promise<void>
@@ -101,6 +110,8 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
   const [compiled, setCompiled] = useState<{ key: string; atlas?: CharacterTextureAtlas }>()
   const [fit, setFit] = useState<{ key: string; value: CharacterFitSuggestion }>()
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [profileForm, setProfileForm] = useState<ProfileForm>()
   const [alignmentMode, setAlignmentMode] = useState<'composite' | 'overlay' | 'difference' | 'diagnostic'>('overlay')
   const atlasDraft = useRef<CharacterDraft | undefined>(undefined)
   const drag = useRef<{
@@ -292,6 +303,22 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
     return <Tooltip><TooltipTrigger asChild><Button type="button" size="icon" variant="ghost" aria-label={label} disabled={!enabled} onClick={run}><Icon /></Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>
   }
 
+  const saveProfile = () => {
+    if (!profileForm) return
+    const rows = profileForm.attributes.filter(({ key }) => key.trim())
+    const keys = rows.map(({ key }) => key.trim())
+    if (new Set(keys).size !== keys.length) { setError('Character attribute names must be unique'); return }
+    const attributes = Object.fromEntries(rows.map(({ key, type, value }) => [
+      key.trim(),
+      type === 'number' ? value.trim() ? Number(value) : Number.NaN : type === 'boolean' ? value === 'true' : value,
+    ]))
+    const patch = { name: profileForm.name, description: profileForm.description, backstory: profileForm.backstory, attributes }
+    try { updateCharacterProfile(draft, patch) }
+    catch (caught) { setError(describe(caught)); return }
+    commit((current) => updateCharacterProfile(current, patch))
+    setProfileForm(undefined)
+  }
+
   return <div className="draft-workshop-shell">
     <main className="draft-workshop mx-auto flex h-full w-full max-w-6xl flex-col p-[0.85rem] sm:p-6">
       <aside className="character-spell-guide" aria-labelledby="character-spell-title">
@@ -302,12 +329,13 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
         </div>
       </aside>
 
-      <div className="draft-workshop-grid mt-2 min-h-0 flex-1 sm:mt-3">
+      <div className={`draft-workshop-grid mt-2 min-h-0 flex-1 sm:mt-3 ${profileOpen ? 'is-profile-open' : ''}`}>
       <section className="character-stage-panel rounded-2xl border bg-background">
         <div className="character-stage-heading">
           <div><span>01</span><strong>{t('characterDraft.stageTitle')}</strong></div>
-          {draft.name.trim() && <p>{draft.name}</p>}
         </div>
+        <div className="character-stage-content">
+        <div className="character-stage-preview">
         <div className="character-stage-canvas">
           {baseVariant && !hasBase ? <label
             className="character-stage-upload aspect-2/3 h-full max-h-full max-w-full"
@@ -338,6 +366,35 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
         {selectedVariant && selectedAsset && <div className="alignment-switch" aria-label={t('characterDraft.alignment.label')}>
           {(['composite', 'overlay', 'difference', 'diagnostic'] as const).map((mode) => <Button key={mode} type="button" size="sm" variant={alignmentMode === mode ? 'secondary' : 'ghost'} onClick={() => setAlignmentMode(mode)}>{t(`characterDraft.alignment.${mode}`)}</Button>)}
         </div>}
+        </div>
+        <section id="character-profile" className="character-profile-panel" inert={!profileOpen ? true : undefined} aria-hidden={!profileOpen}>
+          {profileForm ? <>
+            <div className="character-profile-heading"><div><span>Character profile</span><strong>{draft.name}</strong></div></div>
+            <label><span>Name</span><input maxLength={80} value={profileForm.name} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} /></label>
+            <label><span>Description</span><textarea maxLength={500} rows={3} value={profileForm.description} onChange={(event) => setProfileForm({ ...profileForm, description: event.target.value })} /></label>
+            <label className="min-h-0"><span>Backstory</span><textarea className="min-h-28 flex-1" maxLength={8000} value={profileForm.backstory} onChange={(event) => setProfileForm({ ...profileForm, backstory: event.target.value })} /></label>
+            <div className="character-attributes-editor">
+              <div className="character-profile-heading"><span>Attributes</span><Button type="button" size="sm" variant="ghost" disabled={profileForm.attributes.length >= 32} onClick={() => setProfileForm({ ...profileForm, attributes: [...profileForm.attributes, { key: '', type: 'string', value: '' }] })}><PlusIcon /> Add</Button></div>
+              {profileForm.attributes.map((attribute, index) => <div className="character-attribute-row" key={index}>
+                <input aria-label={`Attribute ${index + 1} name`} placeholder="Name" maxLength={40} value={attribute.key} onChange={(event) => setProfileForm({ ...profileForm, attributes: profileForm.attributes.map((row, rowIndex) => rowIndex === index ? { ...row, key: event.target.value } : row) })} />
+                <select aria-label={`Attribute ${index + 1} type`} value={attribute.type} onChange={(event) => {
+                  const type = event.target.value as ProfileAttributeForm['type']
+                  setProfileForm({ ...profileForm, attributes: profileForm.attributes.map((row, rowIndex) => rowIndex === index ? { ...row, type, value: type === 'boolean' ? 'true' : type === 'number' ? '0' : row.value } : row) })
+                }}><option value="string">Text</option><option value="number">Number</option><option value="boolean">Yes / no</option></select>
+                {attribute.type === 'boolean' ? <select aria-label={`Attribute ${index + 1} value`} value={attribute.value} onChange={(event) => setProfileForm({ ...profileForm, attributes: profileForm.attributes.map((row, rowIndex) => rowIndex === index ? { ...row, value: event.target.value } : row) })}><option value="true">Yes</option><option value="false">No</option></select> : <input aria-label={`Attribute ${index + 1} value`} type={attribute.type === 'number' ? 'number' : 'text'} maxLength={attribute.type === 'string' ? 200 : undefined} placeholder="Value" value={attribute.value} onChange={(event) => setProfileForm({ ...profileForm, attributes: profileForm.attributes.map((row, rowIndex) => rowIndex === index ? { ...row, value: event.target.value } : row) })} />}
+                <Button type="button" size="icon" variant="ghost" aria-label={`Remove attribute ${index + 1}`} onClick={() => setProfileForm({ ...profileForm, attributes: profileForm.attributes.filter((_, rowIndex) => rowIndex !== index) })}><Trash2Icon /></Button>
+              </div>)}
+            </div>
+            {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
+            <div className="mt-auto flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setProfileForm(undefined)}>Cancel</Button><Button type="button" onClick={saveProfile}>Update profile</Button></div>
+          </> : <>
+            <div className="character-profile-heading"><div><span>Character profile</span><h2>{draft.name}</h2></div><Button type="button" size="icon" variant="ghost" aria-label="Edit character profile" onClick={() => { setError(undefined); setProfileForm(profileFormFor(draft)) }}><PencilIcon /></Button></div>
+            <p className="character-profile-description">{draft.description || 'No description yet.'}</p>
+            <div><h3>Backstory</h3><p className="character-profile-backstory">{draft.backstory || 'No backstory yet.'}</p></div>
+            <div className="character-profile-attributes"><h3>Attributes</h3>{Object.keys(draft.attributes ?? {}).length ? <dl>{Object.entries(draft.attributes ?? {}).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === 'boolean' ? value ? 'Yes' : 'No' : value}</dd></div>)}</dl> : <p className="text-muted-foreground">No attributes yet.</p>}</div>
+          </>}
+        </section>
+        </div>
         <div className="character-first-dialogue">
           <span className="dialogue-portrait"><AozuIcon name="profile" /></span>
           <label className="min-w-0 flex-1">
@@ -353,10 +410,13 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
               onKeyDown={textKeys}
             />
           </label>
+          <Button type="button" size="icon" variant="ghost" aria-controls="character-profile" aria-expanded={profileOpen} aria-label={profileOpen ? 'Collapse character profile' : 'Expand character profile'} onClick={() => { setProfileOpen(!profileOpen); setProfileForm(undefined) }}>
+            {profileOpen ? <ChevronDownIcon /> : <ChevronUpIcon />}
+          </Button>
         </div>
       </section>
 
-      <section className="doll-workbench rounded-2xl border bg-background" aria-label={t('characterDraft.customizeTitle')}>
+      <section className="doll-workbench rounded-2xl border bg-background" aria-label={t('characterDraft.customizeTitle')} inert={profileOpen ? true : undefined} aria-hidden={profileOpen}>
         <div className="workbench-lockable">
         <div className="workbench-body" inert={!hasBase ? true : undefined} aria-hidden={!hasBase}>
         <div className="workbench-heading"><span>02</span><div><h2>{t('characterDraft.customizeTitle')}</h2><p>{t('characterDraft.workbenchDescription')}</p></div></div>
