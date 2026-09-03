@@ -23,7 +23,7 @@ In a WebMCP-compatible browser, AOZU exposes these tools on every page:
 - `undo_character_change`: undo the latest settled character change.
 - `redo_character_change`: redo the most recently undone character change.
 
-Agents should call `inspect_workspace` first and use the returned exact revision and asset contract before any mutation. The website validates and persists changes, renders the result, and navigates the person to the affected asset for review.
+Agents should call `inspect_workspace` first and use the returned exact revision and asset contract before any mutation. The website validates and persists changes, renders the result, and navigates the person to the affected asset. After accepting or aligning an expression or outfit, visually review that rendered variant in the browser using Composite, Overlay, Difference, and Align before continuing to the next asset.
 
 ## Current scope
 

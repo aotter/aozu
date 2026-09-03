@@ -55,6 +55,10 @@ assert.deepEqual([
   registered.get('replace_character_asset')?.annotations.readOnlyHint,
   registered.get('undo_character_change')?.annotations.readOnlyHint,
 ], [true, false, false])
+assert.match(registered.get('inspect_character_contract')!.description, /required browser visual-review workflow/)
+assert.match(registered.get('set_character_variant_transform')!.description, /expression whole head/)
+assert.match(registered.get('set_character_variant_transform')!.description, /x moves right, y moves down/)
+assert.match(registered.get('set_character_variant_transform')!.description, /Composite, Overlay, Difference, and Align/)
 const navigation = { destination: 'character-outfits', characterId: 'id', variantId: 'raincoat' }
 assert.deepEqual(await registered.get('navigate_character')!.execute(navigation, {}), {
   status: 'ok', data: { trigger: 'navigate-character', input: navigation }, effects: { navigation: { path: '/characters/id/outfits/raincoat', mode: 'push', reason: 'review' } },
