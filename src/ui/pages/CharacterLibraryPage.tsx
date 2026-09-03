@@ -7,6 +7,7 @@ import { AozuIcon } from '@/ui/AozuIcon'
 import { CharacterRenderer } from '@/ui/CharacterRenderer'
 import { DataControls } from '@/ui/DataControls'
 import { Button } from '@/ui/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/components/ui/tooltip'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -70,11 +71,11 @@ export function CharacterLibraryPage({ characters, createCharacter, openCharacte
         {t('characters.revision', { revision: character.revision })} · {t('characters.updated', { updated: updatedAtFormat.format(character.updatedAt) })}
       </span>
     </button>
-    <div className="companion-card-actions">
-      <Button size="icon" variant="outline" disabled={busy} aria-label={`${t('characters.copy')} ${character.name}`} title={t('characters.copy')} onClick={() => void run(() => copyCharacter(character.id).then(refresh))}><CopyIcon aria-hidden="true" /></Button>
+    <TooltipProvider><div className="companion-card-actions">
+      <Tooltip><TooltipTrigger asChild><Button size="icon" variant="outline" disabled={busy} aria-label={`${t('characters.copy')} ${character.name}`} onClick={() => void run(() => copyCharacter(character.id).then(refresh))}><CopyIcon aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{t('characters.copy')}</TooltipContent></Tooltip>
       <DataControls exportData={() => exportCharacter(character.id)} exportFilename={`${character.name}-character.zip`} exportIconOnly exportLabel={t('draft.download')} />
-      <Button size="icon" variant="destructive" disabled={busy} aria-label={`${t('characters.delete')} ${character.name}`} title={t('characters.delete')} onClick={() => setDeleting(character)}><Trash2Icon aria-hidden="true" /></Button>
-    </div>
+      <Tooltip><TooltipTrigger asChild><Button size="icon" variant="destructive" disabled={busy} aria-label={`${t('characters.delete')} ${character.name}`} onClick={() => setDeleting(character)}><Trash2Icon aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>{t('characters.delete')}</TooltipContent></Tooltip>
+    </div></TooltipProvider>
   </article>
 
   return <main className="mx-auto min-h-[calc(100svh-3.5rem)] w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
