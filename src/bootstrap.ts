@@ -8,15 +8,23 @@ import { createWebMcpController } from './adapters/webmcp/controller.ts'
 import { loadStarterCatalog } from './adapters/browser/starter-packages.ts'
 import { AUTHORING_NAMESPACE } from './core/application/authoring.ts'
 import {
+  CHARACTER_ALIGN_MODES,
+  CHARACTER_GENERATION_CANVAS,
+  CHARACTER_RESIZE_MODES,
   CHARACTER_RIG,
+  NO_CHARACTER_NORMALIZATION,
+  type CharacterAssetInspection,
   type CharacterAssetTarget,
   type CharacterDraft,
+  type CharacterNormalization,
   type CharacterVariantGroup,
   type CharacterVariantLayer,
+  type CharacterVariantTransform,
 } from './core/domain/character.ts'
 import {
   CHARACTER_CREATION_GROUPS,
   REQUIRED_CHARACTER_TARGETS,
+  resolveCharacterDraftLayers,
   createCharacterDraftFromStarter,
   createCharacterDraft,
   migrateCharacterDraft,
@@ -34,8 +42,8 @@ import {
   saveCharacterDraftAsset,
 } from './core/application/character-creation.ts'
 import { createCharacterEditor } from './core/application/character-editor.ts'
-import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
-import { inspectCharacterImage, readCharacterAlphaMask, readCharacterPixels, readCharacterVisualSample, renderCharacterCompositeDataUrl, renderCharacterEditMaskDataUrl, renderStitchedCharacterEditBlob } from './adapters/browser/character-image.ts'
+import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, planCharacterAlignment, planCharacterResize, suggestCharacterFit, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
+import { inspectCharacterImage, readCharacterAlphaMask, readCharacterPixels, readCharacterVisualSample, renderCharacterCanvasDownscale, renderCharacterCompositeDataUrl, renderCharacterEditMaskDataUrl, renderStitchedCharacterEditBlob } from './adapters/browser/character-image.ts'
 import { compileCharacterTextureAtlas } from './adapters/browser/character-atlas.ts'
 import { inspectSceneImage } from './adapters/browser/scene-image.ts'
 import { requestPersistentStorage } from './adapters/browser/storage-persistence.ts'
@@ -48,6 +56,35 @@ const readDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
   reader.onload = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('Could not read character asset'))
   reader.onerror = () => reject(reader.error)
   reader.readAsDataURL(blob)
+})
+
+type CharacterBounds = NonNullable<CharacterAssetInspection['visibleBounds']>
+type CharacterAlignmentMeasurement = ReturnType<typeof measureCharacterMaskAlignment>
+
+/** The one deterministic alignment reference per group, read from the shared registration frame. */
+const characterReferenceBounds = (
+  frame: ReturnType<typeof characterRegistrationFrame>,
+  group: CharacterVariantGroup,
+): CharacterBounds | undefined =>
+  group === 'expression' ? frame.head?.bounds : group === 'outfit' ? frame.bodyBounds : undefined
+
+/** What a submission may and should ask the website to normalize, from the same geometry submission validates against. */
+const characterNormalizationContract = (alignAvailable: boolean) => ({
+  allowed: { resize: CHARACTER_RESIZE_MODES, align: alignAvailable ? CHARACTER_ALIGN_MODES : (['none'] as const) },
+  recommended: {
+    resize: 'exact-aspect-downscale' as const,
+    align: alignAvailable ? 'reference-visible-bounds' as const : 'none' as const,
+  },
+  generateAt: { ...CHARACTER_GENERATION_CANVAS },
+  finalizeAt: { ...CHARACTER_RIG.canvas },
+  requirements: [
+    `Submit genuine RGBA PNG with real alpha. Opaque input is rejected. Painted transparency grids and matte backgrounds are forbidden and never repaired.`,
+    `Default submissions must already be exactly ${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}.`,
+    `"exact-aspect-downscale" accepts only genuine RGBA at the exact ${CHARACTER_RIG.canvas.width}:${CHARACTER_RIG.canvas.height} aspect and at least that size; it never upscales, crops, or reframes.`,
+    alignAvailable
+      ? '"reference-visible-bounds" fits the candidate alpha bounds onto the returned reference bounds with one uniform scale plus translation, and is rejected if it would leave the canvas.'
+      : 'Alignment normalization is unavailable for this target; submit exact-canvas pixels that already match the returned geometry.',
+  ],
 })
 
 const CHARACTER_WEBMCP_TRIGGERS = [
@@ -149,7 +186,15 @@ export function createApplication(document: Document) {
     webmcp,
     editor,
     async loadCharacterLibrary() {
-      return { characters: (await listCharacterDrafts()).map(({ character: { id, name, updatedAt } }) => ({ id, name, updatedAt })) }
+      return {
+        characters: (await listCharacterDrafts()).map(({ character, version }) => ({
+          id: character.id,
+          name: character.name,
+          revision: version,
+          updatedAt: character.updatedAt,
+          layers: resolveCharacterDraftLayers(character),
+        })),
+      }
     },
     listStarters: loadStarters,
     async createCharacter(characterChoice: StarterCharacterSelection) {
@@ -170,20 +215,14 @@ export function createApplication(document: Document) {
     async copyCharacter(characterId: string) {
       return persisted(editor.duplicate((await editor.read(characterId)).character))
     },
+    /** Read-only: the same high-confidence fit WebMCP reports, so the editor can explain it before applying. */
+    characterFitSuggestion: (group: CharacterVariantGroup, variantId: string) =>
+      characterFit(group, variantId).then(({ fit }) => fit),
     async autoFitCharacterVariant(group: CharacterVariantGroup, variantId: string) {
-      const { character, revision } = activeCharacter()
-      const variant = character.variants.find((candidate) => candidate.group === group && candidate.id === variantId)
-      const layer = variant && CHARACTER_CREATION_GROUPS.find((candidate) => candidate.group === group)?.layers.find((candidate) => variant.layers[candidate])
-      if (!variant || !layer) throw new Error('Character variant is empty or missing')
-      const target = await characterTarget(character, revision, { group, variantId, layer })
-      const visualTransform = target?.alignment.visualFit?.suggestedTransform
-      const transform = visualTransform
-        ?? ((target?.alignment.registration?.role === 'head-anchor' && target.alignment.visualFit) || target?.alignment.measurement?.status === 'aligned'
-          ? null
-          : highConfidenceCharacterAutoFit(target?.alignment.measurement))
-      if (transform === null) return
-      if (!transform) throw new Error('No high-confidence auto-fit is available; use the visual alignment controls.')
-      await editor.dispatch((current) => setCharacterVariantTransform(current, group, variantId, transform), revision)
+      const { revision, fit } = await characterFit(group, variantId)
+      if (fit.status === 'aligned') return
+      if (fit.status !== 'suggested') throw new Error('No high-confidence fit is available; use the visual alignment controls.')
+      await editor.dispatch((current) => setCharacterVariantTransform(current, group, variantId, fit.transform), revision)
     },
     compileCharacterAtlas: compileAuthoringAtlas,
     async deleteCharacter(characterId: string) {
@@ -206,10 +245,19 @@ export function createApplication(document: Document) {
     },
   }
 
+  const characterFit = async (group: CharacterVariantGroup, variantId: string) => {
+    const { character, revision } = activeCharacter()
+    const variant = character.variants.find((candidate) => candidate.group === group && candidate.id === variantId)
+    const layer = variant && CHARACTER_CREATION_GROUPS.find((candidate) => candidate.group === group)?.layers.find((candidate) => variant.layers[candidate])
+    if (!variant || !layer) throw new Error('Character variant is empty or missing')
+    const target = await characterTarget(character, revision, { group, variantId, layer })
+    return { revision, fit: target?.alignment.autoFit ?? { status: 'unavailable' as const } }
+  }
+
   const categoryFor = (group: CharacterVariantGroup) => group === 'expression' ? 'expressions'
     : group === 'outfit' ? 'outfits' : group === 'prop' ? 'props' : 'expressions'
   const characterPath = (characterId: string, group: CharacterVariantGroup = 'expression', variantId?: string) =>
-    `/characters/${encodeURIComponent(characterId)}/${categoryFor(group)}${variantId ? `/${encodeURIComponent(variantId)}` : ''}`
+    `/characters/${encodeURIComponent(characterId)}/${categoryFor(group)}${variantId && group !== 'body' ? `/${encodeURIComponent(variantId)}` : ''}`
   const routeSelection = (path: string) => {
     const match = /^\/characters\/([^/]+)(?:\/(expressions|outfits|props)(?:\/([^/]+))?)?$/.exec(path)
     if (!match) return null
@@ -327,12 +375,21 @@ export function createApplication(document: Document) {
     const lineage = input.group === 'body' ? 'establish-canonical'
       : input.group === 'expression' || input.group === 'outfit' ? 'edit-canonical-body'
         : 'place-against-current-composite'
-    const suggestedTransform = highConfidenceCharacterAutoFit(measurement)
     const visualFit = asset && canonical && input.group === 'expression' && headRegistration?.variant.id === input.variantId
       ? suggestCharacterVisualRegistration(await readCharacterVisualSample(canonical.blob), await readCharacterVisualSample(asset.blob), transform)
       : null
     const editableRegion = input.group === 'expression' ? registrationFrame.editableRegions.expression
       : input.group === 'outfit' ? registrationFrame.editableRegions.outfit : undefined
+    const fit = suggestCharacterFit({
+      measurement,
+      visualFit,
+      headAnchor: input.group === 'expression' && headRegistration?.variant.id === input.variantId,
+    })
+    const referenceBounds = characterReferenceBounds(registrationFrame, input.group)
+    const normalization = {
+      ...characterNormalizationContract(Boolean(referenceBounds && editableRegion && editSource)),
+      referenceVisibleBounds: referenceBounds ?? null,
+    }
     const protectedRegionDelta = asset && editSource && editableRegion
       ? measureProtectedRegionDelta(
           await readCharacterPixels(editSource.blob, editSourceTransform),
@@ -351,23 +408,28 @@ export function createApplication(document: Document) {
         layer: input.layer,
         expectedRevision: revision,
         expectedEditSourceSha256: editSource?.inspection.sha256 ?? null,
+        normalization: normalization.recommended,
       },
     }
-    const nextActions = !current ? [submissionAction] : suggestedTransform ? [{
+    const maskFit = fit.status === 'suggested' && fit.source === 'mask-alignment'
+    const fitActions = fit.status !== 'suggested' ? [] : [{
       tool: 'set_character_variant_transform',
-      required: true,
-      reason: 'Apply the suggested absolute transform, then inspect the alpha-mask alignment again.',
-      input: { characterId: draft.id, group: input.group, variantId: input.variantId, expectedRevision: revision, ...suggestedTransform },
-    }] : visualFit?.suggestedTransform ? [{
-      tool: 'set_character_variant_transform',
-      required: false,
-      reason: 'Try the experimental native pixel-and-edge correlation fit, then visually review the head alignment view.',
-      input: { characterId: draft.id, group: input.group, variantId: input.variantId, expectedRevision: revision, ...visualFit.suggestedTransform },
-    }, submissionAction] : [submissionAction, {
-      tool: 'navigate_character', required: false, reason: 'Open this exact variant for visual preflight.', input: {
-        destination: `character-${categoryFor(input.group)}`, characterId: draft.id, variantId: input.variantId,
-      },
+      required: maskFit,
+      reason: maskFit
+        ? 'Apply the suggested absolute transform, then inspect the alpha-mask alignment again.'
+        : 'Try the experimental native pixel-and-edge correlation fit, then visually review the head alignment view.',
+      input: { characterId: draft.id, group: input.group, variantId: input.variantId, expectedRevision: revision, ...fit.transform },
     }]
+    const nextActions = !current ? [submissionAction]
+      : maskFit ? fitActions
+      : fitActions.length ? [...fitActions, submissionAction]
+      : [submissionAction, {
+        tool: 'navigate_character', required: false,
+        reason: input.group === 'body' ? 'Open the Character editor for canonical-body preflight.' : 'Open this exact variant for visual preflight.', input: {
+          destination: `character-${categoryFor(input.group)}`, characterId: draft.id,
+          ...(input.group === 'body' ? {} : { variantId: input.variantId }),
+        },
+      }]
     return {
       input: { group: input.group, variantId: input.variantId, layer: input.layer },
       operation,
@@ -418,7 +480,7 @@ export function createApplication(document: Document) {
         } : null,
         preserveCanvasCoordinates: true,
         output: {
-          generateAt: { width: 1024, height: 1536 },
+          generateAt: { ...CHARACTER_GENERATION_CANVAS },
           finalizeAt: { ...CHARACTER_RIG.canvas },
           rgba: true,
           realAlpha: true,
@@ -438,8 +500,9 @@ export function createApplication(document: Document) {
         overflow,
         measurement,
         protectedRegionDelta,
-        autoFit: suggestedTransform ? { confidence: 'high', transform: suggestedTransform } : null,
+        autoFit: fit,
         visualFit,
+        normalization,
         registration: input.group === 'expression' ? {
           role: headRegistration?.variant.id === input.variantId ? 'head-anchor' : 'follower',
           anchorVariantId: headRegistration?.variant.id ?? null,
@@ -487,10 +550,10 @@ export function createApplication(document: Document) {
             'The first body/base/body candidate establishes the canonical character and registration frame.',
             'The canonical body includes the default face. The first accepted whole-head expression establishes head registration; visually preflight it, then edit that returned expression reference for later expressions.',
             'An outfit replaces the character-skin slot: generate the complete dressed character, never a clothing-only overlay. Preserve pose, body center, head position, and foot line. Generate props against the returned current composite.',
-            'Generate at 1024×1536 and deterministically downsample 50% to the exact 512×768 canvas. Never crop, reframe, or recenter.',
-            'Before importing, preprocess generated assets outside the website: remove the background, resize onto the exact 512×768 canvas without changing alignment, and verify genuine alpha transparency.',
+            'Generate at 1024×1536. When the inspected target recommends exact-aspect-downscale, request it during submission; otherwise finalize externally at the exact 512×768 canvas. Never crop, reframe, or stretch.',
+            'Before importing, remove the background outside the website and verify genuine alpha transparency. Never submit a painted transparency grid or matte background; the website validates but never repairs alpha.',
             'When the target returns an editableRegion mask, transparent pixels are editable and opaque pixels are protected. The website deterministically stitches accepted expression and outfit proposals into their edit source; protectedRegionDelta must then be 0.',
-            'Submit only full-canvas RGBA PNG proposals. The website never generates, removes backgrounds, or guesses geometry; it only compiles pixels authorized by the deterministic editable region.',
+            'Submit only full-canvas RGBA PNG proposals, either already at 512×768 or with the explicit normalization allowed by the inspected target. The website never generates, removes backgrounds, or guesses geometry; it only compiles pixels authorized by the deterministic editable region.',
             'Expression layers replace the whole aligned head, including the same fixed hairstyle and facial hair. Hair and facial hair are not customizable slots.',
             'No expression overlay means the default face baked into the body. Optional whole-head variants include happy, sad, angry, surprised, and sleepy; additional variants are allowed.',
             'Outfits are full-body variants. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. A prop may be positioned anywhere, including on the head or in a hand.',
@@ -512,7 +575,9 @@ export function createApplication(document: Document) {
         expectedEditSourceSha256: string | null
         filename: string
         dataUrl: string
+        normalization?: CharacterNormalization
       }
+      const requested = input.normalization ?? NO_CHARACTER_NORMALIZATION
       const target: CharacterAssetTarget = {
         group: input.group,
         variantId: input.variantId,
@@ -533,58 +598,128 @@ export function createApplication(document: Document) {
       const binary = atob(match[1])
       const bytes = new Uint8Array(binary.length)
       for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
-      const blob = new Blob([bytes], { type: 'image/png' })
-      const inspection = await inspectCharacterImage(blob)
-      validateCharacterAssetInspection(inspection)
-      const alignment = measureCharacterMaskAlignment(
-        target.group,
-        sources.alignmentReference ? await readCharacterAlphaMask(sources.alignmentReference.blob) : null,
-        await readCharacterAlphaMask(blob),
-        undefined,
-        sources.referenceTransform,
-      )
-      if (alignment.status === 'invalid') return {
+      const submitted = new Blob([bytes], { type: 'image/png' })
+      const submittedInspection = await inspectCharacterImage(submitted)
+      const registrationFrame = characterRegistrationFrame(current)
+      const editableRegion = target.group === 'expression' ? registrationFrame.editableRegions.expression
+        : target.group === 'outfit' ? registrationFrame.editableRegions.outfit : undefined
+      const stitchable = Boolean(sources.editSource && editableRegion)
+      const referenceBounds = characterReferenceBounds(registrationFrame, target.group)
+      const contract = characterNormalizationContract(Boolean(referenceBounds && stitchable))
+      const alignmentMode = target.group === 'expression' ? 'whole-head-bounds'
+        : target.group === 'outfit' ? 'pose-frame'
+          : target.group === 'prop' ? 'composite-review' : 'establish-frame'
+
+      let resizeScale: number | null = null
+      let resizedBounds: CharacterBounds | undefined
+      let alignTransform: CharacterVariantTransform | null = null
+      let alignedBounds: CharacterBounds | null = null
+      let afterResize: CharacterAlignmentMeasurement | null = null
+      let afterAlignment: CharacterAlignmentMeasurement | null = null
+      let finalSize: { width: number; height: number } | null = null
+      let protectedRegionDelta: ReturnType<typeof measureProtectedRegionDelta> = null
+      // No normalization happens silently: accepted and rejected submissions both report this.
+      const report = () => {
+        const bounds = alignedBounds ?? resizedBounds
+        return {
+          requested,
+          applied: {
+            resize: resizeScale === null ? 'none' as const : 'exact-aspect-downscale' as const,
+            align: alignTransform ? 'reference-visible-bounds' as const : 'none' as const,
+          },
+          input: { width: submittedInspection.width, height: submittedInspection.height },
+          final: finalSize,
+          scale: resizeScale,
+          transform: alignTransform,
+          referenceVisibleBounds: referenceBounds ?? null,
+          candidateVisibleBounds: { afterResize: resizedBounds ?? null, afterAlignment: alignedBounds },
+          overflow: bounds ? {
+            left: Math.max(0, -bounds.x),
+            top: Math.max(0, -bounds.y),
+            right: Math.max(0, bounds.x + bounds.width - CHARACTER_RIG.canvas.width),
+            bottom: Math.max(0, bounds.y + bounds.height - CHARACTER_RIG.canvas.height),
+          } : null,
+          metrics: { afterResize, afterAlignment },
+          protectedRegionDelta,
+        }
+      }
+      const rejected = (reason: string, rejection?: { code: string; message: string }) => ({
         status: 'ok',
         data: {
           accepted: false,
           target,
           filename,
+          ...(rejection ? { rejection } : {}),
           inspection: {
-            width: inspection.width,
-            height: inspection.height,
-            genuineRgba: inspection.genuineRgba,
-            hasTransparentPixels: inspection.hasTransparentPixels,
-            visibleBounds: inspection.visibleBounds,
-            visiblePixelCount: inspection.visiblePixelCount,
+            width: submittedInspection.width,
+            height: submittedInspection.height,
+            genuineRgba: submittedInspection.genuineRgba,
+            hasTransparentPixels: submittedInspection.hasTransparentPixels,
+            visibleBounds: submittedInspection.visibleBounds,
+            visiblePixelCount: submittedInspection.visiblePixelCount,
           },
-          alignment: {
-            mode: target.group === 'expression' ? 'whole-head-bounds'
-              : target.group === 'outfit' ? 'pose-frame'
-                : target.group === 'prop' ? 'composite-review' : 'establish-frame',
-            measurement: alignment,
-          },
+          normalization: report(),
+          alignment: { mode: alignmentMode, measurement: afterAlignment ?? afterResize },
         },
         nextActions: [{
           tool: 'submit_character_asset_candidate',
           required: true,
-          reason: alignment.diagnostics[0]?.message ?? 'Regenerate the rejected character asset.',
-          input: { characterId: current.id, group: target.group, variantId: target.variantId, layer: target.layer, expectedRevision: revision, expectedEditSourceSha256: editSourceSha256 },
+          reason,
+          input: {
+            characterId: current.id,
+            group: target.group,
+            variantId: target.variantId,
+            layer: target.layer,
+            expectedRevision: revision,
+            expectedEditSourceSha256: editSourceSha256,
+            normalization: contract.recommended,
+          },
         }],
+      })
+
+      // 1. Deterministic downscale first, so strict inspection and stitching only ever see the exact rig canvas.
+      const resize = planCharacterResize(requested.resize, submittedInspection)
+      if (!resize.ok) return rejected(resize.message, { code: resize.code, message: resize.message })
+      resizeScale = resize.scale
+      const resized = resize.scale === null ? submitted : await renderCharacterCanvasDownscale(submitted)
+      const inspection = resize.scale === null ? submittedInspection : await inspectCharacterImage(resized)
+      resizedBounds = inspection.visibleBounds
+      finalSize = { width: inspection.width, height: inspection.height }
+      try {
+        validateCharacterAssetInspection(inspection)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return rejected(message, { code: 'INVALID_CHARACTER_ASSET', message })
       }
-      const autoFit = highConfidenceCharacterAutoFit(alignment)
-      const registrationFrame = characterRegistrationFrame(current)
-      const editableRegion = target.group === 'expression' ? registrationFrame.editableRegions.expression
-        : target.group === 'outfit' ? registrationFrame.editableRegions.outfit : undefined
+
+      // 2. One uniform scale plus translation onto the reference bounds this contract published.
+      const referenceMask = sources.alignmentReference ? await readCharacterAlphaMask(sources.alignmentReference.blob) : null
+      const candidateMask = await readCharacterAlphaMask(resized)
+      afterResize = measureCharacterMaskAlignment(target.group, referenceMask, candidateMask, undefined, sources.referenceTransform)
+      const align = planCharacterAlignment(requested.align, target.group, inspection.visibleBounds, stitchable ? referenceBounds : undefined)
+      if (!align.ok) return rejected(align.message, { code: align.code, message: align.message })
+      if (align.transform) {
+        alignTransform = align.transform
+        alignedBounds = align.bounds ?? null
+        afterAlignment = measureCharacterMaskAlignment(target.group, referenceMask, candidateMask, align.transform, sources.referenceTransform)
+      }
+
+      // 3. The existing safety diagnostics decide, on the normalized pixels.
+      const alignment = afterAlignment ?? afterResize
+      if (alignment.status === 'invalid') return rejected(alignment.diagnostics[0]?.message ?? 'Regenerate the rejected character asset.')
+
+      // A requested alignment is baked into the stitched pixels, so it never competes with a mask auto-fit.
+      const autoFit = alignTransform ?? highConfidenceCharacterAutoFit(alignment)
       const stitchedBlob = sources.editSource && editableRegion
         ? await renderStitchedCharacterEditBlob(
             sources.editSource.blob,
-            blob,
+            resized,
             editableRegion,
             sources.editSourceTransform,
             autoFit ?? undefined,
           )
         : null
-      const savedBlob = stitchedBlob ?? blob
+      const savedBlob = stitchedBlob ?? resized
       const savedInspection = stitchedBlob ? await inspectCharacterImage(stitchedBlob) : inspection
       // Blob first; then one command (asset swap plus optional auto-fit) creates exactly one history frame.
       const asset = await editor.stageAsset(savedBlob, filename, 'agent', savedInspection)
@@ -596,7 +731,7 @@ export function createApplication(document: Document) {
       const savedRevision = settledRevision('Character asset')
       const savedVariant = draft.variants.find(({ group, id }) => group === target.group && id === target.variantId)!
       const specification = await characterTarget(draft, savedRevision, target)
-      const protectedRegionDelta = stitchedBlob && sources.editSource && editableRegion
+      protectedRegionDelta = stitchedBlob && sources.editSource && editableRegion
         ? measureProtectedRegionDelta(
             await readCharacterPixels(sources.editSource.blob, sources.editSourceTransform),
             await readCharacterPixels(stitchedBlob),
@@ -618,6 +753,7 @@ export function createApplication(document: Document) {
             visibleBounds: savedInspection.visibleBounds,
             visiblePixelCount: savedInspection.visiblePixelCount,
           },
+          normalization: report(),
           alignment: specification?.alignment,
           compositor: stitchedBlob ? { applied: true, protectedRegionDelta } : { applied: false },
           autoFit: autoFit ? { applied: true, transform: autoFit, bakedIntoAsset: Boolean(stitchedBlob) } : { applied: false },

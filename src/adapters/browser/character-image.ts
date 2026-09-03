@@ -111,6 +111,24 @@ export async function readCharacterPixels(
   return readCharacterPixelsAt(blob, CHARACTER_RIG.canvas.width, CHARACTER_RIG.canvas.height, transform)
 }
 
+/**
+ * Deterministic whole-canvas downscale onto the rig canvas. No crop, no reframe, no background work: the caller
+ * has already proven the exact rig aspect, genuine alpha, and that this is a downscale.
+ */
+export async function renderCharacterCanvasDownscale(blob: Blob) {
+  const bitmap = await createImageBitmap(blob)
+  const canvas = document.createElement('canvas')
+  canvas.width = CHARACTER_RIG.canvas.width
+  canvas.height = CHARACTER_RIG.canvas.height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('Canvas is unavailable')
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+  bitmap.close()
+  return pngBlob(canvas)
+}
+
 export async function renderStitchedCharacterEditBlob(
   reference: Blob,
   candidate: Blob,

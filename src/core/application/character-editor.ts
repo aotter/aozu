@@ -21,8 +21,10 @@ export interface CharacterEditorState {
   activeCharacterId: string | null
   /** The only temporally tracked field. Blob references are shared, never cloned. */
   character: CharacterDraft | null
-  /** Latest successfully persisted Mantle entry version. */
+  /** Latest successfully persisted Mantle entry version. Always set together with `persistedUpdatedAt`. */
   persistedRevision: number | null
+  /** `updatedAt` of the same settled entry snapshot `persistedRevision` came from. */
+  persistedUpdatedAt: number | null
   saveStatus: CharacterSaveStatus
   saveError?: string
 }
@@ -30,7 +32,7 @@ export interface CharacterEditorState {
 export const CHARACTER_HISTORY_LIMIT = 50
 
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error)
-const idle: CharacterEditorState = { activeCharacterId: null, character: null, persistedRevision: null, saveStatus: 'saved', saveError: undefined }
+const idle: CharacterEditorState = { activeCharacterId: null, character: null, persistedRevision: null, persistedUpdatedAt: null, saveStatus: 'saved', saveError: undefined }
 
 /**
  * One autosaving command lifecycle shared by React and WebMCP. Every logical edit is one `dispatch`,
@@ -74,7 +76,7 @@ export function createCharacterEditor(
   }
 
   const activate = ({ character, version }: CharacterRecord) => {
-    store.setState({ activeCharacterId: character.id, character, persistedRevision: version, saveStatus: 'saved', saveError: undefined })
+    store.setState({ activeCharacterId: character.id, character, persistedRevision: version, persistedUpdatedAt: character.updatedAt, saveStatus: 'saved', saveError: undefined })
     history.getState().clear()
   }
 
@@ -84,11 +86,11 @@ export function createCharacterEditor(
       if (snapshot.id !== activeCharacterId || persistedRevision === null || saveStatus === 'conflict') return
       store.setState({ saveStatus: 'saving', saveError: undefined })
       try {
-        const version = await characters.put(snapshot, persistedRevision)
+        const { version, updatedAt } = await characters.put(snapshot, persistedRevision)
         // Only non-tracked fields change; the tracked Character is never replaced after a save.
         store.setState(snapshot === store.getState().character
-          ? { persistedRevision: version, saveStatus: 'saved', saveError: undefined }
-          : { persistedRevision: version })
+          ? { persistedRevision: version, persistedUpdatedAt: updatedAt, saveStatus: 'saved', saveError: undefined }
+          : { persistedRevision: version, persistedUpdatedAt: updatedAt })
       } catch (error) {
         store.setState({ saveStatus: error instanceof CharacterRevisionConflict ? 'conflict' : 'failed', saveError: describe(error) })
       }
@@ -107,6 +109,12 @@ export function createCharacterEditor(
     return record.character
   }
 
+  /** Copies stay distinguishable in the library: `<name> copy`, then the smallest free numeric suffix. */
+  const createCopy = async (source: CharacterDraft) => {
+    const names = (await characters.list()).map(({ character }) => character.name)
+    return characters.create(copyCharacter(source, names))
+  }
+
   const step = (direction: 'undo' | 'redo') => {
     const { pastStates, futureStates, undo, redo } = history.getState()
     if (store.getState().saveStatus === 'conflict' || !(direction === 'undo' ? pastStates : futureStates).length) return Promise.resolve(false)
@@ -120,12 +128,17 @@ export function createCharacterEditor(
     history,
     settle,
     read,
-    /** In-memory value for the active Character, otherwise a pure read of the saved one. */
+    /**
+     * In-memory value for the active Character, otherwise a pure read of the saved one. Revision and `updatedAt`
+     * are projected from the same settled entry snapshot, so the tracked Character's stale timestamp never leaks.
+     */
     async view(characterId: string): Promise<CharacterRecord> {
-      const { activeCharacterId, character, persistedRevision } = store.getState()
-      return activeCharacterId === characterId && character && persistedRevision !== null
-        ? { character, version: persistedRevision }
-        : read(characterId)
+      const { activeCharacterId, character, persistedRevision, persistedUpdatedAt } = store.getState()
+      if (!(activeCharacterId === characterId && character && persistedRevision !== null)) return read(characterId)
+      return {
+        character: character.updatedAt === persistedUpdatedAt ? character : { ...character, updatedAt: persistedUpdatedAt! },
+        version: persistedRevision,
+      }
     },
     /** Opens a Character. Same ID is a no-op; switching waits for the queue and refuses to abandon a failed/conflicted session. */
     open(characterId: string) {
@@ -178,12 +191,12 @@ export function createCharacterEditor(
       return { blob, filename, source, inspection: inspected }
     },
     /** Shared duplication primitive: new Character ID and pack scope, asset bytes copied into it. Outside history. */
-    duplicate: (source: CharacterDraft) => characters.create(copyCharacter(source)),
+    duplicate: (source: CharacterDraft) => createCopy(source),
     /** Save As: duplicates the in-memory value and makes the copy the active session. */
     async saveAs() {
       const { character } = store.getState()
       if (!character) throw new Error('No Character is open')
-      const record = await characters.create(copyCharacter(character))
+      const record = await createCopy(character)
       await settle()
       activate(record)
       return record.character

@@ -5,6 +5,7 @@ import { Navigate, useNavigate, useParams } from 'react-router'
 import { useStore } from 'zustand'
 
 import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterDraftAtlasKey, characterRegistrationFrame, hasCurrentCharacterLayer, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, saveCharacterDraftAsset, setCharacterVariantTransform, transformCharacterBounds } from '@/core/application/character-creation.ts'
+import type { CharacterFitSuggestion } from '@/core/application/character-alignment.ts'
 import type { CharacterEditor } from '@/core/application/character-editor.ts'
 import { IDENTITY_CHARACTER_TRANSFORM, type CharacterDraft, type CharacterDraftVariant, type CharacterTextureAtlas, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
 import { CharacterAlignmentRenderer, CharacterAssetImage, CharacterAtlasFrameImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
@@ -44,12 +45,24 @@ const activateVariant = (source: CharacterDraft, variant: CharacterDraftVariant)
   if (group === 'prop') return source.selected.props.includes(id) ? source : { ...source, selected: { ...source.selected, props: [...source.selected.props, id] } }
   return source.selected.outfit === id ? source : { ...source, selected: { ...source.selected, outfit: id } }
 }
+const fitNumber = (value: number | null) => value === null ? '—' : `${Math.round(value * 10_000) / 10_000}`
+const fitMetrics = (t: (key: string) => string, suggestion: Extract<CharacterFitSuggestion, { status: 'suggested' }>) => [
+  ...(['iou', 'footLine', 'match'] as const).flatMap((field) => {
+    const key = field === 'iou' ? 'iou' : field === 'footLine' ? 'footLineDelta' : 'score'
+    const before = suggestion.before[key]
+    const after = suggestion.after[key]
+    return before === null || after === null ? [] : [`${t(`characterDraft.transform.${field}`)} ${fitNumber(before)} → ${fitNumber(after)}`]
+  }),
+  `x ${suggestion.transform.x} · y ${suggestion.transform.y} · ×${suggestion.transform.scale}`,
+]
+
 const isTextEntry = (target: EventTarget | null) => target instanceof HTMLElement
   && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
 
-export function CharacterDraftPage({ editor, autoFitVariant, compileAtlas, exportCharacter, saveAs }: {
+export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, compileAtlas, exportCharacter, saveAs }: {
   editor: CharacterEditor
   autoFitVariant(group: CharacterVariantGroup, variantId: string): Promise<void>
+  fitSuggestion(group: CharacterVariantGroup, variantId: string): Promise<CharacterFitSuggestion>
   compileAtlas(draft: CharacterDraft): Promise<CharacterTextureAtlas | undefined>
   exportCharacter(): Promise<Blob>
   saveAs(): Promise<CharacterDraft>
@@ -70,6 +83,7 @@ export function CharacterDraftPage({ editor, autoFitVariant, compileAtlas, expor
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
   const [compiled, setCompiled] = useState<{ key: string; atlas?: CharacterTextureAtlas }>()
+  const [fit, setFit] = useState<{ key: string; value: CharacterFitSuggestion }>()
   const [alignmentMode, setAlignmentMode] = useState<'composite' | 'overlay' | 'difference' | 'diagnostic'>('overlay')
   const atlasDraft = useRef<CharacterDraft | undefined>(undefined)
   const drag = useRef<{
@@ -118,6 +132,18 @@ export function CharacterDraftPage({ editor, autoFitVariant, compileAtlas, expor
       })
     return () => { active = false }
   }, [atlasKey, compileAtlas, compiled?.key])
+
+  const fitGroup = category?.group === 'expression' || category?.group === 'outfit' ? category.group : undefined
+  const fitKey = committed && atlasKey && variantId && fitGroup ? `${fitGroup}:${variantId}:${atlasKey}` : undefined
+  useEffect(() => {
+    if (!fitKey || !fitGroup || !variantId) return
+    let active = true
+    void fitSuggestion(fitGroup, variantId)
+      .then((value) => { if (active) setFit({ key: fitKey, value }) })
+      .catch(() => { if (active) setFit({ key: fitKey, value: { status: 'unavailable' } }) })
+    return () => { active = false }
+  }, [fitKey, fitGroup, variantId, fitSuggestion])
+  const suggestion = fit && fitKey && fit.key === fitKey ? fit.value : undefined
 
   const atlas = compiled?.atlas
   const atlasSrc = useBlobUrl(atlas?.image)
@@ -402,14 +428,22 @@ export function CharacterDraftPage({ editor, autoFitVariant, compileAtlas, expor
                   onKeyDown={textKeys}
                 />
               </label>)}
-              {(selectedVariant.group === 'outfit' || selectedVariant.group === 'expression') && <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                className="col-span-3 h-8"
-                disabled={Boolean(busy)}
-                onClick={() => void runBusy('auto-fit', () => autoFitVariant(selectedVariant.group, selectedVariant.id))}
-              >{t(registration.head?.variantId === selectedVariant.id ? 'characterDraft.transform.visualFit' : 'characterDraft.transform.autoFit')}</Button>}
+              {suggestion?.status === 'suggested' && <div className="col-span-3">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="h-8 w-full"
+                  disabled={Boolean(busy)}
+                  onClick={() => void runBusy('auto-fit', () => autoFitVariant(selectedVariant.group, selectedVariant.id))}
+                >{t('characterDraft.transform.applySuggestedFit')}</Button>
+                <p className="mt-1 text-[9px] leading-3 text-muted-foreground sm:text-[10px]">
+                  {t(`characterDraft.transform.fitSource.${suggestion.source}`)} · {fitMetrics(t, suggestion).join(' · ')}
+                </p>
+              </div>}
+              {suggestion && suggestion.status !== 'suggested' && <p className="col-span-3 text-[9px] leading-3 text-muted-foreground sm:text-[10px]">
+                {t(suggestion.status === 'aligned' ? 'characterDraft.transform.fitAligned' : 'characterDraft.transform.fitUnavailable')}
+              </p>}
             </div>}
             <label className="mt-2 block cursor-pointer overflow-hidden rounded-xl border hover:border-foreground/40 sm:mt-4">
               <span className="flex aspect-square items-center justify-center bg-muted/40 p-2">{primaryAsset

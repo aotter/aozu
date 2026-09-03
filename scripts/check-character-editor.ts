@@ -9,6 +9,7 @@ const inspection = { width: 512, height: 768, hasTransparentPixels: true, hasVis
 const rows = new Map<string, { character: CharacterDraft; version: number }>()
 const writeLog: string[] = []
 let failNextWrite: Error | undefined
+let clock = 100
 let holdRead: { id: string; promise: Promise<void>; started: () => void } | undefined
 const characters: CharacterDraftRepository = {
   async list() { return [...rows.values()].map(({ character, version }) => ({ character: structuredClone(character), version })) },
@@ -28,8 +29,9 @@ const characters: CharacterDraftRepository = {
     if (!row) throw new Error('Character not found')
     if (row.version !== expectedVersion) throw new CharacterRevisionConflict(`expected ${expectedVersion}, found ${row.version}`)
     writeLog.push(draft.name)
-    row.character = structuredClone(draft)
-    return ++row.version
+    // The entry owns updatedAt: a write returns the same snapshot's revision and timestamp.
+    row.character = { ...structuredClone(draft), updatedAt: ++clock }
+    return { version: ++row.version, updatedAt: row.character.updatedAt }
   },
   async delete(id) { rows.delete(id) },
 }
@@ -202,7 +204,7 @@ await editor.settle()
 assert.equal(past(), CHARACTER_HISTORY_LIMIT)
 
 // view() reads the active in-memory value and pure-reads others; close() ends the session.
-assert.equal((await editor.view('beta')).character, state().character)
+assert.equal((await editor.view('beta')).character.name, state().character!.name)
 assert.equal((await editor.view('alpha')).character.name, 'A9')
 await editor.close('beta')
 assert.equal(state().character, null)
@@ -219,5 +221,29 @@ const latestBeta = editor.open('beta')
 releaseRead()
 await Promise.all([slowAlpha, latestBeta])
 assert.equal(state().activeCharacterId, 'beta')
+
+// One settled snapshot: view() projects revision and updatedAt from the same persisted entry, so a saved
+// mutation can never expose the tracked snapshot's prior timestamp while its revision is already current.
+await characters.create({ ...createCharacterDraft('gamma-pack', 'gamma'), name: 'Gamma', updatedAt: 1 })
+const gamma = await editor.open('gamma')
+assert.equal(gamma.updatedAt, 1)
+assert.equal(await editor.dispatch(rename('Gamma 2')), true)
+const projected = await editor.view('gamma')
+const stored = (await characters.list()).find(({ character }) => character.id === 'gamma')!
+assert.equal(projected.version, stored.version)
+assert.equal(projected.character.updatedAt, stored.character.updatedAt)
+assert.notEqual(projected.character.updatedAt, 1)
+// The tracked Character keeps its identity, so projecting a fresh timestamp adds no history frame.
+assert.equal(state().character!.updatedAt, 1)
+assert.equal(past(), 1)
+
+// Copies stay distinguishable: `<name> copy`, then the smallest free numeric suffix.
+const firstCopy = await editor.saveAs()
+assert.equal(firstCopy.name, 'Gamma 2 copy')
+await editor.open('gamma')
+const secondCopy = await editor.saveAs()
+assert.equal(secondCopy.name, 'Gamma 2 copy 2')
+await editor.open('gamma')
+assert.equal((await editor.saveAs()).name, 'Gamma 2 copy 3')
 
 console.log('character editor: ok')

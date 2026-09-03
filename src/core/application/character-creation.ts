@@ -69,13 +69,20 @@ export const createCharacterDraft = (packId: string = `character-${crypto.random
   updatedAt: Date.now(),
 })
 
-export const copyCharacter = (character: CharacterDraft): CharacterDraft => ({
-  ...structuredClone(character),
-  id: crypto.randomUUID(),
-  packId: `character-${crypto.randomUUID()}`,
-  name: `${character.name || 'Untitled Character'} copy`,
-  updatedAt: Date.now(),
-})
+/** `<name> copy`, then the smallest free numeric suffix, so same-name Characters stay distinguishable. */
+export const copyCharacter = (character: CharacterDraft, existingNames: readonly string[] = []): CharacterDraft => {
+  const base = `${character.name || 'Untitled Character'} copy`
+  const taken = new Set(existingNames)
+  let name = base
+  for (let suffix = 2; taken.has(name); suffix++) name = `${base} ${suffix}`
+  return {
+    ...structuredClone(character),
+    id: crypto.randomUUID(),
+    packId: `character-${crypto.randomUUID()}`,
+    name,
+    updatedAt: Date.now(),
+  }
+}
 
 export const isCharacterDraftPopulated = (draft: CharacterDraft) => draft.variants.some(({ layers }) => Object.keys(layers).length > 0)
 
