@@ -532,8 +532,9 @@ body::before {
   padding: 0.25rem 0.65rem 0.7rem;
 }
 
-/* One treatment for every card action, destructive included. */
-.companion-card-actions [data-slot="button"] {
+/* One treatment for every icon action: card actions (destructive included) and the workshop footer's export/duplicate. */
+.companion-card-actions [data-slot="button"],
+.workbench-actions [data-variant="outline"] {
   width: 2rem;
   height: 2rem;
   border: 1px solid rgb(113 44 30 / 30%);

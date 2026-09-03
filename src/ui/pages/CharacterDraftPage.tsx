@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, CircleSlash2Icon, Layers2Icon, PencilIcon, PlusIcon, Redo2Icon, Undo2Icon } from 'lucide-react'
+import { ArrowLeftIcon, CircleSlash2Icon, CopyIcon, Layers2Icon, LoaderCircleIcon, PencilIcon, PlusIcon, Redo2Icon, Undo2Icon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, useNavigate, useParams } from 'react-router'
@@ -341,20 +341,18 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
 
       <section className="doll-workbench rounded-2xl border bg-background" aria-label={t('characterDraft.customizeTitle')}>
         <div className="workbench-heading"><span>02</span><div><h2>{t('characterDraft.customizeTitle')}</h2><p>{t('characterDraft.workbenchDescription')}</p></div></div>
-        {!selectedVariant && <nav aria-label={t('characterDraft.categorySwitcher')} className="workbench-tabs">
-          {characterCategories.map(({ id, icon }) => <Button
-            key={id}
+        {!selectedVariant && <TooltipProvider><nav aria-label={t('characterDraft.categorySwitcher')} className="workbench-tabs">
+          {characterCategories.map(({ id, icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button
             type="button"
             variant={category?.id === id ? 'secondary' : 'ghost'}
             className="shrink-0"
-            title={t(`characterDraft.categories.${id}`)}
             aria-current={category?.id === id ? 'page' : undefined}
             onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${id}`)}
           >
             <AozuIcon name={icon} />
             <span className="sr-only">{t(`characterDraft.categories.${id}`)}</span>
-          </Button>)}
-        </nav>}
+          </Button></TooltipTrigger><TooltipContent>{t(`characterDraft.categories.${id}`)}</TooltipContent></Tooltip>)}
+        </nav></TooltipProvider>}
 
         <div className="workbench-content min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {!selectedVariant && <>
@@ -487,11 +485,11 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
         </div>
         <div className="workbench-footer">
           {missing.length > 0 && <p className="mb-2 text-muted-foreground">{t('characterDraft.missingRequired')}</p>}
-          <TooltipProvider><div className="flex flex-wrap items-center gap-1">
+          <TooltipProvider><div className="workbench-actions flex flex-wrap items-center gap-1">
             {iconAction(t('characterDraft.undo'), Undo2Icon, canUndo, () => void editor.undo())}
             {iconAction(t('characterDraft.redo'), Redo2Icon, canRedo, () => void editor.redo())}
             <DataControls exportData={exportCharacter} exportFilename="companion-character.zip" exportIconOnly exportLabel={t('draft.download')} />
-            <Button size="sm" variant="outline" disabled={Boolean(busy) || !draft.name.trim()} onClick={() => void runBusy('save-as', saveAs)}>{busy === 'save-as' ? t('characterDraft.savingAs') : t('characterDraft.saveAs')}</Button>
+            <Tooltip><TooltipTrigger asChild><Button size="icon" variant="outline" aria-label={busy === 'save-as' ? t('characterDraft.savingAs') : t('characterDraft.saveAs')} disabled={Boolean(busy) || !draft.name.trim()} onClick={() => void runBusy('save-as', saveAs)}>{busy === 'save-as' ? <LoaderCircleIcon className="animate-spin" /> : <CopyIcon />}</Button></TooltipTrigger><TooltipContent>{busy === 'save-as' ? t('characterDraft.savingAs') : t('characterDraft.saveAs')}</TooltipContent></Tooltip>
           </div></TooltipProvider>
           <p role="status" title={saveError} className={`mt-1 ${saveStatus === 'failed' || saveStatus === 'conflict' ? 'text-destructive' : 'text-muted-foreground'}`}>
             {t(`characterDraft.status.${saveStatus}`)}
