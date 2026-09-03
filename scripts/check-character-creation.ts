@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { strFromU8, unzipSync, zipSync } from 'fflate'
 
-import { buildCharacterPack, characterDraftAtlasKey, characterHeadRegistration, characterRegistrationFrame, copyCharacter, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterAssetSources, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, characterDraftAtlasKey, characterHeadRegistration, characterRegistrationFrame, copyCharacter, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterAssetSources, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform, updateCharacterProfile } from '../src/core/application/character-creation.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, stitchCharacterEditPixels, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
@@ -28,6 +28,9 @@ const inspection = { width: 512, height: 768, hasTransparentPixels: true, hasVis
 const asset: CharacterDraftAsset = { blob: new Blob(['sprite'], { type: 'image/png' }), filename: 'sprite.png', source: 'user', inspection, canonicalSha256: inspection.sha256 }
 const draft = createCharacterDraft('test-character')
 draft.name = 'Test Character'
+draft.description = 'A determined test character.'
+draft.backstory = 'First line.\n\nSecond line.'
+draft.attributes = { courage: 8, nocturnal: true }
 const put = (group: CharacterVariantGroup, id: string, layer: CharacterVariantLayer) => {
   draft.variants.find((variant) => variant.group === group && variant.id === id)!.layers[layer] = asset
 }
@@ -56,6 +59,8 @@ assert.equal(archivedDraft.id, draft.id)
 assert.equal(draftArchive['experience-draft.json'], undefined)
 assert.deepEqual(archivedDraft.selected, draft.selected)
 assert.deepEqual(archivedDraft.headRegistration, draft.headRegistration)
+assert.equal(archivedDraft.backstory, draft.backstory)
+assert.deepEqual(archivedDraft.attributes, draft.attributes)
 assert.deepEqual(archivedDraft.variants.find(({ group, id }: { group: string; id: string }) => group === 'expression' && id === 'happy').transform, { x: 2, y: -3, scale: 1.01 })
 assert.deepEqual(archivedPack.appearances.find(({ id }: { id: string }) => id === 'expression-happy').layers[0].transform, { x: 2, y: -3, scale: 1.01 })
 assert.equal(strFromU8(draftArchive['assets/expression-happy-head.png']!), 'sprite')
@@ -67,6 +72,9 @@ const restored = await readCharacterDraftZip(draftZip, async () => inspection)
 assert.equal(restored.draft.id, draft.id)
 assert.equal('published' in restored.draft, false)
 assert.deepEqual(restored.draft.selected, draft.selected)
+assert.equal(restored.draft.description, draft.description)
+assert.equal(restored.draft.backstory, draft.backstory)
+assert.deepEqual(restored.draft.attributes, draft.attributes)
 assert.deepEqual(restored.draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 2, y: -3, scale: 1.01 })
 assert.equal(await restored.draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.layers.head!.blob.text(), 'sprite')
 const missingAssetArchive = { ...draftArchive }
@@ -86,6 +94,12 @@ assert.equal(copied.name, 'Test Character copy')
 assert.equal(copyCharacter(draft, ['Test Character copy']).name, 'Test Character copy 2')
 assert.equal(copyCharacter(draft, ['Test Character copy', 'Test Character copy 2']).name, 'Test Character copy 3')
 assert.equal(copyCharacter({ ...draft, name: '' }, ['Untitled Character copy']).name, 'Untitled Character copy 2')
+const profiled = updateCharacterProfile(draft, { name: '  Profiled  ', description: '  Summary  ', backstory: 'Line one.\n\nLine two.', attributes: { species: ' boar ', courage: 9 } })
+assert.deepEqual({ name: profiled.name, description: profiled.description, backstory: profiled.backstory, attributes: profiled.attributes }, {
+  name: 'Profiled', description: 'Summary', backstory: 'Line one.\n\nLine two.', attributes: { courage: 9, species: 'boar' },
+})
+assert.equal(updateCharacterProfile(profiled, { name: 'Profiled' }), profiled)
+assert.throws(() => updateCharacterProfile(profiled, { attributes: { mood: 'calm', ' mood ': 'bold' } }), /must be unique/)
 const migratedPublishedCharacter = migrateCharacterDraft({
   ...draft,
   revision: 7,

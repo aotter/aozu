@@ -47,7 +47,7 @@ AOZU exposes nine public tools on every page:
 | `inspect_workspace` | Discover saved characters, the current route and revision, missing required artwork, and valid next actions |
 | `navigate_character` | Open the character library or an exact character category or variant without guessing a route |
 | `inspect_character_contract` | Obtain allowed operations, exact hashes, placement/alignment references, ownership, dimensions, and diagnostics for one target |
-| `rename_character` | Rename a saved character against its exact revision |
+| `update_character_profile` | Update a character's name, description, multiline backstory, or scalar attributes against its exact revision |
 | `replace_character_asset` | Install one complete body, head, outfit skin, or prop layer without preserving old pixels |
 | `repair_character_asset` | Mask-repair an existing expression against its exact asset hash |
 | `set_character_variant_transform` | Apply an explicit translation and uniform scale when a generated layer needs a small alignment correction |

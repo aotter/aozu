@@ -7,7 +7,7 @@ import { bindMantleWebMcpTools, createAgentCapability } from '../src/adapters/we
 import { compileAuthoringBackbone } from '../src/core/mantle/backbone.ts'
 
 const plan = compileAuthoringBackbone()
-const triggers = new Set(['inspect-workspace', 'navigate-character', 'inspect-character-contract', 'rename-character', 'replace-character-asset', 'repair-character-asset', 'set-character-variant-transform', 'undo-character-change', 'redo-character-change'])
+const triggers = new Set(['inspect-workspace', 'navigate-character', 'inspect-character-contract', 'update-character-profile', 'replace-character-asset', 'repair-character-asset', 'set-character-variant-transform', 'undo-character-change', 'redo-character-change'])
 assert.equal(createAgentCapability({} as Document).isAvailable(), false)
 assert.equal(await bindMantleWebMcpTools({} as Document, plan, async () => ({ ok: true, data: null }), triggers), null)
 
@@ -44,11 +44,11 @@ assert.deepEqual([...registered.keys()].sort(), [
   'inspect_workspace',
   'navigate_character',
   'redo_character_change',
-  'rename_character',
   'repair_character_asset',
   'replace_character_asset',
   'set_character_variant_transform',
   'undo_character_change',
+  'update_character_profile',
 ])
 assert.deepEqual([
   registered.get('inspect_workspace')?.annotations.readOnlyHint,

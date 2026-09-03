@@ -32,6 +32,22 @@ const string = (value: unknown, label: string, maxLength: number) => {
   return value
 }
 
+const optionalString = (value: unknown, label: string, maxLength: number) => {
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || value.length > maxLength) throw new Error(`Invalid ${label}`)
+  return value
+}
+
+const attributes = (value: unknown) => {
+  if (value === undefined) return undefined
+  const record = object(value, 'Character attributes')
+  if (Object.keys(record).length > 32 || Object.entries(record).some(([key, item]) =>
+    !key.trim() || key.length > 40 || !['string', 'number', 'boolean'].includes(typeof item) ||
+    (typeof item === 'string' && item.length > 200) || (typeof item === 'number' && !Number.isFinite(item))
+  )) throw new Error('Invalid Character attributes')
+  return record as CharacterDraft['attributes']
+}
+
 export async function readCharacterDraftZip(
   blob: Blob,
   inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
@@ -47,6 +63,9 @@ export async function readCharacterDraftZip(
   const packId = string(raw.packId, 'Character Pack ID', 64)
   if (!idPattern.test(packId)) throw new Error('Invalid Character Pack ID')
   const name = string(raw.name, 'Companion name', 200)
+  const description = optionalString(raw.description, 'Character description', 500)
+  const backstory = optionalString(raw.backstory, 'Character backstory', 8_000)
+  const profileAttributes = attributes(raw.attributes)
   if (!Array.isArray(raw.variants)) throw new Error('Invalid Character Draft variants')
   const assetPaths = new Set(Object.keys(files).filter((path) => path.startsWith('assets/')))
   const keys = new Set<string>()
@@ -110,6 +129,9 @@ export async function readCharacterDraftZip(
       packId,
       rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
       name,
+      ...(description ? { description } : {}),
+      ...(backstory ? { backstory } : {}),
+      ...(profileAttributes && Object.keys(profileAttributes).length ? { attributes: profileAttributes } : {}),
       variants,
       ...(headRegistration ? { headRegistration: { variantId: headRegistration.variantId as string } } : {}),
       selected: {
@@ -151,6 +173,9 @@ export async function exportCharacterDraftZip(
     schemaVersion: draft.schemaVersion,
     packId: draft.packId,
     name: draft.name,
+    description: draft.description,
+    backstory: draft.backstory,
+    attributes: draft.attributes,
     headRegistration: draft.headRegistration,
     selected: draft.selected,
     updatedAt: draft.updatedAt,

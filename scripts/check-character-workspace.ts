@@ -42,6 +42,9 @@ const repository = createCharacterWorkspaceRepository(
 )
 
 const draft = createCharacterDraft('boar-pack', 'legacy-id')
+draft.description = 'A steadfast trail guide.'
+draft.backstory = 'First line.\n\nSecond line.'
+draft.attributes = { courage: 8, nocturnal: true }
 const blob = new Blob(['boar'], { type: 'image/png' })
 draft.variants[0]!.layers.body = {
   blob,
@@ -56,6 +59,8 @@ const created = await repository.create(draft)
 assert.equal(created.character.id, 'workspace-1')
 assert.equal(created.version, 1)
 assert.equal(await created.character.variants[0]!.layers.body!.blob.text(), 'boar')
+assert.equal(created.character.backstory, draft.backstory)
+assert.deepEqual(created.character.attributes, draft.attributes)
 assert.equal('blob' in ((row!.data.variants as Array<{ layers: { body: object } }>)[0]!.layers.body), false)
 assert.equal((row!.data.variants as Array<{ layers: { body: { blobId: string } } }>)[0]!.layers.body.blobId, 'a'.repeat(64))
 assert.equal('revision' in row!.data, false)
@@ -75,6 +80,7 @@ assert.equal(writes, writesBeforeRead)
 const saved = await repository.put({ ...created.character, name: 'Boar' }, created.version)
 assert.deepEqual(saved, { version: 2, updatedAt: row!.updatedAt })
 assert.equal(row!.data.name, 'Boar')
+assert.equal(row!.data.description, draft.description)
 assert.equal('revision' in row!.data, false)
 assert.equal('published' in row!.data, false)
 await assert.rejects(() => repository.put({ ...created.character, name: 'Stale' }, 1), CharacterRevisionConflict)
