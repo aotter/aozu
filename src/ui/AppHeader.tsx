@@ -1,10 +1,11 @@
-import { ArrowLeftIcon } from 'lucide-react'
+import { ArrowLeftIcon, LanguagesIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AozuIcon } from '@/ui/AozuIcon'
 import { Button } from '@/ui/components/ui/button'
 import type { WebMcpState } from '@/adapters/webmcp/controller.ts'
+import { LANGUAGES } from '@/ui/i18n'
 
 type AppHeaderProps = {
   webmcp: WebMcpState
@@ -14,7 +15,7 @@ type AppHeaderProps = {
 }
 
 export function AppHeader({ webmcp, title, onBack, actions }: AppHeaderProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const label = t(`main.webmcp.${webmcp.status}`, { count: webmcp.toolCount })
   const color = webmcp.status === 'ready' ? 'bg-emerald-500' : webmcp.status === 'registering' ? 'bg-amber-500'
     : webmcp.status === 'failed' ? 'bg-red-500' : 'bg-muted-foreground/50'
@@ -33,6 +34,13 @@ export function AppHeader({ webmcp, title, onBack, actions }: AppHeaderProps) {
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <label className="language-switch">
+            <LanguagesIcon aria-hidden="true" />
+            <span className="sr-only">{t('common.language')}</span>
+            <select value={i18n.resolvedLanguage ?? 'en'} onChange={(event) => void i18n.changeLanguage(event.target.value)}>
+              {LANGUAGES.map(({ code, label: name }) => <option key={code} value={code}>{name}</option>)}
+            </select>
+          </label>
           <span
             aria-label={label}
             title={webmcp.error ?? label}

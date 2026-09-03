@@ -5,12 +5,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+    --font-heading: "Iowan Old Style", "Noto Serif TC", "Songti TC", Georgia, serif;
+}
+
 @theme inline {
     --text-xs: 1rem;
     --text-xs--line-height: 1.5rem;
     --text-sm: 1rem;
     --text-sm--line-height: 1.5rem;
-    --font-heading: "Iowan Old Style", "Noto Serif TC", "Songti TC", Georgia, serif;
     --font-sans: 'Geist Variable', sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
@@ -158,6 +161,19 @@
     }
 }
 
+/* Headings keep the serif voice in each script's own type. */
+html:lang(ja) {
+  --font-heading: "Iowan Old Style", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", Georgia, serif;
+}
+
+html:lang(zh-CN) {
+  --font-heading: "Iowan Old Style", "Noto Serif SC", "Songti SC", "STSong", Georgia, serif;
+}
+
+html:lang(ko) {
+  --font-heading: "Iowan Old Style", "Noto Serif KR", "AppleMyungjo", "Nanum Myeongjo", Georgia, serif;
+}
+
 /* ---------------------------------------------------------------------------
    AOZU page: parchment ground, the fixed grain overlay, and one text scale.
    Ported from the Design branch; the application contract stays on main.
@@ -204,6 +220,48 @@ body::before {
 
 #root > header .text-muted-foreground {
   color: #e8d8b0;
+}
+
+.language-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.25rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid rgb(239 203 114 / 45%);
+  border-radius: 0.7rem;
+  background: rgb(255 242 197 / 8%);
+  color: #e9ce8b;
+}
+
+.language-switch > svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+#root .language-switch select {
+  appearance: none;
+  min-width: 0;
+  padding: 0.15rem 1.2rem 0.15rem 0.2rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23e9ce8b' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 0.15rem center / 0.7rem;
+  color: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+#root .language-switch select:focus-visible {
+  outline: 2px solid rgb(239 203 114 / 70%);
+  outline-offset: 2px;
+}
+
+.language-switch option {
+  color: #4b2e1c;
+  background: #f4e2b9;
 }
 
 /* Main: every page sits on one book page. */
@@ -1079,6 +1137,15 @@ button.gate-action {
 
   #root > header nav > div:last-child > span {
     display: none;
+  }
+
+  .language-switch > svg {
+    display: none;
+  }
+
+  .language-switch {
+    gap: 0.15rem;
+    padding-inline: 0.3rem;
   }
 
   .forge-hero {

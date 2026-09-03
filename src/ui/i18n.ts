@@ -1,264 +1,65 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 
-const en = {
-  common: {
-    productName: 'AOZU',
-    back: 'Back',
-    close: 'Close',
-    cancel: 'Cancel',
-    continue: 'Continue',
-  },
-  startup: {
-    loading: 'Loading local data…',
-    error: 'Local data could not be loaded. Refresh and try again.',
-  },
-  draft: { name: 'Character name', download: 'Export character' },
-  characters: {
-    kicker: 'AOZU CHARACTER ARCHIVE',
-    title: 'Your characters',
-    description: 'Create and manage reusable characters stored in this browser.',
-    saved: 'Saved characters',
-    count: '{{count}} saved',
-    more: 'Show {{count}} more',
-    new: 'Create character',
-    gates: {
-      create: 'Start a blank character, then shape it in the editor or with ChatGPT.',
-      import: 'Restore a character you exported earlier.',
-    },
-    edit: 'Edit',
-    copy: 'Duplicate',
-    delete: 'Delete',
-    revision: 'Revision {{revision}}',
-    updated: 'Updated {{updated}}',
-    deleteTitle: 'Delete this character?',
-    deleteDescription: 'Delete {{name}} and its local artwork from this device?',
-    loadError: 'Character starters could not be loaded.',
-    empty: 'No characters yet. Create one, or import a character you exported earlier.',
-    story: {
-      title: 'Story mode',
-      description: 'Stories and adventures are coming soon.',
-      comingSoon: 'Coming soon',
-    },
-  },
-  start: {
-    title: 'Create your companion',
-    description: 'Continue a saved Companion or start a new one. Confirmed data is saved locally.',
-    unavailable: 'Not available yet',
-    chooseStarter: 'Start creating',
-    pending: {
-      title: 'Waiting for review',
-      description: 'Validated and stored locally, but not active yet.',
-      resume: 'Resume review',
-    },
-    draft: {
-      title: 'Draft in progress',
-      character: 'Continue customizing this character.',
-      experience: 'The character is ready. Continue creating the Companion.',
-      resume: 'Continue editing',
-      deleteTitle: 'Delete this draft?',
-      confirmDelete: 'Delete draft {{name}} and its local authoring data?',
-    },
-    saved: {
-      title: 'Saved companions',
-      current: 'Current companion',
-      continue: 'Continue',
-      open: 'Open',
-      delete: 'Delete',
-      deleting: 'Deleting…',
-      deleteTitle: 'Delete this companion?',
-      confirmDelete: 'Delete {{name}} and all of its local data?',
-      deleteError: 'The companion could not be deleted.',
-    },
-    options: {
-      starter: {
-        title: 'Create a new Companion',
-        description: 'Choose a character and purpose, then customize the complete experience.',
-      },
-      bundle: {
-        title: 'Import from ZIP',
-        description: 'Restore a Companion bundle or authoring draft.',
-      },
-    },
-  },
-  starter: {
-    title: 'Choose a starting point',
-    description: 'Choose a character and a story independently. Start blank on either side.',
-    characterTitle: 'Character',
-    characterDescription: 'Choose artwork to customize next.',
-    storyTitle: 'Story & tasks',
-    storyDescription: 'Choose a purpose, scene, and progress structure.',
-    blank: 'Blank',
-    blankCharacter: 'Create a character',
-    blankCharacterDescription: 'Start with empty sprite slots.',
-    blankStory: 'Create a story',
-    blankStoryDescription: 'Start without a scene, story, or tasks.',
-    continue: 'Continue',
-    choosing: 'Preparing…',
-    error: 'This starting point could not be prepared. Try again.',
-  },
-  candidate: {
-    title: 'Review before activation',
-    description: 'This validated candidate is stored locally but remains inactive until you approve it.',
-    source: {
-      experience: 'Agent-completed experience',
-      import: 'Imported bundle',
-      character: 'Character draft',
-    },
-    stages: 'Stages',
-    starter: 'Starter',
-    direction: 'Direction',
-    loops: 'Progress Loops',
-    completionMode: 'Completion mode',
-    initialStage: 'Initial stage',
-    initialContent: 'Initial content',
-    fallbacks: 'Agent fallbacks',
-    entries: 'Entries',
-    assets: 'Assets',
-    appearances: 'Appearances',
-    approve: 'Activate companion',
-    activating: 'Activating…',
-    saveCharacter: 'Save character pack',
-    saving: 'Saving…',
-    cancel: 'Not now',
-    discard: 'Discard candidate',
-    discarding: 'Discarding…',
-    discardTitle: 'Discard this candidate?',
-    discardDescription: 'This removes the staged bundle and its local assets. Saved companions are not affected.',
-  },
-  characterDraft: {
-    title: 'Character Workshop',
-    description: 'Describe the character you want. ChatGPT can add a base character, aligned expressions, outfits, and props directly to this character.',
-    stageTitle: 'Full-body preview',
-    workbenchDescription: 'Choose a slot, then upload artwork or let ChatGPT add it.',
-    required: 'Required',
-    missingRequired: 'Add a base character to establish the pose and alignment.',
-    validating: 'Checking…',
-    saveAs: 'Duplicate',
-    savingAs: 'Duplicating…',
-    undo: 'Undo',
-    redo: 'Redo',
-    backToActive: 'Back to {{name}}',
-    status: {
-      saving: 'Saving…',
-      saved: 'All changes saved',
-      failed: 'Save failed',
-      retry: 'Retry',
-      conflict: 'Changed elsewhere',
-      reload: 'Reload',
-    },
-    variantLabel: 'Variant name',
-    editVariant: 'Edit {{name}}',
-    customizeTitle: 'Customize appearance',
-    categorySwitcher: 'Appearance categories',
-    backToVariants: 'Back to variants',
-    none: 'None',
-    alignment: {
-      label: 'Alignment preview',
-      composite: 'Composite',
-      overlay: 'Overlay',
-      difference: 'Difference',
-      diagnostic: 'Align',
-    },
-    transform: {
-      label: 'Variant transform',
-      x: 'Horizontal offset',
-      y: 'Vertical offset',
-      scale: 'Scale',
-      applySuggestedFit: 'Apply suggested fit',
-      fitAligned: 'Already aligned with the reference.',
-      fitUnavailable: 'No high-confidence fit. Drag the preview or type a transform.',
-      fitSource: {
-        'mask-alignment': 'Alpha-mask fit',
-        'visual-correlation': 'Visual fit · experimental',
-      },
-      iou: 'Overlap',
-      footLine: 'Foot line',
-      match: 'Match',
-      dragHead: 'Drag to align this head',
-    },
-    categories: {
-      expressions: 'Expressions',
-      outfits: 'Outfits',
-      props: 'Props',
-    },
-    layers: {
-      body: 'Body',
-      head: 'Head',
-      primary: 'Primary sprite',
-      behindOptional: 'Behind character · Optional',
-    },
-    groups: {
-      expression: { add: 'Add expression', variantName: 'Expression' },
-      outfit: { add: 'Add outfit', variantName: 'Outfit' },
-      prop: { add: 'Add prop', variantName: 'Prop' },
-    },
-  },
-  create: {
-    title: 'Create your Companion',
-    description: 'Review the character and playable content that will be saved to this device.',
-    character: 'Character',
-    story: 'Story & tasks',
-    blankStory: 'No story or tasks',
-    submit: 'Create Companion',
-    creating: 'Creating…',
-    error: 'The Companion could not be created. Try again.',
-    stats: {
-      stages: 'Stages',
-      actions: 'Actions',
-      metrics: 'Metrics',
-      rules: 'Rules',
-    },
-  },
-  navigation: {
-    primary: 'Primary navigation',
-    openMenu: 'Open menu',
-    menu: 'Feature menu',
-    description: 'Choose an area to open.',
-    items: {
-      start: 'Start',
-      character: 'Character',
-      wardrobe: 'Wardrobe',
-      story: 'Story',
-      tasks: 'Tasks',
-      journal: 'Journal',
-      data: 'Data',
-      settings: 'Settings',
-    },
-  },
-  main: {
-    webmcp: {
-      unsupported: 'WebMCP is not supported in this browser',
-      registering: 'Registering WebMCP site tools',
-      ready: '{{count}} WebMCP site tools ready',
-      readyShort: '{{count}} tools',
-      failed: 'WebMCP tool registration failed',
-    },
-    stageTitle: '2D character and scene stage',
-    sceneLabel: '{{name}} scene',
-    placeholder: 'Placeholder',
-    dialogueTitle: 'Dialogue',
-    dialoguePlaceholder: 'Dialogue placeholder',
-    waitingForAgent: 'Waiting for the agent to answer in Companion…',
-    messageLabel: 'Message your companion',
-    messagePlaceholder: 'Say anything…',
-    send: 'Send',
-  },
-  data: {
-    export: 'Export character',
-    import: 'Import character',
-    busy: 'Working…',
-    done: 'Data ready.',
-    error: 'The file could not be used.',
-  },
-} as const
+import { de } from './locales/de'
+import { en, type Messages } from './locales/en'
+import { es } from './locales/es'
+import { fr } from './locales/fr'
+import { ja } from './locales/ja'
+import { ko } from './locales/ko'
+import { ptBR } from './locales/pt-BR'
+import { zhCN } from './locales/zh-CN'
+import { zhTW } from './locales/zh-TW'
+
+/** Shown in the header picker in each language's own name. English is the default and the fallback. */
+export const LANGUAGES = [
+  { code: 'en', label: 'English' },
+  { code: 'ja', label: '日本語' },
+  { code: 'zh-TW', label: '繁體中文（台灣）' },
+  { code: 'zh-CN', label: '简体中文' },
+  { code: 'ko', label: '한국어' },
+  { code: 'es', label: 'Español' },
+  { code: 'fr', label: 'Français' },
+  { code: 'de', label: 'Deutsch' },
+  { code: 'pt-BR', label: 'Português (Brasil)' },
+] as const
+export type LanguageCode = (typeof LANGUAGES)[number]['code']
+
+const resources: Record<LanguageCode, { translation: Messages }> = {
+  en: { translation: en },
+  ja: { translation: ja },
+  'zh-TW': { translation: zhTW },
+  'zh-CN': { translation: zhCN },
+  ko: { translation: ko },
+  es: { translation: es },
+  fr: { translation: fr },
+  de: { translation: de },
+  'pt-BR': { translation: ptBR },
+}
+
+const STORAGE_KEY = 'companion-language'
+const isLanguage = (value: unknown): value is LanguageCode => LANGUAGES.some(({ code }) => code === value)
+const storedLanguage = (): LanguageCode | undefined => {
+  try {
+    const stored = globalThis.localStorage?.getItem(STORAGE_KEY)
+    return isLanguage(stored) ? stored : undefined
+  } catch { return undefined }
+}
 
 void i18n.use(initReactI18next).init({
-  resources: { en: { translation: en } },
-  lng: 'en',
+  resources,
+  lng: storedLanguage() ?? 'en',
   fallbackLng: 'en',
-  supportedLngs: ['en'],
+  supportedLngs: LANGUAGES.map(({ code }) => code),
   interpolation: { escapeValue: false },
 })
+
+// <html lang> drives per-language heading fonts and screen readers; the choice survives reloads.
+const applyLanguage = (language: string) => {
+  if (typeof document !== 'undefined') document.documentElement.lang = language
+  try { globalThis.localStorage?.setItem(STORAGE_KEY, language) } catch { /* storage may be unavailable */ }
+}
+applyLanguage(i18n.resolvedLanguage ?? 'en')
+i18n.on('languageChanged', applyLanguage)
 
 export default i18n
