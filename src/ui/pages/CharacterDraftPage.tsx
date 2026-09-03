@@ -283,7 +283,7 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
   }
 
   return <div className="draft-workshop-shell">
-    <main className="draft-workshop mx-auto flex h-full w-full max-w-6xl flex-col p-[0.85rem] sm:p-7">
+    <main className="draft-workshop mx-auto flex h-full w-full max-w-6xl flex-col p-[0.85rem] sm:p-6">
       <aside className="character-spell-guide" aria-labelledby="character-spell-title">
         <div className="spell-icon"><AozuIcon name="book" /></div>
         <div className="min-w-0 flex-1">
@@ -292,7 +292,7 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
         </div>
       </aside>
 
-      <div className="draft-workshop-grid mt-2 min-h-0 flex-1 sm:mt-4">
+      <div className="draft-workshop-grid mt-2 min-h-0 flex-1 sm:mt-3">
       <section className="character-stage-panel rounded-2xl border bg-background">
         <div className="character-stage-heading">
           <div><span>01</span><strong>{t('characterDraft.stageTitle')}</strong></div>

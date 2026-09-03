@@ -705,7 +705,7 @@ button.gate-action {
 .draft-workshop-grid {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(7rem, 1fr);
-  gap: 1rem;
+  gap: 0.75rem;
   align-items: stretch;
 }
 
