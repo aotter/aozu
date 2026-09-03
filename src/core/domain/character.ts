@@ -77,6 +77,15 @@ export interface CharacterDraftVariant {
   transform?: CharacterVariantTransform
 }
 
+export type CharacterAttributeValue = string | number | boolean
+
+export interface CharacterProfilePatch {
+  name?: string
+  description?: string
+  backstory?: string
+  attributes?: Record<string, CharacterAttributeValue>
+}
+
 export interface CharacterAssetTarget {
   group: CharacterVariantGroup
   variantId: string
@@ -90,13 +99,9 @@ export interface CharacterDraft {
   packId: string
   rigProfile: { id: string; version: number }
   name: string
-  nameConfirmed?: boolean
-  profile?: {
-    age: string
-    personality: string
-    backstory: string
-    setting: string
-  }
+  description?: string
+  backstory?: string
+  attributes?: Record<string, CharacterAttributeValue>
   variants: CharacterDraftVariant[]
   headRegistration?: { variantId: string }
   selected: {

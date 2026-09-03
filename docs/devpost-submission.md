@@ -6,7 +6,7 @@ Submission deadline: September 3, 2026 at 1:00 PM PDT (September 4 at 4:00 AM in
 
 - Project name: **AOZU**
 - Tagline: **An agent-native forge for reliable layered character packs**
-- Live app: https://companion.phsu-31c.workers.dev
+- Live app: https://companion.aozu.workers.dev
 - Public repository: https://github.com/aotter/aozu
 - License: Apache-2.0
 
@@ -32,15 +32,17 @@ This makes the experience faster and more reliable, but also enables something t
 
 ### How we implemented WebMCP
 
-AOZU registers seven public tools through `document.modelContext.registerTool`:
+AOZU registers nine public tools through `document.modelContext.registerTool`:
 
 1. `inspect_workspace`
 2. `navigate_character`
 3. `inspect_character_contract`
-4. `submit_character_asset_candidate`
-5. `set_character_variant_transform`
-6. `undo_character_change`
-7. `redo_character_change`
+4. `update_character_profile`
+5. `replace_character_asset`
+6. `repair_character_asset`
+7. `set_character_variant_transform`
+8. `undo_character_change`
+9. `redo_character_change`
 
 The public tools are projected from the same Mantle application contracts used by the React UI. IndexedDB stores browser-local character workspaces and image blobs. Candidate submission checks dimensions, RGBA transparency, visible bounds, canvas overflow, revision freshness, and source hashes. PixiJS renders the same compiled atlas that is included in the exported character ZIP.
 
@@ -58,7 +60,7 @@ The hardest problem was defining a safe boundary between creative generation and
 
 ### Accomplishments
 
-- A non-trivial seven-tool WebMCP workflow rather than button automation
+- A non-trivial nine-tool WebMCP workflow rather than button automation
 - Revision- and SHA-256-bound asset mutations
 - Protected-region character editing and deterministic layer stitching
 - Local-first persistence, undo/redo, duplication, import, and export
@@ -115,7 +117,7 @@ Narration: “The result is not trapped in a demo. AOZU exports editable sources
 
 - [ ] Join the hackathon with the authorized individual or organization representative.
 - [ ] Confirm the live URL loads without authentication in ChatGPT's in-app browser.
-- [ ] Test all seven WebMCP tools against the deployed build.
+- [ ] Test all nine WebMCP tools against the deployed build.
 - [ ] Confirm the deployment matches the demo video.
 - [ ] Make the repository public and use https://github.com/aotter/aozu as the code URL.
 - [ ] Confirm `LICENSE` is visible as Apache-2.0 on GitHub.
@@ -124,4 +126,3 @@ Narration: “The result is not trapped in a demo. AOZU exports editable sources
 - [ ] Paste the English description above into the Devpost submission.
 - [ ] If the app needs credentials, add them to the private testing instructions.
 - [ ] Submit before September 3, 2026 at 1:00 PM PDT.
-

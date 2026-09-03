@@ -60,6 +60,13 @@ export const ptBR: Messages = {
       conflict: 'Alterado em outro lugar',
       reload: 'Recarregar',
     },
+    profile: {
+      title: 'Perfil do personagem', name: 'Nome', description: 'Descrição', backstory: 'História', attributes: 'Atributos',
+      add: 'Adicionar', text: 'Texto', number: 'Número', boolean: 'Sim / não', yes: 'Sim', no: 'Não', value: 'Valor', update: 'Atualizar perfil',
+      attributeName: 'Nome do atributo {{index}}', attributeType: 'Tipo do atributo {{index}}', attributeValue: 'Valor do atributo {{index}}', removeAttribute: 'Remover atributo {{index}}',
+      edit: 'Editar perfil do personagem', expand: 'Abrir perfil do personagem', collapse: 'Fechar perfil do personagem',
+      noDescription: 'Ainda não há descrição.', noBackstory: 'Ainda não há história.', noAttributes: 'Ainda não há atributos.',
+    },
     alignment: {
       label: 'Visualização do alinhamento',
       composite: 'Composição',

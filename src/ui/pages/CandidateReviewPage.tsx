@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { StagedCandidatePreview } from '@/core/application/candidate.ts'
-import { AozuIcon } from '@/ui/AozuIcon'
 import { CharacterRenderer } from '@/ui/CharacterRenderer'
 import { SceneRenderer } from '@/ui/SceneRenderer'
 import { Button } from '@/ui/components/ui/button'
@@ -33,46 +32,6 @@ export function CandidateReviewPage({ preview, onApprove, onCancel, onDiscard }:
     try { await task() } catch { setError(true); setBusy(false) }
   }
 
-  if (preview.source === 'character') return <main className="candidate-review-shell">
-    <section className="candidate-review-scroll">
-      <header className="candidate-review-heading">
-        <AozuIcon name="book" className="candidate-review-seal" />
-        <p className="candidate-review-kicker">{t('candidate.characterKicker')}</p>
-        <h1>{t('candidate.characterTitle')}</h1>
-        <p>{t('candidate.characterDescription')}</p>
-      </header>
-
-      <div className="candidate-review-rule" aria-hidden="true"><span /></div>
-
-      <section className="candidate-character-card">
-        <div className="candidate-character-portrait">
-          <CharacterRenderer label={preview.name} layers={preview.layers} className="rounded-none border-0 bg-transparent" />
-        </div>
-        <div className="candidate-character-details">
-          <p className="candidate-character-label">{t('candidate.characterNameLabel')}</p>
-          <h2>{preview.name}</h2>
-          <p className="candidate-character-ready">{t('candidate.characterReady')}</p>
-          <dl className="candidate-character-stats">
-            <div>
-              <dt>{t('candidate.appearances')}</dt>
-              <dd>{t('candidate.appearanceCount', { count: preview.appearanceCount })}</dd>
-            </div>
-          </dl>
-          <div className="candidate-review-actions">
-            <Button size="lg" disabled={busy} onClick={() => void run(onApprove)}>
-              {busy ? t('candidate.saving') : t('candidate.saveCharacter')}
-            </Button>
-            <Button size="lg" variant="outline" disabled={busy} onClick={() => void run(onCancel)}>
-              {t('candidate.editCharacter')}
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {error && <p role="alert" className="candidate-review-error">{t('startup.error')}</p>}
-    </section>
-  </main>
-
   return <>
     <main className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-xl flex-col justify-center px-4 py-10">
       <p className="text-sm font-medium text-muted-foreground">{t(`candidate.source.${preview.source}`)}</p>
@@ -80,6 +39,7 @@ export function CandidateReviewPage({ preview, onApprove, onCancel, onDiscard }:
       <p className="mt-3 text-sm leading-6 text-muted-foreground">{t('candidate.description')}</p>
       <section className="mt-6 rounded-2xl border bg-background p-5 shadow-sm">
         <h2 className="font-heading text-lg font-medium">{preview.name}</h2>
+        {preview.source === 'character' && <div className="mx-auto mt-4 max-w-xs"><CharacterRenderer label={preview.name} layers={preview.layers} /></div>}
         {preview.source === 'experience' && <div className="mx-auto mt-4 max-w-xs">{preview.sceneLayers.length
           ? <SceneRenderer label={preview.initialTitle} layers={preview.sceneLayers}>
               <CharacterRenderer label={preview.name} layers={preview.characterLayers} className="size-full rounded-none border-0 bg-transparent" />
@@ -97,14 +57,14 @@ export function CandidateReviewPage({ preview, onApprove, onCancel, onDiscard }:
             <div className="flex justify-between gap-4"><dt>{t('candidate.initialStage')}</dt><dd>{preview.initialTitle}</dd></div>
             <div className="flex justify-between gap-4"><dt>{t('candidate.fallbacks')}</dt><dd>{preview.agentFallbackCount}</dd></div>
             <div className="mt-2"><dt className="font-medium">{t('candidate.initialContent')}</dt><dd className="mt-1 text-muted-foreground">{preview.initialNarrative}</dd></div>
-          </> : <>
+          </> : preview.source === 'import' ? <>
             <div className="flex justify-between gap-4"><dt>{t('candidate.entries')}</dt><dd>{preview.entryCount}</dd></div>
             <div className="flex justify-between gap-4"><dt>{t('candidate.assets')}</dt><dd>{preview.assetCount}</dd></div>
-          </>}
+          </> : <div className="flex justify-between gap-4"><dt>{t('candidate.appearances')}</dt><dd>{preview.appearanceCount}</dd></div>}
         </dl>
       </section>
       <div className="mt-6 flex gap-2">
-        <Button disabled={busy} onClick={() => void run(onApprove)}>{busy ? t('candidate.activating') : t('candidate.approve')}</Button>
+        <Button disabled={busy} onClick={() => void run(onApprove)}>{busy ? t(preview.source === 'character' ? 'candidate.saving' : 'candidate.activating') : t(preview.source === 'character' ? 'candidate.saveCharacter' : 'candidate.approve')}</Button>
         <Button variant="outline" disabled={busy} onClick={() => void run(onCancel)}>{t('candidate.cancel')}</Button>
         {onDiscard && <AlertDialog>
           <AlertDialogTrigger asChild><Button variant="destructive" disabled={busy}>{t('candidate.discard')}</Button></AlertDialogTrigger>

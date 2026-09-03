@@ -213,6 +213,12 @@ const characterAssetDescriptorSchema = objectSchema({
   canonicalSha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
 }, ['blobId', 'filename', 'source', 'inspection'])
 
+const characterAttributesSchema: JsonSchema = {
+  type: 'object',
+  maxProperties: 32,
+  additionalProperties: { type: ['string', 'number', 'boolean'], maxLength: 200 },
+}
+
 const characterWorkspaceProperties = {
   schemaVersion: { const: 4 },
   packId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' },
@@ -221,6 +227,9 @@ const characterWorkspaceProperties = {
     version: { const: CHARACTER_RIG.version },
   }, ['id', 'version']),
   name: { type: 'string', minLength: 1, maxLength: 200 },
+  description: { type: 'string', maxLength: 500 },
+  backstory: { type: 'string', maxLength: 8_000 },
+  attributes: characterAttributesSchema,
   variants: {
     type: 'array',
     minItems: 1,
@@ -546,7 +555,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-workspace.yaml',
     envelope('Procedure', 'inspect-workspace', {
       title: 'Inspect Workspace',
-      description: 'Start here on every page. Returns saved Character workspaces, the current Character and route, missing required art, and exact next tool or navigation actions without guessing routes.',
+      description: 'Start here on every page. Returns saved Character workspaces, the current Character and route, missing required art, exact next actions, and all stable asset acceptance rules. AOZU rejects opaque artwork and does not remove backgrounds; if direct transparency is unavailable, generate on one flat high-contrast color, remove it with an image tool, and verify genuine alpha before submission. Outfits are complete dressed character skins in the canonical pose, never clothing-only overlays.',
       input: emptyReadOnlyInput,
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.inspect-workspace' },
@@ -692,7 +701,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-character-contract.yaml',
     envelope('Procedure', 'inspect-character-contract', {
       title: 'Inspect Character Contract',
-      description: `Required before generating, replacing, or repairing character art. Optionally name one target to receive its exact edit source and hash, stable alignment reference and transform, deterministic editable-region mask, reference visible bounds, generation size (${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height}) and final size (${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}), the allowed and recommended submission normalization, the current Character revision, z-order, and alignment diagnostics. Existing current assets are repaired from their own pixels. Mask transparency marks editable pixels; opaque pixels are protected. Outfits are complete dressed character-skin replacements. Props use full replacement. The website validates, deterministically normalizes only what a submission explicitly requests, and stitches, but never generates, removes backgrounds, recovers fake alpha, or guesses geometry.`,
+      description: `Required before replacing, repairing, or aligning character art. Optionally name one target to receive its allowed operations, exact current asset hash, visual alignment reference, layer ownership, alpha policy, generation size (${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height}) and final size (${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}), normalization, revision, z-order, diagnostics, and required browser visual-review workflow. replace_character_asset installs a complete finished layer without preserving old pixels and is the only operation for outfits. repair_character_asset is available only for a current expression and stitches into that exact head asset. Expressions contain only a complete whole head. Outfits contain the complete dressed character skin.`,
       input: {
         ...objectSchema({
           characterId: { type: 'string', minLength: 1 },
@@ -714,10 +723,34 @@ const ALL_BACKBONE_SOURCES = [
     }),
   ),
   source(
-    'authoring/submit-character-asset-candidate.yaml',
-    envelope('Procedure', 'submit-character-asset-candidate', {
-      title: 'Submit Character Asset Candidate',
-      description: `Create or repair one Character variant layer after inspect_character_contract. Bind the submission to its exact Character revision and edit-source hash. Valid expression and outfit pixels are stitched into that edit source; props use full replacement. Rejected or stale input does not mutate or navigate. An accepted result is saved and opens the exact variant editor for visual review. Submit exact ${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height} RGBA by default, or explicitly request the deterministic normalization returned by inspect_character_contract to submit a genuine-RGBA ${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height} render; every applied normalization is reported back. The website never removes backgrounds, recovers fake alpha, upscales, crops, or accepts another aspect ratio.`,
+    'authoring/update-character-profile.yaml',
+    envelope('Procedure', 'update-character-profile', {
+      title: 'Update Character Profile',
+      description: 'Update one or more identity fields of a saved Character using its exact revision. Omitted fields stay unchanged; empty description, backstory, or attributes clear that field. A successful call saves one undoable change and opens that Character editor.',
+      input: objectSchema({
+        characterId: { type: 'string', minLength: 1 },
+        expectedRevision: { type: 'integer', minimum: 1 },
+        name: { type: 'string', minLength: 1, maxLength: 80 },
+        description: { type: 'string', maxLength: 500 },
+        backstory: { type: 'string', maxLength: 8_000 },
+        attributes: characterAttributesSchema,
+      }, ['characterId', 'expectedRevision']),
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.update-character-profile' },
+    }),
+  ),
+  source(
+    'authoring/update-character-profile-mcp.yaml',
+    envelope('Trigger', 'update-character-profile', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'update-character-profile' },
+    }),
+  ),
+  source(
+    'authoring/replace-character-asset.yaml',
+    envelope('Procedure', 'replace-character-asset', {
+      title: 'Replace Character Asset',
+      description: `Install one complete canonical Character layer after inspect_character_contract. This is a true replacement: it never stitches or preserves pixels from the old asset. Expressions must contain only a complete whole head with transparency everywhere else. Outfits must contain the complete dressed character skin in a pose and registration compatible with the canonical reference; exact base-pixel coverage is not required. Opaque input is rejected; AOZU never removes backgrounds. Rejected or stale input does not mutate or navigate. Submit exact ${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height} RGBA by default, or explicitly request the deterministic normalization returned by inspect_character_contract.`,
       input: objectSchema({
         characterId: { type: 'string', minLength: 1 },
         group: { enum: CHARACTER_VARIANT_GROUPS },
@@ -725,27 +758,55 @@ const ALL_BACKBONE_SOURCES = [
         label: { type: 'string', minLength: 1, maxLength: 80 },
         layer: { enum: ['body', 'head', 'back', 'front'] },
         expectedRevision: { type: 'integer', minimum: 1 },
-        expectedEditSourceSha256: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
+        expectedAssetSha256: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
         filename: { type: 'string', minLength: 1, maxLength: 200 },
         dataUrl: { type: 'string', pattern: '^data:image/png;base64,', maxLength: 7_100_000 },
         normalization: characterNormalizationSchema,
-      }, ['characterId', 'group', 'variantId', 'label', 'layer', 'expectedRevision', 'expectedEditSourceSha256', 'filename', 'dataUrl']),
+      }, ['characterId', 'group', 'variantId', 'label', 'layer', 'expectedRevision', 'expectedAssetSha256', 'filename', 'dataUrl']),
       output: toolResultSchema,
-      handler: { kind: 'ref', ref: 'companion.submit-character-asset-candidate' },
+      handler: { kind: 'ref', ref: 'companion.replace-character-asset' },
     }),
   ),
   source(
-    'authoring/submit-character-asset-candidate-mcp.yaml',
-    envelope('Trigger', 'submit-character-asset-candidate', {
+    'authoring/replace-character-asset-mcp.yaml',
+    envelope('Trigger', 'replace-character-asset', {
       source: { kind: 'mcp', surface: 'public' },
-      target: { procedure: 'submit-character-asset-candidate' },
+      target: { procedure: 'replace-character-asset' },
+    }),
+  ),
+  source(
+    'authoring/repair-character-asset.yaml',
+    envelope('Procedure', 'repair-character-asset', {
+      title: 'Repair Character Asset',
+      description: `Repair one existing expression after inspect_character_contract. The current head asset and editable-region mask are the only edit source; this tool never falls back to the canonical body. Accepted pixels are deterministically stitched into that current asset, preserving protected pixels. Outfits and other complete layers must use replace_character_asset.`,
+      input: objectSchema({
+        characterId: { type: 'string', minLength: 1 },
+        group: { const: 'expression' },
+        variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
+        label: { type: 'string', minLength: 1, maxLength: 80 },
+        layer: { const: 'head' },
+        expectedRevision: { type: 'integer', minimum: 1 },
+        expectedAssetSha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+        filename: { type: 'string', minLength: 1, maxLength: 200 },
+        dataUrl: { type: 'string', pattern: '^data:image/png;base64,', maxLength: 7_100_000 },
+        normalization: characterNormalizationSchema,
+      }, ['characterId', 'group', 'variantId', 'label', 'layer', 'expectedRevision', 'expectedAssetSha256', 'filename', 'dataUrl']),
+      output: toolResultSchema,
+      handler: { kind: 'ref', ref: 'companion.repair-character-asset' },
+    }),
+  ),
+  source(
+    'authoring/repair-character-asset-mcp.yaml',
+    envelope('Trigger', 'repair-character-asset', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'repair-character-asset' },
     }),
   ),
   source(
     'authoring/set-character-variant-transform.yaml',
     envelope('Procedure', 'set-character-variant-transform', {
       title: 'Set Character Variant Transform',
-      description: 'Safety net for a Character variant whose full-canvas pixels need translation or uniform scale. Use absolute values from inspect_character_contract and the exact Character revision. A successful call opens that exact variant editor. Head-anchor changes rebase current expressions; front and back prop layers share one transform. The canonical body is locked.',
+      description: 'Visually align an existing expression whole head, outfit, or prop by changing only its full-canvas translation and uniform scale. Inspect the Character in the browser first; x moves right, y moves down, and values are absolute rather than deltas. Use the exact revision from inspect_character_contract. Success opens the exact variant so you can verify Composite, Overlay, Difference, and Align before continuing. Head-anchor changes rebase current expressions; front and back prop layers share one transform. The canonical body is locked.',
       input: objectSchema({
         characterId: { type: 'string', minLength: 1 },
         group: { enum: ['expression', 'outfit', 'prop'] },

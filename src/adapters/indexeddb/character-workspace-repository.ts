@@ -23,6 +23,9 @@ const dataFrom = (draft: CharacterDraft): CharacterWorkspaceData => ({
   packId: draft.packId,
   rigProfile: structuredClone(draft.rigProfile),
   name: draft.name,
+  ...(draft.description ? { description: draft.description } : {}),
+  ...(draft.backstory ? { backstory: draft.backstory } : {}),
+  ...(draft.attributes && Object.keys(draft.attributes).length ? { attributes: structuredClone(draft.attributes) } : {}),
   variants: draft.variants.map(({ layers, ...variant }) => ({
     ...structuredClone(variant),
     layers: Object.fromEntries(Object.entries(layers).map(([layer, asset]) => [layer, asset && {

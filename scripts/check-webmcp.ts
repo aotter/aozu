@@ -7,7 +7,7 @@ import { bindMantleWebMcpTools, createAgentCapability } from '../src/adapters/we
 import { compileAuthoringBackbone } from '../src/core/mantle/backbone.ts'
 
 const plan = compileAuthoringBackbone()
-const triggers = new Set(['inspect-workspace', 'navigate-character', 'inspect-character-contract', 'submit-character-asset-candidate', 'set-character-variant-transform', 'undo-character-change', 'redo-character-change'])
+const triggers = new Set(['inspect-workspace', 'navigate-character', 'inspect-character-contract', 'update-character-profile', 'replace-character-asset', 'repair-character-asset', 'set-character-variant-transform', 'undo-character-change', 'redo-character-change'])
 assert.equal(createAgentCapability({} as Document).isAvailable(), false)
 assert.equal(await bindMantleWebMcpTools({} as Document, plan, async () => ({ ok: true, data: null }), triggers), null)
 
@@ -38,21 +38,27 @@ const invoke = async (trigger: string, input: unknown) => ({
 })
 const controller = createWebMcpController(document, plan, [...triggers], invoke)
 await controller.ready
-assert.deepEqual(controller.getState(), { status: 'ready', toolCount: 7 })
+assert.deepEqual(controller.getState(), { status: 'ready', toolCount: 9 })
 assert.deepEqual([...registered.keys()].sort(), [
   'inspect_character_contract',
   'inspect_workspace',
   'navigate_character',
   'redo_character_change',
+  'repair_character_asset',
+  'replace_character_asset',
   'set_character_variant_transform',
-  'submit_character_asset_candidate',
   'undo_character_change',
+  'update_character_profile',
 ])
 assert.deepEqual([
   registered.get('inspect_workspace')?.annotations.readOnlyHint,
-  registered.get('submit_character_asset_candidate')?.annotations.readOnlyHint,
+  registered.get('replace_character_asset')?.annotations.readOnlyHint,
   registered.get('undo_character_change')?.annotations.readOnlyHint,
 ], [true, false, false])
+assert.match(registered.get('inspect_character_contract')!.description, /required browser visual-review workflow/)
+assert.match(registered.get('set_character_variant_transform')!.description, /expression whole head/)
+assert.match(registered.get('set_character_variant_transform')!.description, /x moves right, y moves down/)
+assert.match(registered.get('set_character_variant_transform')!.description, /Composite, Overlay, Difference, and Align/)
 const navigation = { destination: 'character-outfits', characterId: 'id', variantId: 'raincoat' }
 assert.deepEqual(await registered.get('navigate_character')!.execute(navigation, {}), {
   status: 'ok', data: { trigger: 'navigate-character', input: navigation }, effects: { navigation: { path: '/characters/id/outfits/raincoat', mode: 'push', reason: 'review' } },

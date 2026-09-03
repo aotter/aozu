@@ -1,0 +1,30 @@
+# AOZU
+
+> AOZU is an agent-native browser workshop for creating, aligning, editing, and exporting reusable layered character assets.
+
+Application: https://companion.aozu.workers.dev/
+Source: https://github.com/aotter/aozu
+
+## Product
+
+AOZU lets a person and an AI agent share one visual character workspace. Characters contain a canonical body, whole-head expressions, complete outfit skins, props, profile metadata, alignment transforms, and revision history. Data is stored locally in the browser and can be exported as a portable Character ZIP with original assets and a lossless WebP texture atlas.
+
+## WebMCP interface
+
+In a WebMCP-compatible browser, AOZU exposes these tools on every page:
+
+- `inspect_workspace`: discover characters, routes, revisions, missing art, and next actions.
+- `navigate_character`: open the library or an exact character category or variant.
+- `inspect_character_contract`: obtain asset requirements, references, hashes, ownership, and alignment diagnostics.
+- `update_character_profile`: update name, description, multiline backstory, and scalar attributes.
+- `replace_character_asset`: install a complete body, expression head, outfit skin, or prop layer.
+- `repair_character_asset`: repair an existing expression inside its protected editable region.
+- `set_character_variant_transform`: apply an explicit translation and uniform scale.
+- `undo_character_change`: undo the latest settled character change.
+- `redo_character_change`: redo the most recently undone character change.
+
+Agents should call `inspect_workspace` first and use the returned exact revision and asset contract before any mutation. The website validates and persists changes, renders the result, and navigates the person to the affected asset. After accepting or aligning an expression or outfit, visually review that rendered variant in the browser using Composite, Overlay, Difference, and Align before continuing to the next asset.
+
+## Current scope
+
+Character creation and editing are available. Story and experience authoring are not part of the current release. AOZU does not generate images itself; the connected agent supplies creative artwork while AOZU enforces the character asset contract.

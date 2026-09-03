@@ -28,11 +28,8 @@ type MaskStats = { bounds?: Bounds; visiblePixels: number; edgeTouchPixels: numb
 const round = (value: number) => Math.round(value * 10_000) / 10_000
 
 const characterEditWeight = (region: CharacterEditableRegion, x: number, y: number) => {
-  const distance = region.shape.kind === 'rectangle'
-    ? Math.min(x - region.shape.x, region.shape.x + region.shape.width - x, y - region.shape.y, region.shape.y + region.shape.height - y)
-    : (1 - Math.hypot((x - region.shape.cx) / region.shape.rx, (y - region.shape.cy) / region.shape.ry))
-      * Math.min(region.shape.rx, region.shape.ry)
-      * (region.shape.kind === 'outside-ellipse' ? -1 : 1)
+  const shape = region.shape
+  const distance = (1 - Math.hypot((x - shape.cx) / shape.rx, (y - shape.cy) / shape.ry)) * Math.min(shape.rx, shape.ry)
   return Math.max(0, Math.min(1, distance / 4))
 }
 
@@ -136,6 +133,59 @@ const transformMask = (mask: CharacterAlphaMask, transform: CharacterVariantTran
   return { ...mask, alpha }
 }
 
+export function inspectCharacterAssetOwnership(
+  group: CharacterVariantGroup,
+  candidate: CharacterAlphaMask,
+  options: {
+    headBounds?: Bounds
+    transform?: CharacterVariantTransform
+  } = {},
+) {
+  if (group === 'expression') {
+    const placed = transformMask(candidate, options.transform ?? IDENTITY_CHARACTER_TRANSFORM)
+    const bounds = options.headBounds
+    if (!bounds) return {
+      status: 'invalid' as const,
+      code: 'HEAD_OWNERSHIP_UNAVAILABLE',
+      message: 'A canonical body is required before a whole-head expression can be submitted.',
+    }
+    const candidateBounds = maskStats(candidate).bounds
+    if (candidateBounds && (candidateBounds.width > bounds.width * 1.5 || candidateBounds.height > bounds.height * 1.5)) return {
+      status: 'invalid' as const,
+      code: 'EXPRESSION_NOT_HEAD_ONLY',
+      message: 'Expression artwork is too large to be a whole-head layer; submit the head only with transparent pixels elsewhere.',
+      candidateBounds,
+      headBounds: bounds,
+    }
+    const margin = Math.max(6, Math.ceil(Math.max(bounds.width, bounds.height) * 0.04))
+    const left = Math.floor(bounds.x - margin)
+    const top = Math.floor(bounds.y - margin)
+    const right = Math.ceil(bounds.x + bounds.width + margin)
+    const bottom = Math.ceil(bounds.y + bounds.height + margin)
+    let visiblePixels = 0
+    let pixelsOutsideOwnership = 0
+    for (let y = 0; y < placed.height; y++) for (let x = 0; x < placed.width; x++) {
+      if (placed.alpha[y * placed.width + x]! <= 16) continue
+      visiblePixels++
+      if (x < left || x >= right || y < top || y >= bottom) pixelsOutsideOwnership++
+    }
+    return pixelsOutsideOwnership ? {
+      status: 'invalid' as const,
+      code: 'PIXELS_OUTSIDE_LAYER_OWNERSHIP',
+      message: `Expression must contain only the whole head; ${pixelsOutsideOwnership} visible pixels are outside its ownership bounds.`,
+      pixelsOutsideOwnership,
+      visiblePixels,
+      bounds: { x: left, y: top, width: right - left, height: bottom - top },
+    } : {
+      status: 'valid' as const,
+      pixelsOutsideOwnership,
+      visiblePixels,
+      bounds: { x: left, y: top, width: right - left, height: bottom - top },
+    }
+  }
+  return { status: 'valid' as const }
+}
+
 const compareMasks = (reference: CharacterAlphaMask, candidate: CharacterAlphaMask) => {
   let intersection = 0
   let union = 0
@@ -228,11 +278,11 @@ export function measureCharacterMaskAlignment(
       suggestedMetrics: suggested,
       suggestedTransform: suggestion,
       diagnostics: [{
-        code: group === 'expression' ? 'EXPRESSION_MUST_INCLUDE_COMPLETE_HEAD' : 'OUTFIT_MUST_INCLUDE_COMPLETE_CHARACTER',
+        code: group === 'expression' ? 'EXPRESSION_MUST_INCLUDE_COMPLETE_HEAD' : 'OUTFIT_REFERENCE_SHAPE_INCOMPATIBLE',
         severity: 'error' as const,
         message: group === 'expression'
           ? 'Expression must be a complete whole-head replacement aligned to the canonical head.'
-          : 'Outfit must be a complete dressed character-skin replacement, not a clothing-only overlay.',
+          : 'Outfit must be a complete dressed character skin whose pose and registration are compatible with the canonical reference.',
       }],
     }
   }

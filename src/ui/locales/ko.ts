@@ -60,6 +60,13 @@ export const ko: Messages = {
       conflict: '다른 곳에서 변경됨',
       reload: '다시 불러오기',
     },
+    profile: {
+      title: '캐릭터 프로필', name: '이름', description: '소개', backstory: '배경 이야기', attributes: '속성',
+      add: '추가', text: '텍스트', number: '숫자', boolean: '예／아니요', yes: '예', no: '아니요', value: '값', update: '프로필 업데이트',
+      attributeName: '속성 {{index}} 이름', attributeType: '속성 {{index}} 유형', attributeValue: '속성 {{index}} 값', removeAttribute: '속성 {{index}} 삭제',
+      edit: '캐릭터 프로필 편집', expand: '캐릭터 프로필 펼치기', collapse: '캐릭터 프로필 접기',
+      noDescription: '아직 소개가 없습니다.', noBackstory: '아직 배경 이야기가 없습니다.', noAttributes: '아직 속성이 없습니다.',
+    },
     alignment: {
       label: '정렬 미리보기',
       composite: '합성',

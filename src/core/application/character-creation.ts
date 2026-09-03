@@ -12,10 +12,12 @@ import {
   type CharacterAssetTarget,
   type CharacterAtlasSource,
   type CharacterAssetInspection,
+  type CharacterAttributeValue,
   type CharacterDraft,
   type CharacterDraftAsset,
   type CharacterDraftVariant,
   type CharacterPack,
+  type CharacterProfilePatch,
   type ResolvedCharacterLayer,
   type CharacterVariantGroup,
   type CharacterVariantLayer,
@@ -86,6 +88,48 @@ export const copyCharacter = (character: CharacterDraft, existingNames: readonly
 
 export const isCharacterDraftPopulated = (draft: CharacterDraft) => draft.variants.some(({ layers }) => Object.keys(layers).length > 0)
 
+const optionalProfileText = (value: string, maxLength: number, label: string) => {
+  const normalized = value.trim()
+  if (normalized.length > maxLength) throw new Error(`${label} is too long`)
+  return normalized || undefined
+}
+
+const normalizedAttributes = (attributes: Record<string, CharacterAttributeValue>) => {
+  const entries = Object.entries(attributes)
+  if (entries.length > 32) throw new Error('Character attributes are limited to 32 entries')
+  const normalized = entries.map(([rawKey, rawValue]) => {
+    const key = rawKey.trim()
+    if (!key || key.length > 40) throw new Error('Character attribute names must be 1–40 characters')
+    if (typeof rawValue === 'number' && !Number.isFinite(rawValue)) throw new Error(`Character attribute ${key} must be finite`)
+    const value = typeof rawValue === 'string' ? rawValue.trim() : rawValue
+    if (typeof value === 'string' && value.length > 200) throw new Error(`Character attribute ${key} is too long`)
+    return [key, value] as const
+  }).sort(([left], [right]) => left.localeCompare(right))
+  if (new Set(normalized.map(([key]) => key)).size !== normalized.length) throw new Error('Character attribute names must be unique')
+  return Object.fromEntries(normalized) as Record<string, CharacterAttributeValue>
+}
+
+/** One profile command shared by the UI and WebMCP; omitted fields stay unchanged. */
+export function updateCharacterProfile(draft: CharacterDraft, patch: CharacterProfilePatch): CharacterDraft {
+  const name = patch.name === undefined ? draft.name : patch.name.trim()
+  if (!name || name.length > 80) throw new Error('Character name must be 1–80 characters')
+  const description = patch.description === undefined ? draft.description : optionalProfileText(patch.description, 500, 'Character description')
+  const backstory = patch.backstory === undefined ? draft.backstory : optionalProfileText(patch.backstory, 8_000, 'Character backstory')
+  const attributes = patch.attributes === undefined ? draft.attributes : normalizedAttributes(patch.attributes)
+  if (
+    name === draft.name && description === draft.description && backstory === draft.backstory &&
+    JSON.stringify(attributes ?? {}) === JSON.stringify(draft.attributes ?? {})
+  ) return draft
+  const { description: _description, backstory: _backstory, attributes: _attributes, ...rest } = draft
+  return {
+    ...rest,
+    name,
+    ...(description ? { description } : {}),
+    ...(backstory ? { backstory } : {}),
+    ...(attributes && Object.keys(attributes).length ? { attributes } : {}),
+  }
+}
+
 const boundsCenter = ({ x, y, width, height }: NonNullable<CharacterAssetInspection['visibleBounds']>) => ({
   x: x + width / 2,
   y: y + height / 2,
@@ -95,22 +139,26 @@ type Bounds = NonNullable<CharacterAssetInspection['visibleBounds']>
 export type CharacterEditableRegion = {
   source: 'registration-derived'
   basis: 'head-anchor' | 'body-bounds-fallback'
-  shape:
-    | { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
-    | { kind: 'outside-ellipse'; cx: number; cy: number; rx: number; ry: number }
-    | { kind: 'rectangle'; x: number; y: number; width: number; height: number }
+  shape: { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
 }
 
 const regionNumber = (value: number) => Math.round(value * 100) / 100
-const editableRegions = (bodyBounds?: Bounds, headBounds?: Bounds) => {
-  if (!bodyBounds) return {}
-  const head = headBounds ?? {
-    x: bodyBounds.x + bodyBounds.width * 0.15,
-    y: bodyBounds.y,
-    width: bodyBounds.width * 0.7,
-    height: bodyBounds.height * 0.42,
+const headEnvelope = (bodyBounds?: Bounds, headBounds?: Bounds) => {
+  if (!bodyBounds) return undefined
+  return {
+    basis: headBounds ? 'head-anchor' as const : 'body-bounds-fallback' as const,
+    bounds: headBounds ?? {
+      x: bodyBounds.x + bodyBounds.width * 0.15,
+      y: bodyBounds.y,
+      width: bodyBounds.width * 0.7,
+      height: bodyBounds.height * 0.42,
+    },
   }
-  const basis = headBounds ? 'head-anchor' as const : 'body-bounds-fallback' as const
+}
+const editableRegions = (bodyBounds?: Bounds, headBounds?: Bounds) => {
+  const envelope = headEnvelope(bodyBounds, headBounds)
+  if (!envelope) return {}
+  const { basis, bounds: head } = envelope
   return {
     expression: {
       source: 'registration-derived' as const,
@@ -123,17 +171,6 @@ const editableRegions = (bodyBounds?: Bounds, headBounds?: Bounds) => {
         ry: regionNumber(head.height * 0.28),
       },
     },
-    outfit: {
-      source: 'registration-derived' as const,
-      basis,
-      shape: {
-        kind: 'outside-ellipse' as const,
-        cx: regionNumber(head.x + head.width * 0.5),
-        cy: regionNumber(head.y + head.height * 0.5),
-        rx: regionNumber(head.width * Math.SQRT1_2),
-        ry: regionNumber(head.height * Math.SQRT1_2),
-      },
-    },
   }
 }
 
@@ -143,9 +180,11 @@ export function characterRegistrationFrame(draft: CharacterDraft) {
   const headBounds = head?.asset.inspection.visibleBounds
     ? transformCharacterBounds(head.asset.inspection.visibleBounds, head.transform)
     : undefined
+  const envelope = headEnvelope(bodyBounds, headBounds)
   return {
     canvas: { ...CHARACTER_RIG.canvas },
     ...(bodyBounds ? { bodyBounds: { ...bodyBounds }, bodyCenter: boundsCenter(bodyBounds), footLine: bodyBounds.y + bodyBounds.height - 1 } : {}),
+    ...(envelope ? { headEnvelope: envelope } : {}),
     ...(head && headBounds ? {
       head: {
         variantId: head.variant.id,
@@ -354,15 +393,25 @@ export function migrateCharacterDraft(draft: CharacterDraftV4 | CharacterDraftV3
   return withHeadRegistration(next)
 }
 
+export function characterAssetInspectionRejection(inspection: CharacterAssetInspection) {
+  if (inspection.width !== CHARACTER_RIG.canvas.width || inspection.height !== CHARACTER_RIG.canvas.height) {
+    return { code: 'INVALID_CANVAS', message: `Asset must use the ${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height} canvas.` }
+  }
+  if (!inspection.hasVisiblePixels) return { code: 'MISSING_VISIBLE_PIXELS', message: 'Asset must contain visible artwork.' }
+  if (!inspection.hasTransparentPixels) {
+    return {
+      code: 'OPAQUE_BACKGROUND',
+      message: 'Asset has no transparent pixels. AOZU does not remove backgrounds. Generate on a flat high-contrast color if needed, remove it with an image tool, then submit genuine RGBA PNG.',
+    }
+  }
+  if (!inspection.genuineRgba) return { code: 'INVALID_RGBA', message: 'Asset must be a genuine RGBA PNG.' }
+  if (inspection.size < 1 || inspection.size > MAX_ASSET_BYTES) return { code: 'INVALID_FILE_SIZE', message: 'Asset must be under 5 MiB.' }
+  return null
+}
+
 export function validateCharacterAssetInspection(inspection: CharacterAssetInspection) {
-  if (
-    inspection.width !== CHARACTER_RIG.canvas.width ||
-    inspection.height !== CHARACTER_RIG.canvas.height ||
-    !inspection.genuineRgba ||
-    !inspection.hasTransparentPixels ||
-    !inspection.hasVisiblePixels ||
-    inspection.size < 1 || inspection.size > MAX_ASSET_BYTES
-  ) throw new Error('Asset must be a visible, transparent 512×768 RGBA PNG under 5 MiB')
+  const rejection = characterAssetInspectionRejection(inspection)
+  if (rejection) throw new Error(rejection.message)
 }
 
 /** Pure command: returns the next Character with one variant transform applied (head anchors rebase current expressions). */
@@ -492,8 +541,6 @@ export function resolveCharacterAssetSources(
   const expressionReference = headRegistration?.asset
   const current = Boolean(asset && variant && isCharacterDraftAssetCurrent(draft, variant, input.layer))
   const transform = variant?.transform ?? IDENTITY_CHARACTER_TRANSFORM
-  const fallbackEditSource = input.group === 'expression' ? expressionReference ?? canonical
-    : input.group === 'outfit' ? canonical : undefined
   return {
     asset,
     canonical,
@@ -504,9 +551,8 @@ export function resolveCharacterAssetSources(
       ? expressionReference
       : input.group === 'outfit' ? canonical : undefined,
     referenceTransform: input.group === 'expression' ? headRegistration?.transform : undefined,
-    editSource: current ? asset : fallbackEditSource,
-    editSourceTransform: current ? transform
-      : input.group === 'expression' && expressionReference ? headRegistration?.transform : undefined,
+    editSource: current && input.group === 'expression' ? asset : undefined,
+    editSourceTransform: current && input.group === 'expression' ? transform : undefined,
   }
 }
 
@@ -518,6 +564,19 @@ export const hasCurrentCharacterLayer = (
 ) => {
   const variant = findVariant(draft, group, id)
   return Boolean(variant && isCharacterDraftAssetCurrent(draft, variant, layer))
+}
+
+export function activateCharacterVariant(
+  draft: CharacterDraft,
+  target: Pick<CharacterDraftVariant, 'group' | 'id'>,
+) {
+  if (target.group === 'body') return draft
+  if (target.group === 'expression') return draft.selected.expression === target.id
+    ? draft : { ...draft, selected: { ...draft.selected, expression: target.id } }
+  if (target.group === 'outfit') return draft.selected.outfit === target.id
+    ? draft : { ...draft, selected: { ...draft.selected, outfit: target.id } }
+  return draft.selected.props.includes(target.id)
+    ? draft : { ...draft, selected: { ...draft.selected, props: [...draft.selected.props, target.id] } }
 }
 
 const currentLayerEntries = (draft: CharacterDraft, variant: CharacterDraftVariant) =>

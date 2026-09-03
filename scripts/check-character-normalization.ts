@@ -2,13 +2,14 @@ import assert from 'node:assert/strict'
 
 import {
   fitCharacterBoundsTransform,
+  inspectCharacterAssetOwnership,
   measureCharacterMaskAlignment,
   planCharacterAlignment,
   planCharacterResize,
   suggestCharacterFit,
   type CharacterAlphaMask,
 } from '../src/core/application/character-alignment.ts'
-import { validateCharacterAssetInspection } from '../src/core/application/character-creation.ts'
+import { characterAssetInspectionRejection, validateCharacterAssetInspection } from '../src/core/application/character-creation.ts'
 import { CHARACTER_GENERATION_CANVAS, CHARACTER_RIG } from '../src/core/domain/character.ts'
 
 const canvas = CHARACTER_RIG.canvas
@@ -45,6 +46,16 @@ assert.throws(() => validateCharacterAssetInspection({
   size: 1000,
   sha256: 'a'.repeat(64),
 }), /512×768/)
+
+const validInspection = {
+  width: canvas.width, height: canvas.height, hasTransparentPixels: true, hasVisiblePixels: true, genuineRgba: true,
+  visibleBounds: bounds(10, 10, 100, 100), visiblePixelCount: 1000, size: 1000, sha256: 'a'.repeat(64),
+}
+assert.equal(characterAssetInspectionRejection(validInspection), null)
+assert.equal(characterAssetInspectionRejection({ ...validInspection, hasTransparentPixels: false })?.code, 'OPAQUE_BACKGROUND')
+assert.equal(characterAssetInspectionRejection({ ...validInspection, hasVisiblePixels: false })?.code, 'MISSING_VISIBLE_PIXELS')
+assert.equal(characterAssetInspectionRejection({ ...validInspection, genuineRgba: false })?.code, 'INVALID_RGBA')
+assert.equal(characterAssetInspectionRejection({ ...validInspection, size: 6 * 1024 * 1024 })?.code, 'INVALID_FILE_SIZE')
 
 // Wrong aspect, upscaling, and images without real alpha are rejected instead of cropped, stretched, or repaired.
 assert.equal(rejection(planCharacterResize('exact-aspect-downscale', inspected(1024, 1024))).code, 'NORMALIZATION_REQUIRES_EXACT_ASPECT')
@@ -94,6 +105,16 @@ const mask = ({ x, y, width, height }: { x: number; y: number; width: number; he
 }
 const head = bounds(200, 100, 100, 120)
 
+assert.equal(inspectCharacterAssetOwnership('expression', mask(head), { headBounds: head }).status, 'valid')
+const fullBodyExpression = inspectCharacterAssetOwnership('expression', mask(bounds(150, 100, 220, 600)), { headBounds: head })
+assert.equal(fullBodyExpression.status, 'invalid')
+assert.equal(fullBodyExpression.status === 'invalid' && fullBodyExpression.code, 'EXPRESSION_NOT_HEAD_ONLY')
+const shiftedHead = inspectCharacterAssetOwnership('expression', mask({ ...head, x: 0 }), { headBounds: head })
+assert.equal(shiftedHead.status === 'invalid' && shiftedHead.code, 'PIXELS_OUTSIDE_LAYER_OWNERSHIP')
+const completeSkin = mask(bounds(150, 80, 220, 650))
+const skinWithTransparentDetail = structuredClone(completeSkin)
+for (let y = 300; y < 340; y++) for (let x = 230; x < 270; x++) skinWithTransparentDetail.alpha[y * canvas.width + x] = 0
+assert.notEqual(measureCharacterMaskAlignment('outfit', completeSkin, skinWithTransparentDetail).status, 'invalid')
 // One shared read of the existing diagnostics decides the fit the editor offers and WebMCP reports.
 assert.deepEqual(suggestCharacterFit({ measurement: measureCharacterMaskAlignment('expression', mask(head), mask(head)) }), { status: 'aligned' })
 assert.deepEqual(suggestCharacterFit({ measurement: measureCharacterMaskAlignment('expression', null, mask(head)) }), { status: 'unavailable' })

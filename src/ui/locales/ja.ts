@@ -60,6 +60,13 @@ export const ja: Messages = {
       conflict: '別の場所で変更されました',
       reload: '再読み込み',
     },
+    profile: {
+      title: 'キャラクタープロフィール', name: '名前', description: '紹介', backstory: '背景', attributes: '属性',
+      add: '追加', text: 'テキスト', number: '数値', boolean: 'はい／いいえ', yes: 'はい', no: 'いいえ', value: '値', update: 'プロフィールを更新',
+      attributeName: '属性 {{index}} の名前', attributeType: '属性 {{index}} の種類', attributeValue: '属性 {{index}} の値', removeAttribute: '属性 {{index}} を削除',
+      edit: 'プロフィールを編集', expand: 'プロフィールを開く', collapse: 'プロフィールを閉じる',
+      noDescription: '紹介はまだありません。', noBackstory: '背景はまだありません。', noAttributes: '属性はまだありません。',
+    },
     alignment: {
       label: '位置合わせプレビュー',
       composite: '合成',
