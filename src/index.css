@@ -532,19 +532,14 @@ body::before {
   padding: 0.25rem 0.65rem 0.7rem;
 }
 
+/* One treatment for every card action, destructive included. */
 .companion-card-actions [data-slot="button"] {
   width: 2rem;
   height: 2rem;
-  border: 1px solid rgb(113 68 30 / 38%);
-  background: rgb(255 243 205 / 34%);
-  color: #5a361d;
-  box-shadow: inset 0 1px rgb(255 247 211 / 60%);
-}
-
-.companion-card-actions [data-variant="destructive"] {
-  border-color: rgb(113 44 30 / 30%);
+  border: 1px solid rgb(113 44 30 / 30%);
   background: rgb(130 54 36 / 12%);
   color: #7a2f1f;
+  box-shadow: inset 0 1px rgb(255 247 211 / 60%);
 }
 
 .start-gate {
