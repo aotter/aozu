@@ -22,7 +22,7 @@ export async function loadStarterCatalog(
   const value = await readJson(catalogResponse, 'Starter catalog')
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid Starter catalog')
   const catalog = value as Record<string, unknown>
-  if (catalog.schemaVersion !== 1 || !Array.isArray(catalog.packages) || !catalog.packages.length) throw new Error('Unsupported Starter catalog')
+  if (catalog.schemaVersion !== 1 || !Array.isArray(catalog.packages)) throw new Error('Unsupported Starter catalog')
   const paths = catalog.packages.map((path) => {
     if (typeof path !== 'string' || !path || path.includes('\\')) throw new Error('Invalid Starter catalog path')
     return path

@@ -4,7 +4,7 @@ import path from 'node:path'
 import { parseStarterPackage, validateLoadedStarterPackage } from '../src/core/domain/starter.ts'
 
 const projectRoot = path.resolve(import.meta.dirname, '..')
-const starterRoot = path.join(projectRoot, 'public/starters/focus-studio')
+const starterRoot = path.join(projectRoot, 'scripts/fixtures/starters/focus-studio')
 
 const sha256 = async (blob: Blob) => Array.from(
   new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())),
