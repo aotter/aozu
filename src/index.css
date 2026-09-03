@@ -802,7 +802,24 @@ button.gate-action {
 
 .workbench-tabs button {
   min-width: 0;
+  gap: 0.35rem;
+  padding-inline: 0.5rem;
   border-radius: 0.6rem;
+  color: #65401f;
+  font-weight: 700;
+}
+
+.workbench-tabs button > span:not(.aozu-icon) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Same active treatment as the Design branch's segmented view switch. */
+.workbench-tabs button[aria-current="page"] {
+  background: #6f4423;
+  color: #f7df9c;
+  box-shadow: inset 0 1px rgb(255 235 172 / 22%);
 }
 
 .workbench-tabs .aozu-icon {
