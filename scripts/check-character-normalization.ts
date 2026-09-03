@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 
 import {
   fitCharacterBoundsTransform,
+  inspectCharacterAssetOwnership,
   measureCharacterMaskAlignment,
   planCharacterAlignment,
   planCharacterResize,
@@ -93,6 +94,20 @@ const mask = ({ x, y, width, height }: { x: number; y: number; width: number; he
   return { width: canvas.width, height: canvas.height, alpha }
 }
 const head = bounds(200, 100, 100, 120)
+
+assert.equal(inspectCharacterAssetOwnership('expression', mask(head), { headBounds: head }).status, 'valid')
+const fullBodyExpression = inspectCharacterAssetOwnership('expression', mask(bounds(150, 100, 220, 600)), { headBounds: head })
+assert.equal(fullBodyExpression.status, 'invalid')
+assert.equal(fullBodyExpression.status === 'invalid' && fullBodyExpression.code, 'EXPRESSION_NOT_HEAD_ONLY')
+const shiftedHead = inspectCharacterAssetOwnership('expression', mask({ ...head, x: 0 }), { headBounds: head })
+assert.equal(shiftedHead.status === 'invalid' && shiftedHead.code, 'PIXELS_OUTSIDE_LAYER_OWNERSHIP')
+const completeSkin = mask(bounds(150, 80, 220, 650))
+assert.equal(inspectCharacterAssetOwnership('outfit', completeSkin, { reference: completeSkin }).status, 'valid')
+const skinWithHole = structuredClone(completeSkin)
+for (let y = 300; y < 340; y++) for (let x = 230; x < 270; x++) skinWithHole.alpha[y * canvas.width + x] = 0
+const incompleteSkin = inspectCharacterAssetOwnership('outfit', skinWithHole, { reference: completeSkin })
+assert.equal(incompleteSkin.status, 'invalid')
+assert.equal(incompleteSkin.status === 'invalid' && incompleteSkin.code, 'OUTFIT_INCOMPLETE_CHARACTER_SKIN')
 
 // One shared read of the existing diagnostics decides the fit the editor offers and WebMCP reports.
 assert.deepEqual(suggestCharacterFit({ measurement: measureCharacterMaskAlignment('expression', mask(head), mask(head)) }), { status: 'aligned' })

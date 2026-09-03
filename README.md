@@ -40,14 +40,15 @@ The agent generates the creative pixels with its available image tools. AOZU mak
 
 ## WebMCP workflow
 
-AOZU exposes seven public tools on every page:
+AOZU exposes eight public tools on every page:
 
 | Tool | Purpose |
 | --- | --- |
 | `inspect_workspace` | Discover saved characters, the current route and revision, missing required artwork, and valid next actions |
 | `navigate_character` | Open the character library or an exact character category or variant without guessing a route |
-| `inspect_character_contract` | Obtain the edit source, source hash, alignment reference, editable-region mask, dimensions, z-order, and diagnostics for one target |
-| `submit_character_asset_candidate` | Create or repair one body, expression, outfit, or prop layer against the inspected revision and source hash |
+| `inspect_character_contract` | Obtain allowed operations, exact hashes, placement/alignment references, ownership, dimensions, and diagnostics for one target |
+| `replace_character_asset` | Install one complete body, head, outfit skin, or prop layer without preserving old pixels |
+| `repair_character_asset` | Mask-repair an existing expression or outfit against its exact asset hash |
 | `set_character_variant_transform` | Apply an explicit translation and uniform scale when a generated layer needs a small alignment correction |
 | `undo_character_change` | Undo the latest settled change in the active editing session |
 | `redo_character_change` | Redo the most recently undone change in the active editing session |

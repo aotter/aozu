@@ -28,12 +28,12 @@ type MaskStats = { bounds?: Bounds; visiblePixels: number; edgeTouchPixels: numb
 const round = (value: number) => Math.round(value * 10_000) / 10_000
 
 const characterEditWeight = (region: CharacterEditableRegion, x: number, y: number) => {
-  const distance = region.shape.kind === 'rectangle'
-    ? Math.min(x - region.shape.x, region.shape.x + region.shape.width - x, y - region.shape.y, region.shape.y + region.shape.height - y)
-    : (1 - Math.hypot((x - region.shape.cx) / region.shape.rx, (y - region.shape.cy) / region.shape.ry))
-      * Math.min(region.shape.rx, region.shape.ry)
-      * (region.shape.kind === 'outside-ellipse' ? -1 : 1)
-  return Math.max(0, Math.min(1, distance / 4))
+  const shape = region.shape
+  const outside = shape.kind === 'outside-rectangle'
+  const distance = shape.kind === 'rectangle' || shape.kind === 'outside-rectangle'
+    ? Math.min(x - shape.x, shape.x + shape.width - x, y - shape.y, shape.y + shape.height - y)
+    : (1 - Math.hypot((x - shape.cx) / shape.rx, (y - shape.cy) / shape.ry)) * Math.min(shape.rx, shape.ry)
+  return Math.max(0, Math.min(1, distance / 4 * (outside ? -1 : 1)))
 }
 
 export function measureProtectedRegionDelta(
@@ -134,6 +134,86 @@ const transformMask = (mask: CharacterAlphaMask, transform: CharacterVariantTran
     }
   }
   return { ...mask, alpha }
+}
+
+export function inspectCharacterAssetOwnership(
+  group: CharacterVariantGroup,
+  candidate: CharacterAlphaMask,
+  options: {
+    headBounds?: Bounds
+    reference?: CharacterAlphaMask | null
+    transform?: CharacterVariantTransform
+  } = {},
+) {
+  const placed = transformMask(candidate, options.transform ?? IDENTITY_CHARACTER_TRANSFORM)
+  if (group === 'expression') {
+    const bounds = options.headBounds
+    if (!bounds) return {
+      status: 'invalid' as const,
+      code: 'HEAD_OWNERSHIP_UNAVAILABLE',
+      message: 'A canonical body is required before a whole-head expression can be submitted.',
+    }
+    const candidateBounds = maskStats(candidate).bounds
+    if (candidateBounds && (candidateBounds.width > bounds.width * 1.5 || candidateBounds.height > bounds.height * 1.5)) return {
+      status: 'invalid' as const,
+      code: 'EXPRESSION_NOT_HEAD_ONLY',
+      message: 'Expression artwork is too large to be a whole-head layer; submit the head only with transparent pixels elsewhere.',
+      candidateBounds,
+      headBounds: bounds,
+    }
+    const margin = Math.max(6, Math.ceil(Math.max(bounds.width, bounds.height) * 0.04))
+    const left = Math.floor(bounds.x - margin)
+    const top = Math.floor(bounds.y - margin)
+    const right = Math.ceil(bounds.x + bounds.width + margin)
+    const bottom = Math.ceil(bounds.y + bounds.height + margin)
+    let visiblePixels = 0
+    let pixelsOutsideOwnership = 0
+    for (let y = 0; y < placed.height; y++) for (let x = 0; x < placed.width; x++) {
+      if (placed.alpha[y * placed.width + x]! <= 16) continue
+      visiblePixels++
+      if (x < left || x >= right || y < top || y >= bottom) pixelsOutsideOwnership++
+    }
+    return pixelsOutsideOwnership ? {
+      status: 'invalid' as const,
+      code: 'PIXELS_OUTSIDE_LAYER_OWNERSHIP',
+      message: `Expression must contain only the whole head; ${pixelsOutsideOwnership} visible pixels are outside its ownership bounds.`,
+      pixelsOutsideOwnership,
+      visiblePixels,
+      bounds: { x: left, y: top, width: right - left, height: bottom - top },
+    } : {
+      status: 'valid' as const,
+      pixelsOutsideOwnership,
+      visiblePixels,
+      bounds: { x: left, y: top, width: right - left, height: bottom - top },
+    }
+  }
+  if (group === 'outfit' && options.reference) {
+    const reference = options.reference
+    let referenceInteriorPixels = 0
+    let uncoveredReferencePixels = 0
+    for (let y = 2; y < reference.height - 2; y++) for (let x = 2; x < reference.width - 2; x++) {
+      const index = y * reference.width + x
+      if (
+        reference.alpha[index]! <= 32 ||
+        reference.alpha[index - 2]! <= 32 || reference.alpha[index + 2]! <= 32 ||
+        reference.alpha[index - reference.width * 2]! <= 32 || reference.alpha[index + reference.width * 2]! <= 32
+      ) continue
+      referenceInteriorPixels++
+      if (placed.alpha[index]! <= 16) uncoveredReferencePixels++
+    }
+    const uncoveredRatio = round(referenceInteriorPixels ? uncoveredReferencePixels / referenceInteriorPixels : 0)
+    // ponytail: alpha masks cannot distinguish intentional cutouts from missing clothing; semantic body regions can replace this 0.5% tolerance if packs start authoring them.
+    const invalid = uncoveredReferencePixels > Math.max(64, referenceInteriorPixels * 0.005)
+    return invalid ? {
+      status: 'invalid' as const,
+      code: 'OUTFIT_INCOMPLETE_CHARACTER_SKIN',
+      message: `Outfit must be a complete character skin; ${uncoveredReferencePixels} protected body pixels are transparent.`,
+      uncoveredReferencePixels,
+      referenceInteriorPixels,
+      uncoveredRatio,
+    } : { status: 'valid' as const, uncoveredReferencePixels, referenceInteriorPixels, uncoveredRatio }
+  }
+  return { status: 'valid' as const }
 }
 
 const compareMasks = (reference: CharacterAlphaMask, candidate: CharacterAlphaMask) => {

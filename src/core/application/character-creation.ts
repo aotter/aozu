@@ -97,20 +97,27 @@ export type CharacterEditableRegion = {
   basis: 'head-anchor' | 'body-bounds-fallback'
   shape:
     | { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
-    | { kind: 'outside-ellipse'; cx: number; cy: number; rx: number; ry: number }
     | { kind: 'rectangle'; x: number; y: number; width: number; height: number }
+    | { kind: 'outside-rectangle'; x: number; y: number; width: number; height: number }
 }
 
 const regionNumber = (value: number) => Math.round(value * 100) / 100
-const editableRegions = (bodyBounds?: Bounds, headBounds?: Bounds) => {
-  if (!bodyBounds) return {}
-  const head = headBounds ?? {
-    x: bodyBounds.x + bodyBounds.width * 0.15,
-    y: bodyBounds.y,
-    width: bodyBounds.width * 0.7,
-    height: bodyBounds.height * 0.42,
+const headEnvelope = (bodyBounds?: Bounds, headBounds?: Bounds) => {
+  if (!bodyBounds) return undefined
+  return {
+    basis: headBounds ? 'head-anchor' as const : 'body-bounds-fallback' as const,
+    bounds: headBounds ?? {
+      x: bodyBounds.x + bodyBounds.width * 0.15,
+      y: bodyBounds.y,
+      width: bodyBounds.width * 0.7,
+      height: bodyBounds.height * 0.42,
+    },
   }
-  const basis = headBounds ? 'head-anchor' as const : 'body-bounds-fallback' as const
+}
+const editableRegions = (bodyBounds?: Bounds, headBounds?: Bounds) => {
+  const envelope = headEnvelope(bodyBounds, headBounds)
+  if (!envelope) return {}
+  const { basis, bounds: head } = envelope
   return {
     expression: {
       source: 'registration-derived' as const,
@@ -127,11 +134,11 @@ const editableRegions = (bodyBounds?: Bounds, headBounds?: Bounds) => {
       source: 'registration-derived' as const,
       basis,
       shape: {
-        kind: 'outside-ellipse' as const,
-        cx: regionNumber(head.x + head.width * 0.5),
-        cy: regionNumber(head.y + head.height * 0.5),
-        rx: regionNumber(head.width * Math.SQRT1_2),
-        ry: regionNumber(head.height * Math.SQRT1_2),
+        kind: 'outside-rectangle' as const,
+        x: regionNumber(head.x),
+        y: regionNumber(head.y),
+        width: regionNumber(head.width),
+        height: regionNumber(head.height),
       },
     },
   }
@@ -143,9 +150,11 @@ export function characterRegistrationFrame(draft: CharacterDraft) {
   const headBounds = head?.asset.inspection.visibleBounds
     ? transformCharacterBounds(head.asset.inspection.visibleBounds, head.transform)
     : undefined
+  const envelope = headEnvelope(bodyBounds, headBounds)
   return {
     canvas: { ...CHARACTER_RIG.canvas },
     ...(bodyBounds ? { bodyBounds: { ...bodyBounds }, bodyCenter: boundsCenter(bodyBounds), footLine: bodyBounds.y + bodyBounds.height - 1 } : {}),
+    ...(envelope ? { headEnvelope: envelope } : {}),
     ...(head && headBounds ? {
       head: {
         variantId: head.variant.id,
@@ -492,8 +501,6 @@ export function resolveCharacterAssetSources(
   const expressionReference = headRegistration?.asset
   const current = Boolean(asset && variant && isCharacterDraftAssetCurrent(draft, variant, input.layer))
   const transform = variant?.transform ?? IDENTITY_CHARACTER_TRANSFORM
-  const fallbackEditSource = input.group === 'expression' ? expressionReference ?? canonical
-    : input.group === 'outfit' ? canonical : undefined
   return {
     asset,
     canonical,
@@ -504,9 +511,8 @@ export function resolveCharacterAssetSources(
       ? expressionReference
       : input.group === 'outfit' ? canonical : undefined,
     referenceTransform: input.group === 'expression' ? headRegistration?.transform : undefined,
-    editSource: current ? asset : fallbackEditSource,
-    editSourceTransform: current ? transform
-      : input.group === 'expression' && expressionReference ? headRegistration?.transform : undefined,
+    editSource: current && (input.group === 'expression' || input.group === 'outfit') ? asset : undefined,
+    editSourceTransform: current && (input.group === 'expression' || input.group === 'outfit') ? transform : undefined,
   }
 }
 
@@ -518,6 +524,19 @@ export const hasCurrentCharacterLayer = (
 ) => {
   const variant = findVariant(draft, group, id)
   return Boolean(variant && isCharacterDraftAssetCurrent(draft, variant, layer))
+}
+
+export function activateCharacterVariant(
+  draft: CharacterDraft,
+  target: Pick<CharacterDraftVariant, 'group' | 'id'>,
+) {
+  if (target.group === 'body') return draft
+  if (target.group === 'expression') return draft.selected.expression === target.id
+    ? draft : { ...draft, selected: { ...draft.selected, expression: target.id } }
+  if (target.group === 'outfit') return draft.selected.outfit === target.id
+    ? draft : { ...draft, selected: { ...draft.selected, outfit: target.id } }
+  return draft.selected.props.includes(target.id)
+    ? draft : { ...draft, selected: { ...draft.selected, props: [...draft.selected.props, target.id] } }
 }
 
 const currentLayerEntries = (draft: CharacterDraft, variant: CharacterDraftVariant) =>
