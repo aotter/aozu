@@ -135,11 +135,26 @@
       radial-gradient(ellipse at 52% 88%, rgb(113 69 35 / 14%), transparent 40%),
       repeating-linear-gradient(82deg, transparent 0 3px, rgb(74 43 23 / 2%) 4px 5px),
       repeating-linear-gradient(7deg, transparent 0 7px, rgb(255 255 255 / 4%) 8px 9px);
-    background-attachment: fixed;
     }
   html {
     @apply font-sans;
     font-size: 16px;
+    }
+  /* The ground never scrolls; #root is the only scroller, so rubber-banding cannot uncover a seam under the gradient. */
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    }
+  #root {
+    display: flex;
+    height: 100%;
+    flex-direction: column;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    }
+  #root > header {
+    flex: none;
     }
 }
 
@@ -562,8 +577,10 @@ button.gate-action {
    Character Workshop: ChatGPT guide, the stage, and the doll workbench
    --------------------------------------------------------------------------- */
 
+/* Fills whatever the header leaves, so the editor never adds a scroll range of its own. */
 .draft-workshop-shell {
-  height: calc(100svh - 3.5rem);
+  min-height: 0;
+  flex: 1;
   overflow: hidden;
 }
 
