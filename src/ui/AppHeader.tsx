@@ -1,9 +1,12 @@
-import { ArrowLeftIcon } from 'lucide-react'
+import { ArrowLeftIcon, LanguagesIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { AozuIcon } from '@/ui/AozuIcon'
 import { Button } from '@/ui/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
 import type { WebMcpState } from '@/adapters/webmcp/controller.ts'
+import { LANGUAGES } from '@/ui/i18n'
 
 type AppHeaderProps = {
   webmcp: WebMcpState
@@ -13,7 +16,7 @@ type AppHeaderProps = {
 }
 
 export function AppHeader({ webmcp, title, onBack, actions }: AppHeaderProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const label = t(`main.webmcp.${webmcp.status}`, { count: webmcp.toolCount })
   const color = webmcp.status === 'ready' ? 'bg-emerald-500' : webmcp.status === 'registering' ? 'bg-amber-500'
     : webmcp.status === 'failed' ? 'bg-red-500' : 'bg-muted-foreground/50'
@@ -26,11 +29,21 @@ export function AppHeader({ webmcp, title, onBack, actions }: AppHeaderProps) {
       >
         <div className="flex min-w-0 items-center gap-1">
           {onBack && <Button type="button" size="icon" variant="ghost" onClick={onBack} aria-label={t('common.back')}><ArrowLeftIcon /></Button>}
+          <AozuIcon name="book" />
           <span className="truncate font-heading text-lg font-semibold">
             {title ?? t('common.productName')}
           </span>
         </div>
         <div className="flex items-center gap-2">
+          <Select value={i18n.resolvedLanguage ?? 'en'} onValueChange={(code) => void i18n.changeLanguage(code)}>
+            <SelectTrigger size="sm" aria-label={t('common.language')}>
+              <LanguagesIcon aria-hidden="true" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {LANGUAGES.map(({ code, label: name }) => <SelectItem key={code} value={code}>{name}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <span
             aria-label={label}
             title={webmcp.error ?? label}

@@ -24,7 +24,6 @@ import {
 import {
   CHARACTER_CREATION_GROUPS,
   REQUIRED_CHARACTER_TARGETS,
-  resolveCharacterDraftLayers,
   createCharacterDraftFromStarter,
   createCharacterDraft,
   migrateCharacterDraft,
@@ -34,6 +33,7 @@ import {
   characterDraftAtlasKey,
   characterRegistrationFrame,
   resolveCharacterDraftAtlasSources,
+  resolveCharacterDraftLayers,
   resolveCharacterDraftReferenceLayers,
   resolveCharacterAssetSources,
   setCharacterVariantTransform,

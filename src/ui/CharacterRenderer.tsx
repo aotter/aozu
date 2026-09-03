@@ -72,7 +72,7 @@ function AtlasLayers({ atlas, layers }: { atlas: CharacterTextureAtlas; layers: 
 export function CharacterRenderer({ label, layers, atlas, className }: { label: string; layers: Layer[]; atlas?: CharacterTextureAtlas; className?: string }) {
   return (
     <div className={cn('relative aspect-2/3 w-full overflow-hidden rounded-3xl border bg-muted/40', className)} role="img" aria-label={label}>
-      {!layers.length && <div className="absolute inset-0 p-8"><CharacterSlotPlaceholder src="/assets/character-slots/body-base.png" /></div>}
+      {!layers.length && <div className="character-empty-placeholder absolute inset-0 p-8"><img src="/assets/placeholders/companion-body-faint.webp" alt="" /></div>}
       {atlas && layers.length ? <AtlasLayers atlas={atlas} layers={layers} /> : <Layers layers={layers} />}
     </div>
   )
@@ -130,7 +130,7 @@ export function CharacterSlotPlaceholder({ src, label }: { src: string; label?: 
     role={label ? 'img' : undefined}
     aria-label={label}
     aria-hidden={label ? undefined : true}
-    className="size-full bg-[#7b739e]/70"
+    className="character-slot-placeholder size-full"
     style={{
       WebkitMaskImage: `url("${src}")`,
       maskImage: `url("${src}")`,

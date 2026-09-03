@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DownloadIcon, LoaderCircleIcon } from 'lucide-react'
 
+import { AozuIcon } from '@/ui/AozuIcon'
 import { Button } from '@/ui/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/components/ui/tooltip'
 
@@ -44,6 +45,7 @@ export function DataControls({
       })}>{status === 'busy' ? <LoaderCircleIcon className="animate-spin" /> : <DownloadIcon />}{exportIconOnly ? <span className="sr-only">{downloadLabel}</span> : downloadLabel}</Button></TooltipTrigger>{exportIconOnly && <TooltipContent>{status === 'busy' ? t('data.busy') : status === 'error' ? `${t('data.error')}${error ? ` ${error}` : ''}` : downloadLabel}</TooltipContent>}</Tooltip></TooltipProvider>}
       {prepareImport && <Button asChild variant={exportData ? 'ghost' : 'default'} className={exportData ? 'justify-start' : 'w-full'}>
         <label>
+          <AozuIcon name="import" />
           {t('data.import')}
           <input className="sr-only" type="file" accept=".zip,application/zip" disabled={status === 'busy'} onChange={(event) => {
             const file = event.target.files?.[0]

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router'
 
@@ -18,6 +18,11 @@ function CharacterEditor({ application, refresh }: { application: Application; r
     fitSuggestion={application.characterFitSuggestion}
     compileAtlas={application.compileCharacterAtlas}
     exportCharacter={() => application.exportCharacter(characterId)}
+    deleteCharacter={async () => {
+      await application.deleteCharacter(characterId)
+      await refresh()
+      navigate('/characters')
+    }}
     saveAs={async () => {
       const saved = await application.saveCharacterAs()
       await refresh()
@@ -34,6 +39,7 @@ export function AppRoutes({ application }: { application: Application }) {
   const [webmcp, setWebmcp] = useState(application.webmcp.getState())
   const [library, setLibrary] = useState<Awaited<ReturnType<Application['loadCharacterLibrary']>>>()
   const [loadError, setLoadError] = useState(false)
+  useLayoutEffect(() => { document.getElementById('root')?.scrollTo(0, 0) }, [location.pathname])
   const refresh = useCallback(async () => {
     setLibrary(await application.loadCharacterLibrary())
     setLoadError(false)
@@ -74,9 +80,6 @@ export function AppRoutes({ application }: { application: Application }) {
         characters={library.characters}
         createCharacter={() => application.createCharacter(null)}
         openCharacter={(id) => navigate(`/characters/${encodeURIComponent(id)}/expressions`)}
-        copyCharacter={application.copyCharacter}
-        deleteCharacter={application.deleteCharacter}
-        exportCharacter={application.exportCharacter}
         importCharacter={async (blob) => {
           const imported = await application.importCharacter(blob)
           await refresh()
