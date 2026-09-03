@@ -54,7 +54,7 @@ export const fr: Messages = {
     none: 'Aucune',
     status: {
       saving: 'Enregistrement…',
-      saved: 'Toutes les modifications sont enregistrées',
+      saved: 'Enregistré',
       failed: 'Échec de l’enregistrement',
       retry: 'Réessayer',
       conflict: 'Modifié ailleurs',

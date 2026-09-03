@@ -57,7 +57,7 @@ export const en = {
     none: 'None',
     status: {
       saving: 'Saving…',
-      saved: 'All changes saved',
+      saved: 'Saved',
       failed: 'Save failed',
       retry: 'Retry',
       conflict: 'Changed elsewhere',

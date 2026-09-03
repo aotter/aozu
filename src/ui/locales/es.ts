@@ -54,7 +54,7 @@ export const es: Messages = {
     none: 'Ninguna',
     status: {
       saving: 'Guardando…',
-      saved: 'Todos los cambios guardados',
+      saved: 'Guardado',
       failed: 'Error al guardar',
       retry: 'Reintentar',
       conflict: 'Modificado en otro lugar',

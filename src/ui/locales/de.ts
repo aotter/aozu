@@ -54,7 +54,7 @@ export const de: Messages = {
     none: 'Keine',
     status: {
       saving: 'Wird gespeichert…',
-      saved: 'Alle Änderungen gespeichert',
+      saved: 'Gespeichert',
       failed: 'Speichern fehlgeschlagen',
       retry: 'Erneut versuchen',
       conflict: 'Anderswo geändert',

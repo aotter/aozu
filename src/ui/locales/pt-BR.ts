@@ -54,7 +54,7 @@ export const ptBR: Messages = {
     none: 'Nenhuma',
     status: {
       saving: 'Salvando…',
-      saved: 'Todas as alterações foram salvas',
+      saved: 'Salvo',
       failed: 'Falha ao salvar',
       retry: 'Tentar de novo',
       conflict: 'Alterado em outro lugar',

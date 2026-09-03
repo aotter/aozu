@@ -1,16 +1,27 @@
-import { ArrowLeftIcon, CircleSlash2Icon, CopyIcon, Layers2Icon, LoaderCircleIcon, PencilIcon, PlusIcon, Redo2Icon, Undo2Icon } from 'lucide-react'
+import { ArrowLeftIcon, CircleSlash2Icon, CopyIcon, Layers2Icon, LoaderCircleIcon, PencilIcon, PlusIcon, Redo2Icon, Trash2Icon, Undo2Icon } from 'lucide-react'
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Navigate, useNavigate, useParams } from 'react-router'
 import { useStore } from 'zustand'
 
-import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterDraftAtlasKey, characterRegistrationFrame, hasCurrentCharacterLayer, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, saveCharacterDraftAsset, setCharacterVariantTransform, transformCharacterBounds } from '@/core/application/character-creation.ts'
+import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterDraftAtlasKey, characterRegistrationFrame, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, saveCharacterDraftAsset, setCharacterVariantTransform, transformCharacterBounds } from '@/core/application/character-creation.ts'
 import type { CharacterFitSuggestion } from '@/core/application/character-alignment.ts'
 import type { CharacterEditor } from '@/core/application/character-editor.ts'
 import { IDENTITY_CHARACTER_TRANSFORM, type CharacterDraft, type CharacterDraftVariant, type CharacterTextureAtlas, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
 import { AozuIcon, type AozuIconName } from '@/ui/AozuIcon'
 import { CharacterAlignmentRenderer, CharacterAssetImage, CharacterAtlasFrameImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/ui/components/ui/alert-dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/components/ui/tabs'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/components/ui/tooltip'
 import { DataControls } from '@/ui/DataControls'
 import { StatusPage } from '@/ui/pages/StatusPage'
@@ -62,13 +73,14 @@ const fitMetrics = (t: (key: string) => string, suggestion: Extract<CharacterFit
 const isTextEntry = (target: EventTarget | null) => target instanceof HTMLElement
   && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
 
-export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, compileAtlas, exportCharacter, saveAs }: {
+export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, compileAtlas, exportCharacter, saveAs, deleteCharacter }: {
   editor: CharacterEditor
   autoFitVariant(group: CharacterVariantGroup, variantId: string): Promise<void>
   fitSuggestion(group: CharacterVariantGroup, variantId: string): Promise<CharacterFitSuggestion>
   compileAtlas(draft: CharacterDraft): Promise<CharacterTextureAtlas | undefined>
   exportCharacter(): Promise<Blob>
   saveAs(): Promise<CharacterDraft>
+  deleteCharacter(): Promise<void>
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -87,6 +99,7 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
   const [error, setError] = useState<string>()
   const [compiled, setCompiled] = useState<{ key: string; atlas?: CharacterTextureAtlas }>()
   const [fit, setFit] = useState<{ key: string; value: CharacterFitSuggestion }>()
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [alignmentMode, setAlignmentMode] = useState<'composite' | 'overlay' | 'difference' | 'diagnostic'>('overlay')
   const atlasDraft = useRef<CharacterDraft | undefined>(undefined)
   const drag = useRef<{
@@ -171,7 +184,8 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
     if (event.key === 'Escape') revert()
   }
 
-  const missing = REQUIRED_CHARACTER_TARGETS.filter((target) => !hasCurrentCharacterLayer(draft, target.group, target.variantId, target.layer))
+  const baseVariant = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')
+  const hasBase = Boolean(baseVariant && isCharacterDraftAssetCurrent(draft, baseVariant, 'body'))
   const visibleVariants = category ? draft.variants.filter(({ group }) => category.group === group) : []
   const selectedVariant = visibleVariants.find((variant) => variant.id === variantId)
   if (variantId && !selectedVariant) return <Navigate to={`/characters/${encodeURIComponent(draft.id)}/${category.id}`} replace />
@@ -299,7 +313,14 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
           {draft.name.trim() && <p>{draft.name}</p>}
         </div>
         <div className="character-stage-canvas">
-          <div
+          {baseVariant && !hasBase ? <label
+            className="character-stage-upload aspect-2/3 h-full max-h-full max-w-full"
+            aria-label={t('characterDraft.missingRequired')}
+            title={t('characterDraft.missingRequired')}
+          >
+            <CharacterRenderer label={draft.name} layers={previewLayers} atlas={atlas} />
+            {fileInput(baseVariant, 'body')}
+          </label> : <div
             className={`aspect-2/3 h-full max-h-full max-w-full ${draggable ? 'cursor-move touch-none' : ''}`}
             title={draggable ? t('characterDraft.transform.dragHead') : undefined}
             onPointerDown={beginDrag}
@@ -316,7 +337,7 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
                 referenceBounds={referenceBounds}
                 footLine={registration.footLine}
               />
-            : <CharacterRenderer label={draft.name} layers={previewLayers} atlas={atlas} />}</div>
+            : <CharacterRenderer label={draft.name} layers={previewLayers} atlas={atlas} />}</div>}
         </div>
         {selectedVariant && selectedAsset && <div className="alignment-switch" aria-label={t('characterDraft.alignment.label')}>
           {(['composite', 'overlay', 'difference', 'diagnostic'] as const).map((mode) => <Button key={mode} type="button" size="sm" variant={alignmentMode === mode ? 'secondary' : 'ghost'} onClick={() => setAlignmentMode(mode)}>{t(`characterDraft.alignment.${mode}`)}</Button>)}
@@ -340,23 +361,19 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
       </section>
 
       <section className="doll-workbench rounded-2xl border bg-background" aria-label={t('characterDraft.customizeTitle')}>
+        <div className="workbench-lockable">
+        <div className="workbench-body" inert={!hasBase ? true : undefined} aria-hidden={!hasBase}>
         <div className="workbench-heading"><span>02</span><div><h2>{t('characterDraft.customizeTitle')}</h2><p>{t('characterDraft.workbenchDescription')}</p></div></div>
-        {!selectedVariant && <TooltipProvider><nav aria-label={t('characterDraft.categorySwitcher')} className="workbench-tabs">
-          {characterCategories.map(({ id, icon }) => <Tooltip key={id}><TooltipTrigger asChild><Button
-            type="button"
-            variant={category?.id === id ? 'secondary' : 'ghost'}
-            className="shrink-0"
-            aria-current={category?.id === id ? 'page' : undefined}
-            onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${id}`)}
-          >
-            <AozuIcon name={icon} />
-            <span className="sr-only">{t(`characterDraft.categories.${id}`)}</span>
-          </Button></TooltipTrigger><TooltipContent>{t(`characterDraft.categories.${id}`)}</TooltipContent></Tooltip>)}
-        </nav></TooltipProvider>}
+        <Tabs value={category.id} onValueChange={(id) => navigate(`/characters/${encodeURIComponent(draft.id)}/${id}`)} className="min-h-0 flex-1 gap-0">
+        {!selectedVariant && <TabsList aria-label={t('characterDraft.categorySwitcher')} className="mt-3 grid w-full grid-cols-3">
+          {characterCategories.map(({ id, icon }) => <TabsTrigger key={id} value={id} className="min-w-0">
+            <AozuIcon name={icon} className="size-4" />
+            <span className="truncate">{t(`characterDraft.categories.${id}`)}</span>
+          </TabsTrigger>)}
+        </TabsList>}
 
-        <div className="workbench-content min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <TabsContent value={category.id} className="workbench-content min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {!selectedVariant && <>
-          <h3>{t(`characterDraft.categories.${category.id}`)}</h3>
           <div className="variant-grid">
             <button type="button" aria-label={t('characterDraft.none')} title={t('characterDraft.none')} aria-pressed={!hasSelection(category.group)} className={`variant-card ${!hasSelection(category.group) ? 'is-selected' : ''}`} onClick={() => clearVariant(category.group)}>
               <span className="variant-preview"><CircleSlash2Icon className="size-1/3 text-muted-foreground" /></span><span className="variant-label">{t('characterDraft.none')}</span>
@@ -482,23 +499,36 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
         })()}
 
         {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
+        </TabsContent>
+        </Tabs>
+        </div>
+        {!hasBase && <div className="workbench-lock" role="status"><p>{t('characterDraft.missingRequired')}</p></div>}
         </div>
         <div className="workbench-footer">
-          {missing.length > 0 && <p className="mb-2 text-muted-foreground">{t('characterDraft.missingRequired')}</p>}
           <TooltipProvider><div className="workbench-actions flex flex-wrap items-center gap-1">
             {iconAction(t('characterDraft.undo'), Undo2Icon, canUndo, () => void editor.undo())}
             {iconAction(t('characterDraft.redo'), Redo2Icon, canRedo, () => void editor.redo())}
             <DataControls exportData={exportCharacter} exportFilename="companion-character.zip" exportIconOnly exportLabel={t('draft.download')} />
             <Tooltip><TooltipTrigger asChild><Button size="icon" variant="outline" aria-label={busy === 'save-as' ? t('characterDraft.savingAs') : t('characterDraft.saveAs')} disabled={Boolean(busy) || !draft.name.trim()} onClick={() => void runBusy('save-as', saveAs)}>{busy === 'save-as' ? <LoaderCircleIcon className="animate-spin" /> : <CopyIcon />}</Button></TooltipTrigger><TooltipContent>{busy === 'save-as' ? t('characterDraft.savingAs') : t('characterDraft.saveAs')}</TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild><Button size="icon" variant="outline" aria-label={t('characters.delete')} disabled={Boolean(busy)} onClick={() => setDeleteOpen(true)}><Trash2Icon /></Button></TooltipTrigger><TooltipContent>{t('characters.delete')}</TooltipContent></Tooltip>
+            <span role="status" title={saveError} className={`ml-1 text-xs ${saveStatus === 'failed' || saveStatus === 'conflict' ? 'text-destructive' : 'text-muted-foreground'}`}>
+              {t(`characterDraft.status.${saveStatus}`)}
+              {saveStatus === 'failed' && <> · <button type="button" className="underline" onClick={() => void editor.retry()}>{t('characterDraft.status.retry')}</button></>}
+              {saveStatus === 'conflict' && <> · <button type="button" className="underline" onClick={() => void runBusy('reload', () => editor.reload())}>{t('characterDraft.status.reload')}</button> / <button type="button" className="underline" onClick={() => void runBusy('save-as', saveAs)}>{t('characterDraft.saveAs')}</button></>}
+            </span>
           </div></TooltipProvider>
-          <p role="status" title={saveError} className={`mt-1 ${saveStatus === 'failed' || saveStatus === 'conflict' ? 'text-destructive' : 'text-muted-foreground'}`}>
-            {t(`characterDraft.status.${saveStatus}`)}
-            {saveStatus === 'failed' && <> · <button type="button" className="underline" onClick={() => void editor.retry()}>{t('characterDraft.status.retry')}</button></>}
-            {saveStatus === 'conflict' && <> · <button type="button" className="underline" onClick={() => void runBusy('reload', () => editor.reload())}>{t('characterDraft.status.reload')}</button> / <button type="button" className="underline" onClick={() => void runBusy('save-as', saveAs)}>{t('characterDraft.saveAs')}</button></>}
-          </p>
         </div>
       </section>
       </div>
     </main>
+    <AlertDialog open={deleteOpen} onOpenChange={(open) => { if (!busy) setDeleteOpen(open) }}>
+      <AlertDialogContent>
+        <AlertDialogHeader><AlertDialogTitle>{t('characters.deleteTitle')}</AlertDialogTitle><AlertDialogDescription>{t('characters.deleteDescription', { name: draft.name })}</AlertDialogDescription></AlertDialogHeader>
+        <AlertDialogFooter><AlertDialogCancel disabled={Boolean(busy)}>{t('common.cancel')}</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={Boolean(busy)} onClick={(event) => {
+          event.preventDefault()
+          void runBusy('delete', deleteCharacter)
+        }}>{t('characters.delete')}</AlertDialogAction></AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 }

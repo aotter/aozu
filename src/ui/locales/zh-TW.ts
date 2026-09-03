@@ -54,7 +54,7 @@ export const zhTW: Messages = {
     none: '無',
     status: {
       saving: '儲存中…',
-      saved: '所有變更已儲存',
+      saved: '已儲存',
       failed: '儲存失敗',
       retry: '重試',
       conflict: '已在其他地方被修改',

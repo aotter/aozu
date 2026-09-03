@@ -54,7 +54,7 @@ export const ja: Messages = {
     none: 'なし',
     status: {
       saving: '保存中…',
-      saved: 'すべての変更を保存しました',
+      saved: '保存済み',
       failed: '保存に失敗しました',
       retry: '再試行',
       conflict: '別の場所で変更されました',

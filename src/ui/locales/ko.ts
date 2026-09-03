@@ -54,7 +54,7 @@ export const ko: Messages = {
     none: '없음',
     status: {
       saving: '저장 중…',
-      saved: '모든 변경 사항이 저장됨',
+      saved: '저장됨',
       failed: '저장 실패',
       retry: '다시 시도',
       conflict: '다른 곳에서 변경됨',

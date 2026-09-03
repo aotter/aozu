@@ -24,7 +24,6 @@ import {
 import {
   CHARACTER_CREATION_GROUPS,
   REQUIRED_CHARACTER_TARGETS,
-  resolveCharacterDraftLayers,
   createCharacterDraftFromStarter,
   createCharacterDraft,
   migrateCharacterDraft,

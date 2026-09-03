@@ -54,7 +54,7 @@ export const zhCN: Messages = {
     none: '无',
     status: {
       saving: '保存中…',
-      saved: '所有更改已保存',
+      saved: '已保存',
       failed: '保存失败',
       retry: '重试',
       conflict: '已在其他位置被修改',
