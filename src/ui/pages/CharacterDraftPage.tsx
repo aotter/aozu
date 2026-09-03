@@ -287,9 +287,8 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
       <aside className="character-spell-guide" aria-labelledby="character-spell-title">
         <div className="spell-icon"><AozuIcon name="book" /></div>
         <div className="min-w-0 flex-1">
-          <p className="forge-kicker">{t('characterDraft.kicker')}</p>
-          <h1 id="character-spell-title" className="font-heading text-2xl font-semibold">{t('characterDraft.chatgpt.title')}</h1>
-          <p>{t('characterDraft.chatgpt.description')}</p>
+          <h1 id="character-spell-title" className="font-heading text-2xl font-semibold">{t('characterDraft.title')}</h1>
+          <p>{t('characterDraft.description')}</p>
         </div>
       </aside>
 

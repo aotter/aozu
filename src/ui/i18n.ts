@@ -127,11 +127,8 @@ const en = {
     discardDescription: 'This removes the staged bundle and its local assets. Saved companions are not affected.',
   },
   characterDraft: {
-    kicker: 'AOZU CHARACTER WORKSHOP',
-    chatgpt: {
-      title: 'Create with ChatGPT',
-      description: 'Describe the character you want. ChatGPT can add a base character, aligned expressions, outfits, and props directly to this character.',
-    },
+    title: 'Character Workshop',
+    description: 'Describe the character you want. ChatGPT can add a base character, aligned expressions, outfits, and props directly to this character.',
     stageTitle: 'Full-body preview',
     workbenchDescription: 'Choose a slot, then upload artwork or let ChatGPT add it.',
     required: 'Required',
