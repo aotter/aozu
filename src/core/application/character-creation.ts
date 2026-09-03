@@ -393,15 +393,25 @@ export function migrateCharacterDraft(draft: CharacterDraftV4 | CharacterDraftV3
   return withHeadRegistration(next)
 }
 
+export function characterAssetInspectionRejection(inspection: CharacterAssetInspection) {
+  if (inspection.width !== CHARACTER_RIG.canvas.width || inspection.height !== CHARACTER_RIG.canvas.height) {
+    return { code: 'INVALID_CANVAS', message: `Asset must use the ${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height} canvas.` }
+  }
+  if (!inspection.hasVisiblePixels) return { code: 'MISSING_VISIBLE_PIXELS', message: 'Asset must contain visible artwork.' }
+  if (!inspection.hasTransparentPixels) {
+    return {
+      code: 'OPAQUE_BACKGROUND',
+      message: 'Asset has no transparent pixels. AOZU does not remove backgrounds. Generate on a flat high-contrast color if needed, remove it with an image tool, then submit genuine RGBA PNG.',
+    }
+  }
+  if (!inspection.genuineRgba) return { code: 'INVALID_RGBA', message: 'Asset must be a genuine RGBA PNG.' }
+  if (inspection.size < 1 || inspection.size > MAX_ASSET_BYTES) return { code: 'INVALID_FILE_SIZE', message: 'Asset must be under 5 MiB.' }
+  return null
+}
+
 export function validateCharacterAssetInspection(inspection: CharacterAssetInspection) {
-  if (
-    inspection.width !== CHARACTER_RIG.canvas.width ||
-    inspection.height !== CHARACTER_RIG.canvas.height ||
-    !inspection.genuineRgba ||
-    !inspection.hasTransparentPixels ||
-    !inspection.hasVisiblePixels ||
-    inspection.size < 1 || inspection.size > MAX_ASSET_BYTES
-  ) throw new Error('Asset must be a visible, transparent 512×768 RGBA PNG under 5 MiB')
+  const rejection = characterAssetInspectionRejection(inspection)
+  if (rejection) throw new Error(rejection.message)
 }
 
 /** Pure command: returns the next Character with one variant transform applied (head anchors rebase current expressions). */

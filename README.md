@@ -63,7 +63,8 @@ Creative generation is probabilistic; accepting an asset does not have to be.
 - Character revisions prevent stale agents or tabs from overwriting newer work.
 - Source SHA-256 hashes bind repairs to the exact pixels the agent inspected.
 - Inputs are checked for dimensions, genuine RGBA transparency, visible bounds, and canvas overflow.
-- Expressions and outfits are stitched into the inspected edit source; protected pixels remain unchanged.
+- The workspace contract tells agents up front that expressions are whole heads and outfits are complete dressed character skins compatible with the canonical pose.
+- Expression repairs are stitched into the inspected head; outfit replacements never preserve old pixels.
 - Normalization happens only when the submission explicitly requests a supported deterministic operation.
 - Invalid candidates are rejected instead of being silently reframed or accepted.
 - Accepted changes are saved locally and opened in the editor for review.

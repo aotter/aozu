@@ -33,6 +33,7 @@ import {
   isCharacterDraftAssetCurrent,
   characterAssetPlacement,
   characterDraftAtlasKey,
+  characterAssetInspectionRejection,
   characterRegistrationFrame,
   resolveCharacterDraftAtlasSources,
   resolveCharacterDraftLayers,
@@ -41,7 +42,6 @@ import {
   setCharacterVariantTransform,
   transformCharacterBounds,
   updateCharacterProfile,
-  validateCharacterAssetInspection,
   saveCharacterDraftAsset,
 } from './core/application/character-creation.ts'
 import { createCharacterEditor } from './core/application/character-editor.ts'
@@ -65,6 +65,42 @@ const readDataUrl = (blob: Blob) => new Promise<string>((resolve, reject) => {
 type CharacterBounds = NonNullable<CharacterAssetInspection['visibleBounds']>
 type CharacterAlignmentMeasurement = ReturnType<typeof measureCharacterMaskAlignment>
 
+const CHARACTER_ASSET_POLICY = {
+  workflow: {
+    inspectBeforeMutation: true,
+    exactRevisionAndAssetSha256: 'required',
+    canonicalBodyBeforeDerivedLayers: 'required',
+  },
+  input: {
+    mediaType: 'image/png',
+    finalCanvas: { ...CHARACTER_RIG.canvas },
+    visiblePixels: 'required',
+    canvasEdge: { body: 'reject', expression: 'reject', outfit: 'reject', prop: 'warning' },
+    alpha: {
+      required: true,
+      websiteRemovesBackground: false,
+      opaqueInput: 'reject',
+      fallback: {
+        generateOn: 'one flat high-contrast color absent from the subject',
+        avoid: ['gradient', 'shadow', 'glow', 'texture', 'cropped silhouette'],
+        beforeSubmission: ['remove the background with an available image tool', 'verify genuine alpha', 'submit PNG'],
+      },
+    },
+  },
+  layers: {
+    body: { content: 'complete-character-skin' },
+    expression: { content: 'complete-whole-head-only', outsideHeadOwnership: 'transparent', referenceOverlap: 'required' },
+    outfit: {
+      content: 'complete-dressed-character-skin',
+      clothingOnlyOverlay: 'reject',
+      referenceSilhouetteCompatibility: 'required',
+      exactCanonicalPixelCoverage: 'not-required',
+      preserve: ['pose', 'body center', 'head position', 'foot line'],
+    },
+    prop: { content: 'independent-transparent-overlay' },
+  },
+} as const
+
 /** The one deterministic alignment reference per group, read from the shared registration frame. */
 const characterReferenceBounds = (
   frame: ReturnType<typeof characterRegistrationFrame>,
@@ -82,7 +118,7 @@ const characterNormalizationContract = (alignAvailable: boolean) => ({
   generateAt: { ...CHARACTER_GENERATION_CANVAS },
   finalizeAt: { ...CHARACTER_RIG.canvas },
   requirements: [
-    `Submit genuine RGBA PNG with real alpha. Opaque input is rejected. Painted transparency grids and matte backgrounds are forbidden and never repaired.`,
+    `Submit genuine RGBA PNG with real alpha. Opaque input is rejected. If direct transparency is unavailable, generate on one flat high-contrast color absent from the subject, remove it with an image tool, and verify alpha before submission. Painted transparency grids and matte backgrounds are forbidden and never repaired.`,
     `Default submissions must already be exactly ${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}.`,
     `"exact-aspect-downscale" accepts only genuine RGBA at the exact ${CHARACTER_RIG.canvas.width}:${CHARACTER_RIG.canvas.height} aspect and at least that size; it never upscales, crops, or reframes.`,
     alignAvailable
@@ -371,6 +407,7 @@ export function createApplication(document: Document) {
         } : null,
         history: historyStatus(),
         navigation,
+        assetPolicy: CHARACTER_ASSET_POLICY,
       },
       nextActions,
     }
@@ -537,6 +574,7 @@ export function createApplication(document: Document) {
         transform,
       } : { filled: false, current: false, transform },
       required: REQUIRED_CHARACTER_TARGETS.some((target) => target.group === input.group && target.variantId === input.variantId && target.layer === input.layer),
+      acceptance: CHARACTER_ASSET_POLICY.layers[input.group],
       placement: { slot: placement.slot, slotOrder: CHARACTER_RIG.slots.find(({ id }) => id === placement.slot)!.order, layerOrder: placement.order },
       alignmentReference: alignmentReference ? {
         filename: alignmentReference.filename,
@@ -572,7 +610,8 @@ export function createApplication(document: Document) {
         bounds: registrationFrame.headEnvelope?.bounds ?? null,
       } : input.group === 'outfit' ? {
         assetRole: 'complete-character-skin',
-        transparentHolesOverCanonicalBody: 'forbidden',
+        referenceSilhouetteCompatibility: 'required',
+        exactCanonicalPixelCoverage: 'not-required',
       } : {
         assetRole: input.group === 'body' ? 'complete-character-skin' : 'prop-layer',
       },
@@ -664,13 +703,14 @@ export function createApplication(document: Document) {
             'The canonical body is a visual reference, never an expression edit source. Replace the first expression with a head-only layer; the first accepted whole head establishes registration for later expressions.',
             'An outfit replaces the character-skin slot: replace it with the complete dressed character, never a clothing-only overlay. Preserve pose, body center, head position, and foot line. Generate props against the returned current composite.',
             'Generate at 1024×1536. When the inspected target recommends exact-aspect-downscale, request it during submission; otherwise finalize externally at the exact 512×768 canvas. Never crop, reframe, or stretch.',
-            'Before importing, remove the background outside the website and verify genuine alpha transparency. Never submit a painted transparency grid or matte background; the website validates but never repairs alpha.',
+            'If direct transparency is unavailable, generate on one flat high-contrast color absent from the subject, without gradients, shadows, glow, texture, or cropped edges. Remove that background with an available image tool and verify genuine alpha before submission. The website validates but never removes backgrounds.',
             'Use replace_character_asset for every outfit and any other complete finished layer; it never preserves old pixels. Use repair_character_asset only for an existing expression; transparent mask pixels are editable, opaque pixels are protected, and protectedRegionDelta must be 0.',
             'Submit only full-canvas RGBA PNG proposals, either already at 512×768 or with the explicit normalization allowed by the inspected target. The website never generates, removes backgrounds, or guesses geometry; expression repair alone uses the deterministic editable region.',
             'Expression layers contain only the whole aligned head, including the same fixed hairstyle and facial hair; every pixel outside head ownership must be transparent.',
             'No expression overlay means the default face baked into the body. Optional whole-head variants include happy, sad, angry, surprised, and sleepy; additional variants are allowed.',
             'Outfits are full-body variants. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. A prop may be positioned anywhere, including on the head or in a hand.',
           ],
+          assetPolicy: CHARACTER_ASSET_POLICY,
           target,
         },
         nextActions: target?.nextActions ?? characterNextActions(draft),
@@ -817,12 +857,8 @@ export function createApplication(document: Document) {
       const inspection = resize.scale === null ? submittedInspection : await inspectCharacterImage(resized)
       resizedBounds = inspection.visibleBounds
       finalSize = { width: inspection.width, height: inspection.height }
-      try {
-        validateCharacterAssetInspection(inspection)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        return rejected(message, { code: 'INVALID_CHARACTER_ASSET', message })
-      }
+      const invalidAsset = characterAssetInspectionRejection(inspection)
+      if (invalidAsset) return rejected(invalidAsset.message, invalidAsset)
 
       // 2. One uniform scale plus translation onto the reference bounds this contract published.
       const referenceMask = sources.alignmentReference ? await readCharacterAlphaMask(sources.alignmentReference.blob) : null
@@ -842,13 +878,15 @@ export function createApplication(document: Document) {
 
       // 3. The existing safety diagnostics decide, on the normalized pixels.
       const alignment = afterAlignment ?? afterResize
-      if (alignment.status === 'invalid') return rejected(alignment.diagnostics[0]?.message ?? 'Regenerate the rejected character asset.')
+      if (alignment.status === 'invalid') {
+        const diagnostic = alignment.diagnostics[0]
+        return rejected(diagnostic?.message ?? 'Regenerate the rejected character asset.', diagnostic && { code: diagnostic.code, message: diagnostic.message })
+      }
 
       // A requested alignment is baked into the stitched pixels, so it never competes with a mask auto-fit.
       const autoFit = alignTransform ?? highConfidenceCharacterAutoFit(alignment)
       ownership = inspectCharacterAssetOwnership(target.group, candidateMask, {
         headBounds: registrationFrame.headEnvelope?.bounds,
-        reference: target.group === 'outfit' ? referenceMask : null,
         transform: autoFit ?? undefined,
       })
       if (ownership.status === 'invalid') return rejected(ownership.message, { code: ownership.code, message: ownership.message })

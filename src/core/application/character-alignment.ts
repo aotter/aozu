@@ -138,12 +138,11 @@ export function inspectCharacterAssetOwnership(
   candidate: CharacterAlphaMask,
   options: {
     headBounds?: Bounds
-    reference?: CharacterAlphaMask | null
     transform?: CharacterVariantTransform
   } = {},
 ) {
-  const placed = transformMask(candidate, options.transform ?? IDENTITY_CHARACTER_TRANSFORM)
   if (group === 'expression') {
+    const placed = transformMask(candidate, options.transform ?? IDENTITY_CHARACTER_TRANSFORM)
     const bounds = options.headBounds
     if (!bounds) return {
       status: 'invalid' as const,
@@ -183,32 +182,6 @@ export function inspectCharacterAssetOwnership(
       visiblePixels,
       bounds: { x: left, y: top, width: right - left, height: bottom - top },
     }
-  }
-  if (group === 'outfit' && options.reference) {
-    const reference = options.reference
-    let referenceInteriorPixels = 0
-    let uncoveredReferencePixels = 0
-    for (let y = 2; y < reference.height - 2; y++) for (let x = 2; x < reference.width - 2; x++) {
-      const index = y * reference.width + x
-      if (
-        reference.alpha[index]! <= 32 ||
-        reference.alpha[index - 2]! <= 32 || reference.alpha[index + 2]! <= 32 ||
-        reference.alpha[index - reference.width * 2]! <= 32 || reference.alpha[index + reference.width * 2]! <= 32
-      ) continue
-      referenceInteriorPixels++
-      if (placed.alpha[index]! <= 16) uncoveredReferencePixels++
-    }
-    const uncoveredRatio = round(referenceInteriorPixels ? uncoveredReferencePixels / referenceInteriorPixels : 0)
-    // ponytail: alpha masks cannot distinguish intentional cutouts from missing clothing; semantic body regions can replace this 0.5% tolerance if packs start authoring them.
-    const invalid = uncoveredReferencePixels > Math.max(64, referenceInteriorPixels * 0.005)
-    return invalid ? {
-      status: 'invalid' as const,
-      code: 'OUTFIT_INCOMPLETE_CHARACTER_SKIN',
-      message: `Outfit must be a complete character skin; ${uncoveredReferencePixels} protected body pixels are transparent.`,
-      uncoveredReferencePixels,
-      referenceInteriorPixels,
-      uncoveredRatio,
-    } : { status: 'valid' as const, uncoveredReferencePixels, referenceInteriorPixels, uncoveredRatio }
   }
   return { status: 'valid' as const }
 }
@@ -305,11 +278,11 @@ export function measureCharacterMaskAlignment(
       suggestedMetrics: suggested,
       suggestedTransform: suggestion,
       diagnostics: [{
-        code: group === 'expression' ? 'EXPRESSION_MUST_INCLUDE_COMPLETE_HEAD' : 'OUTFIT_MUST_INCLUDE_COMPLETE_CHARACTER',
+        code: group === 'expression' ? 'EXPRESSION_MUST_INCLUDE_COMPLETE_HEAD' : 'OUTFIT_REFERENCE_SHAPE_INCOMPATIBLE',
         severity: 'error' as const,
         message: group === 'expression'
           ? 'Expression must be a complete whole-head replacement aligned to the canonical head.'
-          : 'Outfit must be a complete dressed character-skin replacement, not a clothing-only overlay.',
+          : 'Outfit must be a complete dressed character skin whose pose and registration are compatible with the canonical reference.',
       }],
     }
   }
