@@ -365,10 +365,10 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
         <div className="workbench-body" inert={!hasBase ? true : undefined} aria-hidden={!hasBase}>
         <div className="workbench-heading"><span>02</span><div><h2>{t('characterDraft.customizeTitle')}</h2><p>{t('characterDraft.workbenchDescription')}</p></div></div>
         <Tabs value={category.id} onValueChange={(id) => navigate(`/characters/${encodeURIComponent(draft.id)}/${id}`)} className="min-h-0 flex-1 gap-0">
-        {!selectedVariant && <TabsList aria-label={t('characterDraft.categorySwitcher')} className="mt-3 grid w-full grid-cols-3">
+        {!selectedVariant && <TabsList aria-label={t('characterDraft.categorySwitcher')} className="workbench-tabs mt-3 grid w-full grid-cols-3">
           {characterCategories.map(({ id, icon }) => <TabsTrigger key={id} value={id} className="min-w-0">
-            <AozuIcon name={icon} className="size-4" />
-            <span className="truncate">{t(`characterDraft.categories.${id}`)}</span>
+            <AozuIcon name={icon} />
+            <span>{t(`characterDraft.categories.${id}`)}</span>
           </TabsTrigger>)}
         </TabsList>}
 
