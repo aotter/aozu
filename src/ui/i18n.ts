@@ -15,7 +15,7 @@ import { zhTW } from './locales/zh-TW'
 export const LANGUAGES = [
   { code: 'en', label: 'English' },
   { code: 'ja', label: '日本語' },
-  { code: 'zh-TW', label: '繁體中文（台灣）' },
+  { code: 'zh-TW', label: '繁體中文' },
   { code: 'zh-CN', label: '简体中文' },
   { code: 'ko', label: '한국어' },
   { code: 'es', label: 'Español' },
