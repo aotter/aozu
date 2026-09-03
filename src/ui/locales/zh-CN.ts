@@ -60,6 +60,13 @@ export const zhCN: Messages = {
       conflict: '已在其他位置被修改',
       reload: '重新加载',
     },
+    profile: {
+      title: '角色资料', name: '名称', description: '简介', backstory: '背景故事', attributes: '属性',
+      add: '添加', text: '文本', number: '数字', boolean: '是／否', yes: '是', no: '否', value: '值', update: '更新角色资料',
+      attributeName: '属性 {{index}} 名称', attributeType: '属性 {{index}} 类型', attributeValue: '属性 {{index}} 的值', removeAttribute: '移除属性 {{index}}',
+      edit: '编辑角色资料', expand: '展开角色资料', collapse: '收起角色资料',
+      noDescription: '尚未填写简介。', noBackstory: '尚未填写背景故事。', noAttributes: '尚未设置属性。',
+    },
     alignment: {
       label: '对齐预览',
       composite: '合成',

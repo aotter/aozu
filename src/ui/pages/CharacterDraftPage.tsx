@@ -82,8 +82,9 @@ const profileFormFor = (draft: CharacterDraft): ProfileForm => ({
   attributes: Object.entries(draft.attributes ?? {}).map(([key, value]) => ({ key, type: typeof value as ProfileAttributeForm['type'], value: String(value) })),
 })
 
-export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, compileAtlas, exportCharacter, replaceAsset, saveAs, deleteCharacter }: {
+export function CharacterDraftPage({ editor, savedRevision, autoFitVariant, fitSuggestion, compileAtlas, exportCharacter, replaceAsset, saveAs, deleteCharacter }: {
   editor: CharacterEditor
+  savedRevision?: number
   autoFitVariant(group: CharacterVariantGroup, variantId: string): Promise<void>
   fitSuggestion(group: CharacterVariantGroup, variantId: string): Promise<CharacterFitSuggestion>
   compileAtlas(draft: CharacterDraft): Promise<CharacterTextureAtlas | undefined>
@@ -99,6 +100,7 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
   const activeCharacterId = useStore(editor.store, (state) => state.activeCharacterId)
   const character = useStore(editor.store, (state) => state.character)
   const saveStatus = useStore(editor.store, (state) => state.saveStatus)
+  const persistedRevision = useStore(editor.store, (state) => state.persistedRevision)
   const saveError = useStore(editor.store, (state) => state.saveError)
   const canUndo = useStore(editor.history, (state) => state.pastStates.length > 0) && saveStatus !== 'conflict'
   const canRedo = useStore(editor.history, (state) => state.futureStates.length > 0) && saveStatus !== 'conflict'
@@ -125,6 +127,7 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
     origin: CharacterVariantTransform
     current: CharacterVariantTransform
   } | undefined>(undefined)
+  const refreshingRevision = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     let live = true
@@ -146,6 +149,14 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
 
   const committed = activeCharacterId === characterId ? character ?? undefined : undefined
   const draft = local && local.base === committed ? local.value : committed
+  const externalRevision = persistedRevision !== null && savedRevision !== undefined && savedRevision > persistedRevision ? savedRevision : undefined
+  useEffect(() => {
+    if (activeCharacterId !== characterId || !externalRevision || saveStatus !== 'saved' || local || profileForm || refreshingRevision.current === externalRevision) return
+    refreshingRevision.current = externalRevision
+    void editor.reload()
+      .catch((caught) => setError(describe(caught)))
+      .finally(() => { if (refreshingRevision.current === externalRevision) refreshingRevision.current = undefined })
+  }, [activeCharacterId, characterId, editor, externalRevision, local, profileForm, saveStatus])
   const atlasKey = committed ? characterDraftAtlasKey(committed) : undefined
   useLayoutEffect(() => { atlasDraft.current = committed }, [committed])
   useEffect(() => {
@@ -369,29 +380,29 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
         </div>
         <section id="character-profile" className="character-profile-panel" inert={!profileOpen ? true : undefined} aria-hidden={!profileOpen}>
           {profileForm ? <>
-            <div className="character-profile-heading"><div><span>Character profile</span><strong>{draft.name}</strong></div></div>
-            <label><span>Name</span><input maxLength={80} value={profileForm.name} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} /></label>
-            <label><span>Description</span><textarea maxLength={500} rows={3} value={profileForm.description} onChange={(event) => setProfileForm({ ...profileForm, description: event.target.value })} /></label>
-            <label className="min-h-0"><span>Backstory</span><textarea className="min-h-28 flex-1" maxLength={8000} value={profileForm.backstory} onChange={(event) => setProfileForm({ ...profileForm, backstory: event.target.value })} /></label>
+            <div className="character-profile-heading"><div><span>{t('characterDraft.profile.title')}</span><strong>{draft.name}</strong></div></div>
+            <label><span>{t('characterDraft.profile.name')}</span><input maxLength={80} value={profileForm.name} onChange={(event) => setProfileForm({ ...profileForm, name: event.target.value })} /></label>
+            <label><span>{t('characterDraft.profile.description')}</span><textarea maxLength={500} rows={3} value={profileForm.description} onChange={(event) => setProfileForm({ ...profileForm, description: event.target.value })} /></label>
+            <label className="min-h-0"><span>{t('characterDraft.profile.backstory')}</span><textarea className="min-h-28 flex-1" maxLength={8000} value={profileForm.backstory} onChange={(event) => setProfileForm({ ...profileForm, backstory: event.target.value })} /></label>
             <div className="character-attributes-editor">
-              <div className="character-profile-heading"><span>Attributes</span><Button type="button" size="sm" variant="ghost" disabled={profileForm.attributes.length >= 32} onClick={() => setProfileForm({ ...profileForm, attributes: [...profileForm.attributes, { key: '', type: 'string', value: '' }] })}><PlusIcon /> Add</Button></div>
+              <div className="character-profile-heading"><span>{t('characterDraft.profile.attributes')}</span><Button type="button" size="sm" variant="ghost" disabled={profileForm.attributes.length >= 32} onClick={() => setProfileForm({ ...profileForm, attributes: [...profileForm.attributes, { key: '', type: 'string', value: '' }] })}><PlusIcon /> {t('characterDraft.profile.add')}</Button></div>
               {profileForm.attributes.map((attribute, index) => <div className="character-attribute-row" key={index}>
-                <input aria-label={`Attribute ${index + 1} name`} placeholder="Name" maxLength={40} value={attribute.key} onChange={(event) => setProfileForm({ ...profileForm, attributes: profileForm.attributes.map((row, rowIndex) => rowIndex === index ? { ...row, key: event.target.value } : row) })} />
-                <select aria-label={`Attribute ${index + 1} type`} value={attribute.type} onChange={(event) => {
+                <input aria-label={t('characterDraft.profile.attributeName', { index: index + 1 })} placeholder={t('characterDraft.profile.name')} maxLength={40} value={attribute.key} onChange={(event) => setProfileForm({ ...profileForm, attributes: profileForm.attributes.map((row, rowIndex) => rowIndex === index ? { ...row, key: event.target.value } : row) })} />
+                <select aria-label={t('characterDraft.profile.attributeType', { index: index + 1 })} value={attribute.type} onChange={(event) => {
                   const type = event.target.value as ProfileAttributeForm['type']
                   setProfileForm({ ...profileForm, attributes: profileForm.attributes.map((row, rowIndex) => rowIndex === index ? { ...row, type, value: type === 'boolean' ? 'true' : type === 'number' ? '0' : row.value } : row) })
-                }}><option value="string">Text</option><option value="number">Number</option><option value="boolean">Yes / no</option></select>
-                {attribute.type === 'boolean' ? <select aria-label={`Attribute ${index + 1} value`} value={attribute.value} onChange={(event) => setProfileForm({ ...profileForm, attributes: profileForm.attributes.map((row, rowIndex) => rowIndex === index ? { ...row, value: event.target.value } : row) })}><option value="true">Yes</option><option value="false">No</option></select> : <input aria-label={`Attribute ${index + 1} value`} type={attribute.type === 'number' ? 'number' : 'text'} maxLength={attribute.type === 'string' ? 200 : undefined} placeholder="Value" value={attribute.value} onChange={(event) => setProfileForm({ ...profileForm, attributes: profileForm.attributes.map((row, rowIndex) => rowIndex === index ? { ...row, value: event.target.value } : row) })} />}
-                <Button type="button" size="icon" variant="ghost" aria-label={`Remove attribute ${index + 1}`} onClick={() => setProfileForm({ ...profileForm, attributes: profileForm.attributes.filter((_, rowIndex) => rowIndex !== index) })}><Trash2Icon /></Button>
+                }}><option value="string">{t('characterDraft.profile.text')}</option><option value="number">{t('characterDraft.profile.number')}</option><option value="boolean">{t('characterDraft.profile.boolean')}</option></select>
+                {attribute.type === 'boolean' ? <select aria-label={t('characterDraft.profile.attributeValue', { index: index + 1 })} value={attribute.value} onChange={(event) => setProfileForm({ ...profileForm, attributes: profileForm.attributes.map((row, rowIndex) => rowIndex === index ? { ...row, value: event.target.value } : row) })}><option value="true">{t('characterDraft.profile.yes')}</option><option value="false">{t('characterDraft.profile.no')}</option></select> : <input aria-label={t('characterDraft.profile.attributeValue', { index: index + 1 })} type={attribute.type === 'number' ? 'number' : 'text'} maxLength={attribute.type === 'string' ? 200 : undefined} placeholder={t('characterDraft.profile.value')} value={attribute.value} onChange={(event) => setProfileForm({ ...profileForm, attributes: profileForm.attributes.map((row, rowIndex) => rowIndex === index ? { ...row, value: event.target.value } : row) })} />}
+                <Button type="button" size="icon" variant="ghost" aria-label={t('characterDraft.profile.removeAttribute', { index: index + 1 })} onClick={() => setProfileForm({ ...profileForm, attributes: profileForm.attributes.filter((_, rowIndex) => rowIndex !== index) })}><Trash2Icon /></Button>
               </div>)}
             </div>
             {error && <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>}
-            <div className="mt-auto flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setProfileForm(undefined)}>Cancel</Button><Button type="button" onClick={saveProfile}>Update profile</Button></div>
+            <div className="mt-auto flex justify-end gap-2"><Button type="button" variant="ghost" onClick={() => setProfileForm(undefined)}>{t('common.cancel')}</Button><Button type="button" onClick={saveProfile}>{t('characterDraft.profile.update')}</Button></div>
           </> : <>
-            <div className="character-profile-heading"><div><span>Character profile</span><h2>{draft.name}</h2></div><Button type="button" size="icon" variant="ghost" aria-label="Edit character profile" onClick={() => { setError(undefined); setProfileForm(profileFormFor(draft)) }}><PencilIcon /></Button></div>
-            <p className="character-profile-description">{draft.description || 'No description yet.'}</p>
-            <div><h3>Backstory</h3><p className="character-profile-backstory">{draft.backstory || 'No backstory yet.'}</p></div>
-            <div className="character-profile-attributes"><h3>Attributes</h3>{Object.keys(draft.attributes ?? {}).length ? <dl>{Object.entries(draft.attributes ?? {}).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === 'boolean' ? value ? 'Yes' : 'No' : value}</dd></div>)}</dl> : <p className="text-muted-foreground">No attributes yet.</p>}</div>
+            <div className="character-profile-heading"><div><span>{t('characterDraft.profile.title')}</span><h2>{draft.name}</h2></div><Button type="button" size="icon" variant="ghost" aria-label={t('characterDraft.profile.edit')} onClick={() => { setError(undefined); setProfileForm(profileFormFor(draft)) }}><PencilIcon /></Button></div>
+            <p className="character-profile-description">{draft.description || t('characterDraft.profile.noDescription')}</p>
+            <div><h3>{t('characterDraft.profile.backstory')}</h3><p className="character-profile-backstory">{draft.backstory || t('characterDraft.profile.noBackstory')}</p></div>
+            <div className="character-profile-attributes"><h3>{t('characterDraft.profile.attributes')}</h3>{Object.keys(draft.attributes ?? {}).length ? <dl>{Object.entries(draft.attributes ?? {}).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === 'boolean' ? value ? t('characterDraft.profile.yes') : t('characterDraft.profile.no') : value}</dd></div>)}</dl> : <p className="text-muted-foreground">{t('characterDraft.profile.noAttributes')}</p>}</div>
           </>}
         </section>
         </div>
@@ -410,7 +421,7 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
               onKeyDown={textKeys}
             />
           </label>
-          <Button type="button" size="icon" variant="ghost" aria-controls="character-profile" aria-expanded={profileOpen} aria-label={profileOpen ? 'Collapse character profile' : 'Expand character profile'} onClick={() => { setProfileOpen(!profileOpen); setProfileForm(undefined) }}>
+          <Button type="button" size="icon" variant="ghost" aria-controls="character-profile" aria-expanded={profileOpen} aria-label={t(profileOpen ? 'characterDraft.profile.collapse' : 'characterDraft.profile.expand')} onClick={() => { setProfileOpen(!profileOpen); setProfileForm(undefined) }}>
             {profileOpen ? <ChevronDownIcon /> : <ChevronUpIcon />}
           </Button>
         </div>
@@ -568,9 +579,10 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
             <Tooltip><TooltipTrigger asChild><Button size="icon" variant="outline" aria-label={busy === 'save-as' ? t('characterDraft.savingAs') : t('characterDraft.saveAs')} disabled={Boolean(busy) || !draft.name.trim()} onClick={() => void runBusy('save-as', saveAs)}>{busy === 'save-as' ? <LoaderCircleIcon className="animate-spin" /> : <CopyIcon />}</Button></TooltipTrigger><TooltipContent>{busy === 'save-as' ? t('characterDraft.savingAs') : t('characterDraft.saveAs')}</TooltipContent></Tooltip>
             <Tooltip><TooltipTrigger asChild><Button size="icon" variant="outline" aria-label={t('characters.delete')} disabled={Boolean(busy)} onClick={() => setDeleteOpen(true)}><Trash2Icon /></Button></TooltipTrigger><TooltipContent>{t('characters.delete')}</TooltipContent></Tooltip>
             <span role="status" title={saveError} className={`ml-1 text-xs ${saveStatus === 'failed' || saveStatus === 'conflict' ? 'text-destructive' : 'text-muted-foreground'}`}>
-              {t(`characterDraft.status.${saveStatus}`)}
+              {t(`characterDraft.status.${externalRevision ? 'conflict' : saveStatus}`)}
+              {externalRevision && <> · <button type="button" className="underline" onClick={() => { setLocal(undefined); setProfileForm(undefined); void runBusy('reload', () => editor.reload()) }}>{t('characterDraft.status.reload')}</button></>}
               {saveStatus === 'failed' && <> · <button type="button" className="underline" onClick={() => void editor.retry()}>{t('characterDraft.status.retry')}</button></>}
-              {saveStatus === 'conflict' && <> · <button type="button" className="underline" onClick={() => void runBusy('reload', () => editor.reload())}>{t('characterDraft.status.reload')}</button> / <button type="button" className="underline" onClick={() => void runBusy('save-as', saveAs)}>{t('characterDraft.saveAs')}</button></>}
+              {!externalRevision && saveStatus === 'conflict' && <> · <button type="button" className="underline" onClick={() => void runBusy('reload', () => editor.reload())}>{t('characterDraft.status.reload')}</button> / <button type="button" className="underline" onClick={() => void runBusy('save-as', saveAs)}>{t('characterDraft.saveAs')}</button></>}
             </span>
           </div></TooltipProvider>
         </div>

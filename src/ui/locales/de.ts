@@ -60,6 +60,13 @@ export const de: Messages = {
       conflict: 'Anderswo geändert',
       reload: 'Neu laden',
     },
+    profile: {
+      title: 'Figurenprofil', name: 'Name', description: 'Beschreibung', backstory: 'Hintergrundgeschichte', attributes: 'Attribute',
+      add: 'Hinzufügen', text: 'Text', number: 'Zahl', boolean: 'Ja / nein', yes: 'Ja', no: 'Nein', value: 'Wert', update: 'Profil aktualisieren',
+      attributeName: 'Name von Attribut {{index}}', attributeType: 'Typ von Attribut {{index}}', attributeValue: 'Wert von Attribut {{index}}', removeAttribute: 'Attribut {{index}} entfernen',
+      edit: 'Figurenprofil bearbeiten', expand: 'Figurenprofil öffnen', collapse: 'Figurenprofil schließen',
+      noDescription: 'Noch keine Beschreibung.', noBackstory: 'Noch keine Hintergrundgeschichte.', noAttributes: 'Noch keine Attribute.',
+    },
     alignment: {
       label: 'Ausrichtungsvorschau',
       composite: 'Zusammengesetzt',
