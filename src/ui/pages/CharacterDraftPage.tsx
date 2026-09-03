@@ -26,14 +26,13 @@ const characterCategories: CharacterCategory[] = [
 ]
 const categoryForGroup = (group: CharacterVariantGroup) => characterCategories.find((category) => category.group === group)!.id
 const expressionIcons = ['happy', 'sad', 'angry', 'surprised', 'sleepy']
-const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
-  if (group === 'expression') return `/assets/expression-placeholders/${expressionIcons.includes(variantId) ? variantId : 'happy'}.webp`
-  if (group === 'body') return '/assets/character-slots/body-base.webp'
-  return '/assets/character-slots/body-outfit.webp'
-}
+const expressionPlaceholder = (variantId: string) => `/assets/expression-placeholders/${expressionIcons.includes(variantId) ? variantId : 'happy'}.webp`
+// Expressions have portrait art; outfits and props reuse their category icon; the base body keeps its silhouette mask.
 const CharacterVariantPlaceholder = ({ group, variantId, label }: { group: CharacterVariantGroup; variantId: string; label?: string }) => group === 'expression'
-  ? <img className="expression-placeholder" src={characterSlotIcon(group, variantId)} alt={label ?? ''} />
-  : <CharacterSlotPlaceholder src={characterSlotIcon(group, variantId)} label={label} />
+  ? <img className="expression-placeholder" src={expressionPlaceholder(variantId)} alt={label ?? ''} />
+  : group === 'body'
+    ? <CharacterSlotPlaceholder src="/assets/character-slots/body-base.webp" label={label} />
+    : <AozuIcon name={group === 'prop' ? 'props' : 'outfits'} className="is-placeholder" />
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
 const describe = (error: unknown) => error instanceof Error ? error.message : String(error)
 const sameTransform = (left: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM, right: CharacterVariantTransform) =>
@@ -379,8 +378,7 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
                     ? atlas && atlasSrc && frameId && atlas.data.frames[frameId]
                       ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={frameId} label={variant.label} />
                       : <CharacterAssetImage blob={thumbnail.blob} bounds={thumbnail.inspection.visibleBounds} label={variant.label} />
-                    : variant.group === 'prop' ? <AozuIcon name="props" className="is-placeholder" />
-                      : <CharacterVariantPlaceholder group={variant.group} variantId={variant.id} label={variant.label} />}</span><span className="variant-label">{variant.label}</span>
+                    : <CharacterVariantPlaceholder group={variant.group} variantId={variant.id} label={variant.label} />}</span><span className="variant-label">{variant.label}</span>
                 </button>
                 <button type="button" title={t('characterDraft.editVariant', { name: variant.label })} className="variant-edit" aria-label={t('characterDraft.editVariant', { name: variant.label })} onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${category.id}/${encodeURIComponent(variant.id)}`)}><PencilIcon className="size-4" /></button>
               </div>
@@ -470,8 +468,7 @@ export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, comp
                 ? atlas && atlasSrc && atlas.data.frames[`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`]
                   ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`} />
                   : <CharacterAssetImage blob={primaryAsset.blob} bounds={primaryAsset.inspection.visibleBounds} />
-                : layeredAccessory ? <AozuIcon name="props" className="is-placeholder" />
-                  : <CharacterVariantPlaceholder group={selectedVariant.group} variantId={selectedVariant.id} />}</span>
+                : <CharacterVariantPlaceholder group={selectedVariant.group} variantId={selectedVariant.id} />}</span>
               <span>{t(layeredAccessory ? 'characterDraft.layers.primary' : `characterDraft.layers.${primaryLayer}`)}</span>
               {fileInput(selectedVariant, primaryLayer)}
             </label>
