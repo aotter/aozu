@@ -1146,6 +1146,10 @@ button.gate-action {
     display: none;
   }
 
+  .draft-workshop-grid {
+    gap: 0.5rem;
+  }
+
   .character-stage-panel,
   .doll-workbench {
     padding: 0.5rem;
