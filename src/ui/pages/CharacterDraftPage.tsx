@@ -27,15 +27,15 @@ const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
   return '/assets/character-slots/body-outfit.png'
 }
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
-export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, autoFitVariant, compileAtlas, exportDraft, onPublish }: {
-  openDraft(): Promise<CharacterDraft>
-  updateDraft(draft: CharacterDraft): Promise<CharacterDraft>
+export function CharacterDraftPage({ openCharacter, saveCharacter, saveAsset, setVariantTransform, autoFitVariant, compileAtlas, exportCharacter, saveAs }: {
+  openCharacter(): Promise<CharacterDraft>
+  saveCharacter(draft: CharacterDraft): Promise<CharacterDraft>
   saveAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string): Promise<CharacterDraft>
   setVariantTransform(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string, transform: CharacterVariantTransform): Promise<CharacterDraft>
   autoFitVariant(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string): Promise<CharacterDraft>
   compileAtlas(draft: CharacterDraft): Promise<CharacterTextureAtlas | undefined>
-  exportDraft(): Promise<Blob>
-  onPublish(draft: CharacterDraft): Promise<CharacterDraft>
+  exportCharacter(): Promise<Blob>
+  saveAs(draft: CharacterDraft): Promise<CharacterDraft>
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -66,17 +66,17 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
     let active = true
     const refresh = () => {
       const request = ++draftRequest.current
-      void openDraft()
+      void openCharacter()
       .then((next) => { if (active && draftRequest.current === request) setDraft(next) })
       .catch(() => { if (active && draftRequest.current === request) setLoadError(true) })
     }
     refresh()
-    window.addEventListener('character-draft-updated', refresh)
+    window.addEventListener('character-updated', refresh)
     return () => {
       active = false
-      window.removeEventListener('character-draft-updated', refresh)
+      window.removeEventListener('character-updated', refresh)
     }
-  }, [openDraft])
+  }, [openCharacter])
 
   const atlasKey = draft ? characterDraftAtlasKey(draft) : undefined
   useLayoutEffect(() => { atlasDraft.current = draft }, [draft])
@@ -171,7 +171,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
       throw caught
     }
   }
-  const persist = (next: CharacterDraft) => { void commitDraft(() => updateDraft(next), next, draft).catch(() => {}) }
+  const persist = (next: CharacterDraft) => { void commitDraft(() => saveCharacter(next), next, draft).catch(() => {}) }
   const activateVariant = (source: CharacterDraft, variant: CharacterDraftVariant) => {
     const { group, id } = variant
     if (group === 'body') return source
@@ -217,7 +217,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
         try {
           await commitDraft(async () => {
             const next = await saveAsset(draft, { group: variant.group, variantId: variant.id, label: variant.label, layer }, file, file.name)
-            return variant.group !== 'body' && layer !== 'back' ? updateDraft(activateVariant(next, variant)) : next
+            return variant.group !== 'body' && layer !== 'back' ? saveCharacter(activateVariant(next, variant)) : next
           })
         } catch (caught) {
           setError(caught instanceof Error ? caught.message : String(caught))
@@ -255,7 +255,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
         </div>}
         <label className="mt-2 min-w-0">
           <span className="sr-only">{t('draft.name')}</span>
-          <input className="h-9 w-full rounded-md border bg-background px-2 text-sm" aria-label={t('draft.name')} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} onBlur={() => void commitDraft(() => updateDraft(draft)).catch(() => {})} />
+          <input className="h-9 w-full rounded-md border bg-background px-2 text-sm" aria-label={t('draft.name')} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
         </label>
       </section>
 
@@ -334,7 +334,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
           return <>
             <div className="mt-1 flex items-center gap-1 sm:gap-2">
               <Button type="button" size="icon" variant="ghost" className="size-8 shrink-0" aria-label={t('characterDraft.backToVariants')} onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${category.id}`)}><ArrowLeftIcon /></Button>
-              <input aria-label={t('characterDraft.variantLabel')} className="min-w-0 flex-1 rounded-md border-0 bg-transparent px-1 py-1 text-xs font-medium sm:text-sm" value={selectedVariant.label} onChange={(event) => setDraft({ ...draft, variants: draft.variants.map((variant) => variant === selectedVariant ? { ...variant, label: event.target.value } : variant) })} onBlur={() => void commitDraft(() => updateDraft(draft)).catch(() => {})} />
+              <input aria-label={t('characterDraft.variantLabel')} className="min-w-0 flex-1 rounded-md border-0 bg-transparent px-1 py-1 text-xs font-medium sm:text-sm" value={selectedVariant.label} onChange={(event) => setDraft({ ...draft, variants: draft.variants.map((variant) => variant === selectedVariant ? { ...variant, label: event.target.value } : variant) })} />
               {required && <span className="text-[9px] text-muted-foreground sm:text-xs">{t('characterDraft.required')}</span>}
             </div>
             {(primaryAsset || behindAsset) && <div className="mt-2 grid grid-cols-3 gap-1" aria-label={t('characterDraft.transform.label')}>
@@ -393,14 +393,20 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
         </div>
         <div className="shrink-0 border-t pt-2">
           {missing.length > 0 && <p className="mb-2 text-[10px] leading-4 text-muted-foreground sm:text-xs">{t('characterDraft.missingRequired')}</p>}
-          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
-          <DataControls exportData={exportDraft} exportFilename="companion-character-draft.zip" exportIconOnly exportLabel={t('draft.download')} />
-          <Button size="sm" className="w-full" disabled={Boolean(busy) || Boolean(missing.length) || !draft.name.trim() || draft.published?.revision === draft.revision} onClick={async () => {
-            setBusy('publish'); setError(undefined)
-            try { await commitDraft(() => onPublish(draft)) }
+          <div className="grid grid-cols-[auto_auto_minmax(0,1fr)] gap-2">
+          <DataControls exportData={exportCharacter} exportFilename="companion-character.zip" exportIconOnly exportLabel={t('draft.download')} />
+          <Button size="sm" variant="outline" disabled={Boolean(busy) || !draft.name.trim()} onClick={async () => {
+            setBusy('save-as'); setError(undefined)
+            try { await commitDraft(() => saveAs(draft)) }
             catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)) }
             finally { setBusy(undefined) }
-          }}>{busy === 'publish' ? t('characterDraft.publishing') : t(draft.published ? 'characterDraft.publishChanges' : 'characterDraft.publish')}</Button>
+          }}>{busy === 'save-as' ? t('characterDraft.savingAs') : t('characterDraft.saveAs')}</Button>
+          <Button size="sm" className="w-full" disabled={Boolean(busy) || !draft.name.trim()} onClick={async () => {
+            setBusy('save'); setError(undefined)
+            try { await commitDraft(() => saveCharacter(draft)) }
+            catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)) }
+            finally { setBusy(undefined) }
+          }}>{busy === 'save' ? t('characterDraft.saving') : t('characterDraft.save')}</Button>
           </div>
         </div>
       </section>

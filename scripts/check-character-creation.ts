@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { strFromU8, unzipSync, zipSync } from 'fflate'
 
-import { buildCharacterPack, characterDraftAtlasKey, characterHeadRegistration, characterRegistrationFrame, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterAssetSources, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
+import { buildCharacterPack, characterDraftAtlasKey, characterHeadRegistration, characterRegistrationFrame, copyCharacter, createCharacterDraft, hasCurrentCharacterLayer, installCharacterDraft, listInstalledCharacterPacks, loadCharacterProjection, loadInstalledCharacterPackResources, migrateCharacterDraft, resolveCharacterAssetSources, resolveCharacterDraftAtlasSources, resolveCharacterDraftLayers, reviewCharacterDraft, saveCharacterDraftAsset, setCharacterVariantTransform } from '../src/core/application/character-creation.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, stitchCharacterEditPixels, suggestCharacterVisualRegistration, type CharacterAlphaMask, type CharacterVisualSample } from '../src/core/application/character-alignment.ts'
 import type { CharacterDraftAsset, CharacterVariantGroup, CharacterVariantLayer } from '../src/core/domain/character.ts'
 import { validateCharacterPack } from '../src/core/domain/character.ts'
@@ -41,7 +41,6 @@ draft.selected = { expression: 'happy', outfit: 'outfit-1', props: ['prop-1', 'p
 draft.headRegistration = { variantId: 'happy' }
 draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.transform = { x: 2, y: -3, scale: 1.01 }
 
-const experience = { id: draft.id, schemaVersion: 1 as const, revision: 0, character: null, story: null, createdAt: 1, updatedAt: 1 }
 const atlas = {
   image: new Blob(['atlas'], { type: 'image/webp' }),
   data: {
@@ -49,12 +48,12 @@ const atlas = {
     meta: { app: 'Companion' as const, version: '1' as const, image: 'character.atlas.webp' as const, format: 'RGBA8888' as const, size: { w: 14, h: 24 }, scale: '1' as const },
   },
 }
-const draftZip = await exportCharacterDraftZip(draft, experience, atlas)
+const draftZip = await exportCharacterDraftZip(draft, atlas)
 const draftArchive = unzipSync(new Uint8Array(await draftZip.arrayBuffer()))
 const archivedDraft = JSON.parse(strFromU8(draftArchive['draft.json']!))
 const archivedPack = JSON.parse(strFromU8(draftArchive['character-pack.json']!))
 assert.equal(archivedDraft.id, draft.id)
-assert.equal(JSON.parse(strFromU8(draftArchive['experience-draft.json']!)).id, draft.id)
+assert.equal(draftArchive['experience-draft.json'], undefined)
 assert.deepEqual(archivedDraft.selected, draft.selected)
 assert.deepEqual(archivedDraft.headRegistration, draft.headRegistration)
 assert.deepEqual(archivedDraft.variants.find(({ group, id }: { group: string; id: string }) => group === 'expression' && id === 'happy').transform, { x: 2, y: -3, scale: 1.01 })
@@ -66,11 +65,10 @@ assert.equal(archivedPack.atlas.image, 'character.atlas.webp')
 assert.equal(archivedPack.assets.find(({ id }: { id: string }) => id === 'body-base-body').atlasFrame, 'body-base-body')
 const restored = await readCharacterDraftZip(draftZip, async () => inspection)
 assert.equal(restored.draft.id, draft.id)
-assert.equal(restored.draft.published, undefined)
+assert.equal('published' in restored.draft, false)
 assert.deepEqual(restored.draft.selected, draft.selected)
 assert.deepEqual(restored.draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')?.transform, { x: 2, y: -3, scale: 1.01 })
 assert.equal(await restored.draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')!.layers.head!.blob.text(), 'sprite')
-assert.equal(restored.experience?.id, experience.id)
 const missingAssetArchive = { ...draftArchive }
 delete missingAssetArchive['assets/expression-happy-head.png']
 await assert.rejects(
@@ -79,6 +77,18 @@ await assert.rejects(
 )
 
 const pack = buildCharacterPack(draft)
+assert.equal(migrateCharacterDraft(draft), draft)
+const copied = copyCharacter(draft)
+assert.notEqual(copied.id, draft.id)
+assert.notEqual(copied.packId, draft.packId)
+assert.equal(await copied.variants[0]!.layers.body!.blob.text(), 'sprite')
+assert.equal(copied.name, 'Test Character copy')
+const migratedPublishedCharacter = migrateCharacterDraft({
+  ...draft,
+  published: { version: 3, revision: draft.revision },
+})
+assert.equal('published' in migratedPublishedCharacter, false)
+assert.equal(await migratedPublishedCharacter.variants[0]!.layers.body!.blob.text(), 'sprite')
 assert.deepEqual(pack.defaultComposition.map(({ appearanceId }) => appearanceId), ['outfit-outfit-1', 'expression-happy', 'prop-prop-1', 'prop-prop-2'])
 assert.deepEqual(
   validateCharacterPack(pack, new Map(pack.assets.map(({ blobId }) => [blobId, inspection]))).map(({ slot }) => slot),

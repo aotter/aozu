@@ -18,13 +18,14 @@ import {
   AlertDialogTitle,
 } from '@/ui/components/ui/alert-dialog'
 
-export type CharacterLibraryItem = Pick<CharacterDraft, 'id' | 'name' | 'revision' | 'updatedAt' | 'published'>
+export type CharacterLibraryItem = Pick<CharacterDraft, 'id' | 'name' | 'revision' | 'updatedAt'>
 
-export function CharacterLibraryPage({ characters, loadStarters, createCharacter, openCharacter, deleteCharacter, exportCharacter, importCharacter, refresh }: {
+export function CharacterLibraryPage({ characters, loadStarters, createCharacter, openCharacter, copyCharacter, deleteCharacter, exportCharacter, importCharacter, refresh }: {
   characters: CharacterLibraryItem[]
   loadStarters(): Promise<ValidatedStarterPackage[]>
   createCharacter(selection: StarterCharacterSelection): Promise<CharacterDraft>
   openCharacter(id: string): void
+  copyCharacter(id: string): Promise<CharacterDraft>
   deleteCharacter(id: string): Promise<void>
   exportCharacter(id: string): Promise<Blob>
   importCharacter(blob: Blob): Promise<void>
@@ -57,17 +58,14 @@ export function CharacterLibraryPage({ characters, loadStarters, createCharacter
     {characters.length > 0 && <section className="mt-8">
       <h2 className="font-heading text-lg font-medium">{t('characters.saved')}</h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">{characters.map((character) => {
-        const current = character.published?.revision === character.revision
         return <article key={character.id} className="rounded-2xl border bg-background p-4 shadow-sm">
           <button className="w-full text-left" onClick={() => openCharacter(character.id)}>
             <h3 className="truncate font-heading font-medium">{character.name}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{character.published
-              ? t(current ? 'characters.published' : 'characters.unpublishedChanges', { version: character.published.version })
-              : t('characters.draft')}</p>
           </button>
           <div className="mt-4 flex items-center justify-end gap-2">
             <DataControls exportData={() => exportCharacter(character.id)} exportFilename={`${character.name}-character.zip`} exportIconOnly exportLabel={t('draft.download')} />
             <Button variant="destructive" onClick={() => setDeleting(character)}>{t('characters.delete')}</Button>
+            <Button variant="outline" disabled={busy} onClick={() => { setBusy(true); void copyCharacter(character.id).then(refresh).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught))).finally(() => setBusy(false)) }}>{t('characters.copy')}</Button>
             <Button onClick={() => openCharacter(character.id)}>{t('characters.edit')}</Button>
           </div>
         </article>

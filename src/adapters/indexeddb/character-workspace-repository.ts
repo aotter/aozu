@@ -31,7 +31,6 @@ const dataFrom = (draft: CharacterDraft): CharacterWorkspaceData => ({
   })),
   ...(draft.headRegistration ? { headRegistration: structuredClone(draft.headRegistration) } : {}),
   selected: structuredClone(draft.selected),
-  ...(draft.published ? { published: structuredClone(draft.published) } : {}),
 })
 
 export function createCharacterWorkspaceRepository(

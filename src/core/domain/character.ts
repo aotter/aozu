@@ -80,7 +80,6 @@ export interface CharacterDraft {
     props: string[]
   }
   updatedAt: number
-  published?: { version: number; revision: number }
 }
 
 export type CharacterWorkspaceData = Omit<CharacterDraft, 'id' | 'updatedAt' | 'variants'> & {

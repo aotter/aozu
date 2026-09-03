@@ -9,23 +9,23 @@ import { CharacterLibraryPage } from '@/ui/pages/CharacterLibraryPage'
 import { StatusPage } from '@/ui/pages/StatusPage'
 
 function CharacterEditor({ application, refresh }: { application: Application; refresh(): Promise<void> }) {
-  const { characterId } = useParams()
-  const openCharacter = useCallback(() => application.openCharacterDraft(characterId ?? ''), [application, characterId])
+  const navigate = useNavigate()
+  const { characterId, step } = useParams()
+  const openCharacter = useCallback(() => application.openCharacter(characterId ?? ''), [application, characterId])
   if (!characterId) return <Navigate to="/characters" replace />
   return <CharacterDraftPage
-    openDraft={openCharacter}
-    updateDraft={application.updateCharacterDraft}
+    openCharacter={openCharacter}
+    saveCharacter={application.saveCharacter}
     saveAsset={application.saveCharacterAsset}
     setVariantTransform={application.setCharacterVariantTransform}
     autoFitVariant={application.autoFitCharacterVariant}
     compileAtlas={application.compileCharacterAtlas}
-    exportDraft={() => application.exportCharacterDraft(characterId)}
-    onPublish={async (draft) => {
-      const saved = await application.updateCharacterDraft(draft)
-      await application.prepareCharacter(saved)
-      const published = await application.approveCharacterDraft(saved.id)
+    exportCharacter={() => application.exportCharacter(characterId)}
+    saveAs={async (draft) => {
+      const saved = await application.saveCharacterAs(draft)
       await refresh()
-      return published
+      navigate(`/characters/${encodeURIComponent(saved.id)}/${step ?? 'expressions'}`)
+      return saved
     }}
   />
 }
@@ -56,8 +56,8 @@ export function AppRoutes({ application }: { application: Application }) {
   }, [application])
   useEffect(() => {
     const update = () => void refresh()
-    window.addEventListener('character-draft-updated', update)
-    return () => window.removeEventListener('character-draft-updated', update)
+    window.addEventListener('character-updated', update)
+    return () => window.removeEventListener('character-updated', update)
   }, [refresh])
 
   if (loadError) return <><AppHeader webmcp={webmcp} /><StatusPage>{t('startup.error')}</StatusPage></>
@@ -79,12 +79,13 @@ export function AppRoutes({ application }: { application: Application }) {
         loadStarters={application.listStarters}
         createCharacter={application.createCharacter}
         openCharacter={(id) => navigate(`/characters/${encodeURIComponent(id)}/expressions`)}
+        copyCharacter={application.copyCharacter}
         deleteCharacter={application.deleteCharacter}
-        exportCharacter={application.exportCharacterDraft}
+        exportCharacter={application.exportCharacter}
         importCharacter={async (blob) => {
-          const imported = await application.prepareImport(blob)
+          const imported = await application.importCharacter(blob)
           await refresh()
-          navigate(`/characters/${encodeURIComponent(imported.draftId)}/expressions`)
+          navigate(`/characters/${encodeURIComponent(imported.id)}/expressions`)
         }}
         refresh={refresh}
       />} />

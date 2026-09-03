@@ -227,10 +227,6 @@ const characterWorkspaceProperties = {
     outfit: { type: 'string', minLength: 1, maxLength: 40 },
     props: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 40 } },
   }, ['props']),
-  published: objectSchema({
-    version: { type: 'integer', minimum: 1 },
-    revision: { type: 'integer', minimum: 0 },
-  }, ['version', 'revision']),
 }
 const characterWorkspaceRequired = ['schemaVersion', 'revision', 'packId', 'rigProfile', 'name', 'variants', 'selected']
 
@@ -704,7 +700,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/submit-character-asset-candidate.yaml',
     envelope('Procedure', 'submit-character-asset-candidate', {
       title: 'Submit Character Asset Candidate',
-      description: 'Create or repair one Character variant layer after inspect_character_contract. Bind the submission to its exact Character revision and edit-source hash. Valid expression and outfit pixels are stitched into that edit source; props use full replacement. Rejected or stale input does not mutate or navigate. An accepted result opens the exact variant editor for visual review and is never published automatically.',
+      description: 'Create or repair one Character variant layer after inspect_character_contract. Bind the submission to its exact Character revision and edit-source hash. Valid expression and outfit pixels are stitched into that edit source; props use full replacement. Rejected or stale input does not mutate or navigate. An accepted result is saved and opens the exact variant editor for visual review.',
       input: objectSchema({
         characterId: { type: 'string', minLength: 1 },
         group: { enum: CHARACTER_VARIANT_GROUPS },

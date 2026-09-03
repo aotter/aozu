@@ -71,6 +71,15 @@ export const createCharacterDraft = (packId: string = `character-${crypto.random
   updatedAt: Date.now(),
 })
 
+export const copyCharacter = (character: CharacterDraft): CharacterDraft => ({
+  ...structuredClone(character),
+  id: crypto.randomUUID(),
+  packId: `character-${crypto.randomUUID()}`,
+  name: `${character.name || 'Untitled Character'} copy`,
+  revision: 0,
+  updatedAt: Date.now(),
+})
+
 export const isCharacterDraftPopulated = (draft: CharacterDraft) => draft.variants.some(({ layers }) => Object.keys(layers).length > 0)
 
 const boundsCenter = ({ x, y, width, height }: NonNullable<CharacterAssetInspection['visibleBounds']>) => ({
@@ -239,7 +248,8 @@ export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage,
 }
 
 type LegacyRole = 'body-base' | 'head-neutral' | 'head-happy' | 'body-outfit' | 'prop-back' | 'prop-front'
-type CharacterDraftV3 = Omit<CharacterDraft, 'schemaVersion' | 'revision' | 'rigProfile' | 'published'> & {
+type CharacterDraftV4 = CharacterDraft & { published?: { version: number; revision: number } }
+type CharacterDraftV3 = Omit<CharacterDraft, 'schemaVersion' | 'revision' | 'rigProfile'> & {
   schemaVersion: 3
   approvedAt?: number
 }
@@ -277,8 +287,12 @@ const withHeadRegistration = (draft: CharacterDraft): CharacterDraft => {
   return withoutRegistration as CharacterDraft
 }
 
-export function migrateCharacterDraft(draft: CharacterDraft | CharacterDraftV3 | CharacterDraftV2 | LegacyCharacterDraft): CharacterDraft {
-  if ('schemaVersion' in draft && draft.schemaVersion === 4) return withHeadRegistration(withoutDefaultExpression(draft))
+export function migrateCharacterDraft(draft: CharacterDraftV4 | CharacterDraftV3 | CharacterDraftV2 | LegacyCharacterDraft): CharacterDraft {
+  if ('schemaVersion' in draft && draft.schemaVersion === 4) {
+    if (!('published' in draft)) return withHeadRegistration(withoutDefaultExpression(draft))
+    const { published: _published, ...character } = draft
+    return withHeadRegistration(withoutDefaultExpression(character))
+  }
   if ('schemaVersion' in draft && draft.schemaVersion === 3) {
     const { approvedAt: _approvedAt, ...legacy } = draft
     const upgraded: CharacterDraft = {
@@ -357,9 +371,9 @@ export async function setCharacterVariantTransform(
   transform: CharacterVariantTransform,
 ) {
   const stored = await drafts.get(draftId)
-  if (!stored) throw new Error('Character Draft not found')
+  if (!stored) throw new Error('Character not found')
   const draft = migrateCharacterDraft(stored)
-  if (draft.updatedAt !== expectedUpdatedAt) throw new Error(`Character Draft changed; expected ${expectedUpdatedAt}, current ${draft.updatedAt}`)
+  if (draft.updatedAt !== expectedUpdatedAt) throw new Error(`Character changed; expected ${expectedUpdatedAt}, current ${draft.updatedAt}`)
   if (group === 'body') throw new Error('The canonical body registration is locked')
   validateCharacterVariantTransform(transform)
   const variant = draft.variants.find(({ group: candidateGroup, id }) => candidateGroup === group && id === variantId)
@@ -599,7 +613,7 @@ export function resolveCharacterDraftReferenceLayers(
   return resolveDraftLayers(draft, undefined, target)
 }
 
-export function buildCharacterPack(draft: CharacterDraft, version = (draft.published?.version ?? 0) + 1): CharacterPack {
+export function buildCharacterPack(draft: CharacterDraft, version = 1): CharacterPack {
   if (!draft.name.trim()) throw new Error('Companion name is required')
   if (!hasCurrentCharacterLayer(draft, 'body', 'base', 'body')) throw new Error('Base body is required')
   const keys = new Set<string>()
