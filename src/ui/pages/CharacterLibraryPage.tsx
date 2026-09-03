@@ -1,10 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { resolveStarterCharacterLayers } from '@/core/application/character-creation.ts'
 import type { CharacterDraft } from '@/core/domain/character.ts'
-import type { StarterCharacterSelection, ValidatedStarterPackage } from '@/core/domain/starter.ts'
-import { CharacterRenderer } from '@/ui/CharacterRenderer'
 import { DataControls } from '@/ui/DataControls'
 import { Button } from '@/ui/components/ui/button'
 import {
@@ -20,10 +17,9 @@ import {
 
 export type CharacterLibraryItem = Pick<CharacterDraft, 'id' | 'name' | 'updatedAt'>
 
-export function CharacterLibraryPage({ characters, loadStarters, createCharacter, openCharacter, copyCharacter, deleteCharacter, exportCharacter, importCharacter, refresh }: {
+export function CharacterLibraryPage({ characters, createCharacter, openCharacter, copyCharacter, deleteCharacter, exportCharacter, importCharacter, refresh }: {
   characters: CharacterLibraryItem[]
-  loadStarters(): Promise<ValidatedStarterPackage[]>
-  createCharacter(selection: StarterCharacterSelection): Promise<CharacterDraft>
+  createCharacter(): Promise<CharacterDraft>
   openCharacter(id: string): void
   copyCharacter(id: string): Promise<CharacterDraft>
   deleteCharacter(id: string): Promise<void>
@@ -32,16 +28,13 @@ export function CharacterLibraryPage({ characters, loadStarters, createCharacter
   refresh(): Promise<void>
 }) {
   const { t } = useTranslation()
-  const [starters, setStarters] = useState<ValidatedStarterPackage[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
   const [deleting, setDeleting] = useState<CharacterLibraryItem>()
 
-  useEffect(() => { void loadStarters().then(setStarters).catch(() => setError(t('characters.loadError'))) }, [loadStarters, t])
-
-  const create = async (selection: StarterCharacterSelection) => {
+  const create = async () => {
     setBusy(true); setError(undefined)
-    try { openCharacter((await createCharacter(selection)).id) }
+    try { openCharacter((await createCharacter()).id) }
     catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)) }
     finally { setBusy(false) }
   }
@@ -73,24 +66,9 @@ export function CharacterLibraryPage({ characters, loadStarters, createCharacter
     </section>}
 
     <section className="mt-8">
-      <h2 className="font-heading text-lg font-medium">{t('characters.new')}</h2>
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <button type="button" disabled={busy} onClick={() => void create(null)} className="rounded-2xl border p-3 text-left hover:border-foreground/40 disabled:opacity-50">
-          <div className="flex aspect-[2/3] items-center justify-center rounded-xl border border-dashed bg-muted/30 text-sm text-muted-foreground">{t('starter.blank')}</div>
-          <span className="mt-3 block font-medium">{t('starter.blankCharacter')}</span>
-        </button>
-        {starters.flatMap((loaded) => loaded.starter.characterStates.map((state) => <button
-          key={`${loaded.starter.id}@${loaded.starter.version}:${state.id}`}
-          type="button"
-          disabled={busy}
-          onClick={() => void create({ starterId: loaded.starter.id, starterVersion: loaded.starter.version, stateId: state.id })}
-          className="rounded-2xl border p-3 text-left hover:border-foreground/40 disabled:opacity-50"
-        >
-          <CharacterRenderer label={state.name} layers={resolveStarterCharacterLayers(loaded, state.id)} />
-          <span className="mt-3 block font-medium">{state.name}</span>
-          <span className="mt-1 block text-xs leading-5 text-muted-foreground">{state.summary}</span>
-        </button>))}
-      </div>
+      <Button disabled={busy} onClick={() => void create()}>
+        {busy ? t('starter.choosing') : t('characters.new')}
+      </Button>
     </section>
 
     <section className="mt-8 flex items-center justify-between rounded-2xl border border-dashed p-4 text-muted-foreground">

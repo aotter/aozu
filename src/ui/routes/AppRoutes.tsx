@@ -71,8 +71,7 @@ export function AppRoutes({ application }: { application: Application }) {
       <Route index element={<Navigate to="/characters" replace />} />
       <Route path="/characters" element={<CharacterLibraryPage
         characters={library.characters}
-        loadStarters={application.listStarters}
-        createCharacter={application.createCharacter}
+        createCharacter={() => application.createCharacter(null)}
         openCharacter={(id) => navigate(`/characters/${encodeURIComponent(id)}/expressions`)}
         copyCharacter={application.copyCharacter}
         deleteCharacter={application.deleteCharacter}

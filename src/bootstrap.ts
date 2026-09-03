@@ -153,15 +153,15 @@ export function createApplication(document: Document) {
     },
     listStarters: loadStarters,
     async createCharacter(characterChoice: StarterCharacterSelection) {
-      const packages = await loadStarters()
-      const findPackage = (choice: Exclude<StarterCharacterSelection, null>) => {
-        const loaded = packages.find(({ starter }) => starter.id === choice.starterId && starter.version === choice.starterVersion)
-        if (!loaded) throw new Error(`Starter not found: ${choice.starterId}@${choice.starterVersion}`)
-        return loaded
+      let character: CharacterDraft
+      if (characterChoice) {
+        const packages = await loadStarters()
+        const loaded = packages.find(({ starter }) => starter.id === characterChoice.starterId && starter.version === characterChoice.starterVersion)
+        if (!loaded) throw new Error(`Starter not found: ${characterChoice.starterId}@${characterChoice.starterVersion}`)
+        character = createCharacterDraftFromStarter(loaded, characterChoice.stateId)
+      } else {
+        character = createCharacterDraft()
       }
-      const character = characterChoice
-        ? createCharacterDraftFromStarter(findPackage(characterChoice), characterChoice.stateId)
-        : createCharacterDraft()
       return persisted(characterDrafts.create(character))
     },
     /** Save As: duplicates the active in-memory Character and switches to the copy. */
