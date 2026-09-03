@@ -470,6 +470,7 @@ export function createApplication(document: Document) {
     const allowedOperations = [
       'replace' as const,
       ...(current && input.group === 'expression' ? ['repair' as const] : []),
+      ...(current && input.group !== 'body' ? ['transform' as const] : []),
     ]
     const measurement = asset ? measureCharacterMaskAlignment(
       input.group,
@@ -512,6 +513,19 @@ export function createApplication(document: Document) {
           editableRegion,
         )
       : null
+    const reviewPath = characterPath(draft.id, input.group, input.variantId)
+    const visualReview = input.group === 'expression' || input.group === 'outfit' ? {
+      requiredAfterMutation: true,
+      surface: 'browser' as const,
+      path: reviewPath,
+      modes: ['Composite', 'Overlay', 'Difference', 'Align'],
+      instruction: 'Use the browser to inspect the rendered Character in all four modes. Diagnostics are supporting evidence, not final proof. Do not continue to the next asset until the placement passes visual review.',
+      correctionTool: 'set_character_variant_transform',
+      correctionScope: 'translation-and-uniform-scale-only',
+      current: transform,
+      axes: { x: 'right-positive', y: 'down-positive' },
+      regenerateWhen: ['local deformation', 'wrong pose', 'identity drift', 'bad transparency'],
+    } : null
     const replacementAction = {
       tool: 'replace_character_asset',
       required: !current,
@@ -647,6 +661,7 @@ export function createApplication(document: Document) {
         autoFit: fit,
         visualFit,
         normalization,
+        visualReview,
         registration: input.group === 'expression' ? {
           role: headRegistration?.variant.id === input.variantId ? 'head-anchor' : 'follower',
           anchorVariantId: headRegistration?.variant.id ?? null,
@@ -657,7 +672,7 @@ export function createApplication(document: Document) {
             rebasesCurrentExpressions: true,
           } : null,
         } : null,
-        reviewPath: characterPath(draft.id, input.group, input.variantId),
+        reviewPath,
       },
       nextActions,
     }
@@ -709,6 +724,7 @@ export function createApplication(document: Document) {
             'Expression layers contain only the whole aligned head, including the same fixed hairstyle and facial hair; every pixel outside head ownership must be transparent.',
             'No expression overlay means the default face baked into the body. Optional whole-head variants include happy, sad, angry, surprised, and sleepy; additional variants are allowed.',
             'Outfits are full-body variants. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. A prop may be positioned anywhere, including on the head or in a hand.',
+            'After every accepted expression or outfit, use the browser page opened by AOZU and inspect Composite, Overlay, Difference, and Align. If the pixels only need translation or uniform scale, call set_character_variant_transform with absolute x, y, and scale, then inspect all four modes again. Regenerate or replace local deformation, wrong pose, identity drift, or bad transparency. Do not continue to the next asset until visual review passes.',
           ],
           assetPolicy: CHARACTER_ASSET_POLICY,
           target,

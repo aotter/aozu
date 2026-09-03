@@ -701,7 +701,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-character-contract.yaml',
     envelope('Procedure', 'inspect-character-contract', {
       title: 'Inspect Character Contract',
-      description: `Required before replacing or repairing character art. Optionally name one target to receive its allowed operations, exact current asset hash, visual alignment reference, layer ownership, alpha policy, generation size (${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height}) and final size (${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}), normalization, revision, z-order, and diagnostics. replace_character_asset installs a complete finished layer without preserving old pixels and is the only operation for outfits. repair_character_asset is available only for a current expression and stitches into that exact head asset. Expressions contain only a complete whole head. Outfits contain the complete dressed character skin.`,
+      description: `Required before replacing, repairing, or aligning character art. Optionally name one target to receive its allowed operations, exact current asset hash, visual alignment reference, layer ownership, alpha policy, generation size (${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height}) and final size (${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}), normalization, revision, z-order, diagnostics, and required browser visual-review workflow. replace_character_asset installs a complete finished layer without preserving old pixels and is the only operation for outfits. repair_character_asset is available only for a current expression and stitches into that exact head asset. Expressions contain only a complete whole head. Outfits contain the complete dressed character skin.`,
       input: {
         ...objectSchema({
           characterId: { type: 'string', minLength: 1 },
@@ -806,7 +806,7 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/set-character-variant-transform.yaml',
     envelope('Procedure', 'set-character-variant-transform', {
       title: 'Set Character Variant Transform',
-      description: 'Safety net for a Character variant whose full-canvas pixels need translation or uniform scale. Use absolute values from inspect_character_contract and the exact Character revision. A successful call opens that exact variant editor. Head-anchor changes rebase current expressions; front and back prop layers share one transform. The canonical body is locked.',
+      description: 'Visually align an existing expression whole head, outfit, or prop by changing only its full-canvas translation and uniform scale. Inspect the Character in the browser first; x moves right, y moves down, and values are absolute rather than deltas. Use the exact revision from inspect_character_contract. Success opens the exact variant so you can verify Composite, Overlay, Difference, and Align before continuing. Head-anchor changes rebase current expressions; front and back prop layers share one transform. The canonical body is locked.',
       input: objectSchema({
         characterId: { type: 'string', minLength: 1 },
         group: { enum: ['expression', 'outfit', 'prop'] },
