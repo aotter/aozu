@@ -26,11 +26,11 @@ const Layers = ({ layers, style }: { layers: Layer[]; style?: CSSProperties }) =
   style={layerStyle(layer, style)}
 />)
 
-function AtlasLayers({ atlas, layers }: { atlas: CharacterTextureAtlas; layers: Layer[] }) {
+/** Pixi canvas for the compiled atlas. Reports when it has drawn so the DOM layers underneath can step aside. */
+function AtlasLayers({ atlas, layers, onReadyChange }: { atlas: CharacterTextureAtlas; layers: Layer[]; onReadyChange(ready: boolean): void }) {
   const host = useRef<HTMLDivElement>(null)
   const controller = useRef<{ update(atlas: CharacterTextureAtlas, frameIds: readonly string[]): Promise<boolean>; destroy(): void }>(undefined)
   const latest = useRef({ atlas, frameIds: layers.map(({ id }) => id) })
-  const [ready, setReady] = useState(false)
   const frameIds = layers.map(({ id }) => id).join('\n')
 
   useEffect(() => {
@@ -43,7 +43,7 @@ function AtlasLayers({ atlas, layers }: { atlas: CharacterTextureAtlas; layers: 
       controller.current = mounted
       const rendered = await mounted.update(latest.current.atlas, latest.current.frameIds)
       if (disposed) return
-      if (rendered) setReady(true)
+      if (rendered) onReadyChange(true)
     })().catch((error) => {
       console.error('Character atlas render failed', error)
     })
@@ -51,29 +51,35 @@ function AtlasLayers({ atlas, layers }: { atlas: CharacterTextureAtlas; layers: 
       disposed = true
       controller.current?.destroy()
       controller.current = undefined
+      onReadyChange(false)
     }
+  // onReadyChange is a stable setState from the parent.
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     let active = true
     latest.current = { atlas, frameIds: frameIds.split('\n') }
-    void controller.current?.update(atlas, frameIds.split('\n')).then((rendered) => { if (active && rendered) setReady(true) }).catch((error) => {
+    void controller.current?.update(atlas, frameIds.split('\n')).then((rendered) => { if (active && rendered) onReadyChange(true) }).catch((error) => {
       console.error('Character atlas update failed', error)
     })
     return () => { active = false }
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [atlas, frameIds])
 
-  return <>
-    {!ready && <Layers layers={layers} />}
-    <div ref={host} aria-hidden="true" className="absolute inset-0" />
-  </>
+  return <div ref={host} aria-hidden="true" className="absolute inset-0" />
 }
 
 export function CharacterRenderer({ label, layers, atlas, className }: { label: string; layers: Layer[]; atlas?: CharacterTextureAtlas; className?: string }) {
+  // The DOM layers stay mounted in one slot until the canvas has drawn: swapping them for a fresh
+  // instance when the atlas arrived remounted every image (new decode, new fade-in) — a visible blink.
+  const [canvasReady, setCanvasReady] = useState(false)
+  const useCanvas = Boolean(atlas) && layers.length > 0
   return (
     <div className={cn('relative aspect-2/3 w-full overflow-hidden rounded-3xl border bg-muted/40', className)} role="img" aria-label={label}>
       {!layers.length && <div className="character-empty-placeholder absolute inset-0 p-8"><img src="/assets/placeholders/companion-body-faint.webp" alt="" /></div>}
-      {atlas && layers.length ? <AtlasLayers atlas={atlas} layers={layers} /> : <Layers layers={layers} />}
+      {!(useCanvas && canvasReady) && <Layers layers={layers} />}
+      {useCanvas && <AtlasLayers atlas={atlas!} layers={layers} onReadyChange={setCanvasReady} />}
     </div>
   )
 }

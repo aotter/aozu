@@ -8,6 +8,16 @@ export function BlobImage({ blob, alt = '', className, style }: { blob: Blob; al
   return src ? <img src={src} alt={alt} className={className} style={style} /> : null
 }
 
+/** Resolves once the image can be shown. decode() is preferred, but Chrome never settles it in a
+ *  background tab, so the load/error events are the floor: the layer must never stay invisible. */
+const imageReady = (src: string) => new Promise<void>((resolve) => {
+  const image = new Image()
+  image.addEventListener('load', () => resolve(), { once: true })
+  image.addEventListener('error', () => resolve(), { once: true })
+  image.src = src
+  void image.decode().then(resolve, () => resolve())
+})
+
 export function CrossfadeBlobImage({ blob, alt = '', className, style }: { blob: Blob; alt?: string; className: string; style?: CSSProperties }) {
   const urls = useRef(new Set<string>())
   const styleKey = JSON.stringify(style)
@@ -29,7 +39,7 @@ export function CrossfadeBlobImage({ blob, alt = '', className, style }: { blob:
     const objectUrl = URL.createObjectURL(blob)
     urls.current.add(objectUrl)
     let cancelled = false
-    void Object.assign(new Image(), { src: objectUrl }).decode().catch(() => {}).then(() => {
+    void imageReady(objectUrl).then(() => {
       if (cancelled) {
         URL.revokeObjectURL(objectUrl)
         urls.current.delete(objectUrl)
