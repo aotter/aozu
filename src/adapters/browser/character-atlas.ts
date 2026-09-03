@@ -6,10 +6,20 @@ import { characterPixelStats } from './character-image.ts'
 const MAX_ATLAS_SIZE = 4096
 const PADDING = 2
 
-const pngBlob = (canvas: HTMLCanvasElement) => new Promise<Blob>((resolve, reject) => canvas.toBlob(
-  (blob) => blob ? resolve(blob) : reject(new Error('Could not encode character atlas')),
-  'image/png',
-))
+const webpBlob = (image: ImageData) => new Promise<Blob>((resolve, reject) => {
+  const worker = new Worker(new URL('./character-atlas-webp.worker.ts', import.meta.url), { type: 'module' })
+  worker.onmessage = ({ data }: MessageEvent<{ bytes: ArrayBuffer } | { error: string }>) => {
+    worker.terminate()
+    if ('error' in data) reject(new Error(data.error))
+    else resolve(new Blob([data.bytes], { type: 'image/webp' }))
+  }
+  worker.onerror = ({ message }) => {
+    worker.terminate()
+    reject(new Error(message || 'Could not encode character atlas'))
+  }
+  const pixels = image.data.buffer as ArrayBuffer
+  worker.postMessage({ pixels, width: image.width, height: image.height }, [pixels])
+})
 
 type FrameSource = {
   id: string
@@ -90,11 +100,11 @@ export async function compileCharacterTextureAtlas(sources: readonly CharacterAt
     if (expected.some((byte, index) => byte !== actual[index])) throw new Error(`Character atlas pixel check failed: ${id}`)
   }
   return {
-    image: await pngBlob(atlas),
+    image: await webpBlob(context.getImageData(0, 0, atlas.width, atlas.height)),
     data: {
       frames: packed.frames,
       meta: {
-        app: 'Companion', version: '1', image: 'character.atlas.png', format: 'RGBA8888',
+        app: 'Companion', version: '1', image: 'character.atlas.webp', format: 'RGBA8888',
         size: { w: atlas.width, h: atlas.height }, scale: '1',
       },
     },

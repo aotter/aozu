@@ -10,8 +10,7 @@ import {
   PROGRESS_LOOP_IDS,
   PROGRESS_BINDING_SCHEMA,
 } from '../domain/playbook.ts'
-import { CHARACTER_VARIANT_GROUPS } from '../domain/character.ts'
-import { WORKSPACE_DESTINATIONS } from '../application/workspace.ts'
+import { CHARACTER_ALIGN_MODES, CHARACTER_GENERATION_CANVAS, CHARACTER_RESIZE_MODES, CHARACTER_RIG, CHARACTER_VARIANT_GROUPS } from '../domain/character.ts'
 import { compileBundle } from '../bundle.ts'
 
 const source = (sourceId: string, manifest: object): ManifestSource => ({
@@ -51,11 +50,31 @@ const nextActionSchema = objectSchema({
   input: { type: 'object' },
 }, ['tool', 'required'])
 
+const toolEffectsSchema = objectSchema({
+  navigation: objectSchema({
+    path: { type: 'string', pattern: '^/characters(?:/|$)' },
+    mode: { const: 'push' },
+    reason: { type: 'string', minLength: 1 },
+  }, ['path', 'mode', 'reason']),
+})
+
 const toolResultSchema = objectSchema({
   status: { const: 'ok' },
   data: { type: 'object' },
   nextActions: { type: 'array', items: nextActionSchema },
+  effects: toolEffectsSchema,
 }, ['status', 'data'])
+
+const characterHistoryResultSchema = objectSchema({
+  status: { enum: ['ok', 'no_active_history', 'not_settled', 'revision_conflict', 'nothing_to_undo', 'nothing_to_redo'] },
+  data: { type: 'object' },
+  effects: toolEffectsSchema,
+}, ['status', 'data'])
+
+const characterHistoryInputSchema = objectSchema({
+  characterId: { type: 'string', minLength: 1 },
+  expectedRevision: { type: 'integer', minimum: 1 },
+}, ['characterId', 'expectedRevision'])
 
 const stageProjectionSchema = objectSchema({
   stageId: { type: 'string', minLength: 1 },
@@ -157,6 +176,76 @@ const experienceDraftCreateProperties = {
   character: experienceDraftProperties.character,
   story: experienceDraftProperties.story,
 }
+
+const characterTransformSchema = objectSchema({
+  x: { type: 'number', minimum: -512, maximum: 512 },
+  y: { type: 'number', minimum: -768, maximum: 768 },
+  scale: { type: 'number', minimum: 0.25, maximum: 4 },
+}, ['x', 'y', 'scale'])
+
+const characterNormalizationSchema = objectSchema({
+  resize: { enum: CHARACTER_RESIZE_MODES },
+  align: { enum: CHARACTER_ALIGN_MODES },
+}, ['resize', 'align'])
+
+const characterInspectionSchema = objectSchema({
+  width: { const: CHARACTER_RIG.canvas.width },
+  height: { const: CHARACTER_RIG.canvas.height },
+  hasTransparentPixels: { const: true },
+  hasVisiblePixels: { const: true },
+  genuineRgba: { const: true },
+  visibleBounds: objectSchema({
+    x: { type: 'integer', minimum: 0 },
+    y: { type: 'integer', minimum: 0 },
+    width: { type: 'integer', minimum: 1, maximum: CHARACTER_RIG.canvas.width },
+    height: { type: 'integer', minimum: 1, maximum: CHARACTER_RIG.canvas.height },
+  }, ['x', 'y', 'width', 'height']),
+  visiblePixelCount: { type: 'integer', minimum: 1 },
+  size: { type: 'integer', minimum: 1, maximum: 5 * 1024 * 1024 },
+  sha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+}, ['width', 'height', 'hasTransparentPixels', 'hasVisiblePixels', 'genuineRgba', 'size', 'sha256'])
+
+const characterAssetDescriptorSchema = objectSchema({
+  blobId: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+  filename: { type: 'string', minLength: 1, maxLength: 200 },
+  source: { enum: ['user', 'agent', 'starter'] },
+  inspection: characterInspectionSchema,
+  canonicalSha256: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+}, ['blobId', 'filename', 'source', 'inspection'])
+
+const characterWorkspaceProperties = {
+  schemaVersion: { const: 4 },
+  packId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,63}$' },
+  rigProfile: objectSchema({
+    id: { const: CHARACTER_RIG.id },
+    version: { const: CHARACTER_RIG.version },
+  }, ['id', 'version']),
+  name: { type: 'string', minLength: 1, maxLength: 200 },
+  variants: {
+    type: 'array',
+    minItems: 1,
+    maxItems: 100,
+    items: objectSchema({
+      id: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
+      group: { enum: CHARACTER_VARIANT_GROUPS },
+      label: { type: 'string', minLength: 1, maxLength: 80 },
+      layers: objectSchema({
+        body: characterAssetDescriptorSchema,
+        head: characterAssetDescriptorSchema,
+        back: characterAssetDescriptorSchema,
+        front: characterAssetDescriptorSchema,
+      }),
+      transform: characterTransformSchema,
+    }, ['id', 'group', 'label', 'layers']),
+  },
+  headRegistration: objectSchema({ variantId: { type: 'string', minLength: 1, maxLength: 40 } }, ['variantId']),
+  selected: objectSchema({
+    expression: { type: 'string', minLength: 1, maxLength: 40 },
+    outfit: { type: 'string', minLength: 1, maxLength: 40 },
+    props: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 40 } },
+  }, ['props']),
+}
+const characterWorkspaceRequired = ['schemaVersion', 'packId', 'rigProfile', 'name', 'variants', 'selected']
 
 export const FIXED_BACKBONE_VERSION = "6"
 
@@ -304,6 +393,15 @@ const ALL_BACKBONE_SOURCES = [
     ),
   ),
   source(
+    'authoring/character-workspace.yaml',
+    envelope('Schema', 'character-workspaces', {
+      title: 'Character workspaces',
+      lifecycle: 'operational',
+      indexes: [['packId']],
+      schema: objectSchema(characterWorkspaceProperties, characterWorkspaceRequired),
+    }),
+  ),
+  source(
     "fixed/run.yaml",
     envelope(
       "Schema",
@@ -448,10 +546,41 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-workspace.yaml',
     envelope('Procedure', 'inspect-workspace', {
       title: 'Inspect Workspace',
-      description: 'Start here on every page. Returns the current workflow phase, saved authoring and play state, blockers, allowed destinations, and the next tool or navigation action without guessing routes.',
+      description: 'Start here on every page. Returns saved Character workspaces, the current Character and route, missing required art, and exact next tool or navigation actions without guessing routes.',
       input: emptyReadOnlyInput,
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.inspect-workspace' },
+    }),
+  ),
+  source(
+    'authoring/create-character-workspace.yaml',
+    envelope('Procedure', 'create-character-workspace', {
+      title: 'Create Character Workspace',
+      input: objectSchema(characterWorkspaceProperties, characterWorkspaceRequired),
+      output: { type: 'object' },
+      handler: { kind: 'builtin', op: 'create', schema: 'character-workspaces' },
+    }),
+  ),
+  source(
+    'authoring/update-character-workspace.yaml',
+    envelope('Procedure', 'update-character-workspace', {
+      title: 'Update Character Workspace',
+      input: objectSchema({
+        id: { type: 'string', minLength: 1 },
+        expectedVersion: { type: 'integer', minimum: 1 },
+        ...characterWorkspaceProperties,
+      }, ['id', 'expectedVersion', ...characterWorkspaceRequired]),
+      output: { type: 'object' },
+      handler: { kind: 'builtin', op: 'update', schema: 'character-workspaces' },
+    }),
+  ),
+  source(
+    'authoring/delete-character-workspace.yaml',
+    envelope('Procedure', 'delete-character-workspace', {
+      title: 'Delete Character Workspace',
+      input: objectSchema({ id: { type: 'string', minLength: 1 } }, ['id']),
+      output: { type: 'object' },
+      handler: { kind: 'builtin', op: 'delete', schema: 'character-workspaces' },
     }),
   ),
   source(
@@ -462,23 +591,24 @@ const ALL_BACKBONE_SOURCES = [
     }),
   ),
   source(
-    'authoring/navigate-companion.yaml',
-    envelope('Procedure', 'navigate-companion', {
-      title: 'Navigate Companion',
-      description: 'Navigate the website to one destination returned by inspect_workspace. This changes only the browser surface and never mutates Companion data or approves a review.',
+    'authoring/navigate-character.yaml',
+    envelope('Procedure', 'navigate-character', {
+      title: 'Navigate Character',
+      description: 'Navigate to the Character library or an exact Character category or variant returned by inspect_workspace. A successful call pushes that route in the SPA without mutating Character data.',
       input: objectSchema({
-        destination: { enum: Object.keys(WORKSPACE_DESTINATIONS) },
-        draftId: { type: 'string', minLength: 1 },
+        destination: { enum: ['characters', 'character-expressions', 'character-outfits', 'character-props'] },
+        characterId: { type: 'string', minLength: 1 },
+        variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
       }, ['destination']),
       output: toolResultSchema,
-      handler: { kind: 'ref', ref: 'companion.navigate-companion' },
+      handler: { kind: 'ref', ref: 'companion.navigate-character' },
     }),
   ),
   source(
-    'authoring/navigate-companion-mcp.yaml',
-    envelope('Trigger', 'navigate-companion', {
+    'authoring/navigate-character-mcp.yaml',
+    envelope('Trigger', 'navigate-character', {
       source: { kind: 'mcp', surface: 'public' },
-      target: { procedure: 'navigate-companion' },
+      target: { procedure: 'navigate-character' },
     }),
   ),
   source(
@@ -528,7 +658,7 @@ const ALL_BACKBONE_SOURCES = [
   source(
     'authoring/inspect-experience-contract-mcp.yaml',
     envelope('Trigger', 'inspect-experience-contract', {
-      source: { kind: 'mcp', surface: 'public' },
+      source: { kind: 'mcp', surface: 'staff' },
       target: { procedure: 'inspect-experience-contract' },
     }),
   ),
@@ -554,7 +684,7 @@ const ALL_BACKBONE_SOURCES = [
   source(
     "authoring/submit-experience-candidate-mcp.yaml",
     envelope("Trigger", "submit-experience-candidate", {
-      source: { kind: "mcp", surface: "public" },
+      source: { kind: "mcp", surface: "staff" },
       target: { procedure: "submit-experience-candidate" },
     }),
   ),
@@ -562,14 +692,14 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/inspect-character-contract.yaml',
     envelope('Procedure', 'inspect-character-contract', {
       title: 'Inspect Character Contract',
-      description: 'Required before generating or changing character art. Optionally name one target to receive its exact reference layer, alpha-mask diagnostics, z-order, canonical freshness, and alignment mode. A registered head anchor may include an experimental native pixel-and-edge correlation suggestion; it is never applied or approved automatically. Outfits are complete dressed character-skin replacements, not clothing-only overlays. The website validates but never removes backgrounds, resizes, realigns, or repairs images.',
+      description: `Required before generating, replacing, or repairing character art. Optionally name one target to receive its exact edit source and hash, stable alignment reference and transform, deterministic editable-region mask, reference visible bounds, generation size (${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height}) and final size (${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height}), the allowed and recommended submission normalization, the current Character revision, z-order, and alignment diagnostics. Existing current assets are repaired from their own pixels. Mask transparency marks editable pixels; opaque pixels are protected. Outfits are complete dressed character-skin replacements. Props use full replacement. The website validates, deterministically normalizes only what a submission explicitly requests, and stitches, but never generates, removes backgrounds, recovers fake alpha, or guesses geometry.`,
       input: {
         ...objectSchema({
-          draftId: { type: 'string', minLength: 1 },
+          characterId: { type: 'string', minLength: 1 },
           group: { enum: CHARACTER_VARIANT_GROUPS },
           variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
           layer: { enum: ['body', 'head', 'back', 'front'] },
-        }, ['draftId']),
+        }, ['characterId']),
         readOnly: true,
       },
       output: toolResultSchema,
@@ -587,17 +717,19 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/submit-character-asset-candidate.yaml',
     envelope('Procedure', 'submit-character-asset-candidate', {
       title: 'Submit Character Asset Candidate',
-      description: 'Fill one layer of a character variant with a final PNG candidate. Inspect the contract first. Outfits must contain the complete dressed character because they replace character-skin; clothing-only images are rejected. Whole-head expressions include the complete aligned head, hairstyle, and facial hair. Props are independent, multi-select, full-canvas overlays and may contain front and back layers. Send an exact 512×768 RGBA data:image/png;base64 URL with real transparency. Alpha-mask preflight rejects structurally invalid candidates without mutating the draft. A valid candidate is staged only and is never approved or activated.',
+      description: `Create or repair one Character variant layer after inspect_character_contract. Bind the submission to its exact Character revision and edit-source hash. Valid expression and outfit pixels are stitched into that edit source; props use full replacement. Rejected or stale input does not mutate or navigate. An accepted result is saved and opens the exact variant editor for visual review. Submit exact ${CHARACTER_RIG.canvas.width}×${CHARACTER_RIG.canvas.height} RGBA by default, or explicitly request the deterministic normalization returned by inspect_character_contract to submit a genuine-RGBA ${CHARACTER_GENERATION_CANVAS.width}×${CHARACTER_GENERATION_CANVAS.height} render; every applied normalization is reported back. The website never removes backgrounds, recovers fake alpha, upscales, crops, or accepts another aspect ratio.`,
       input: objectSchema({
-        draftId: { type: 'string', minLength: 1 },
+        characterId: { type: 'string', minLength: 1 },
         group: { enum: CHARACTER_VARIANT_GROUPS },
         variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
         label: { type: 'string', minLength: 1, maxLength: 80 },
         layer: { enum: ['body', 'head', 'back', 'front'] },
-        expectedUpdatedAt: { type: 'integer', minimum: 0 },
+        expectedRevision: { type: 'integer', minimum: 1 },
+        expectedEditSourceSha256: { type: ['string', 'null'], pattern: '^[0-9a-f]{64}$' },
         filename: { type: 'string', minLength: 1, maxLength: 200 },
         dataUrl: { type: 'string', pattern: '^data:image/png;base64,', maxLength: 7_100_000 },
-      }, ['draftId', 'group', 'variantId', 'label', 'layer', 'expectedUpdatedAt', 'filename', 'dataUrl']),
+        normalization: characterNormalizationSchema,
+      }, ['characterId', 'group', 'variantId', 'label', 'layer', 'expectedRevision', 'expectedEditSourceSha256', 'filename', 'dataUrl']),
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.submit-character-asset-candidate' },
     }),
@@ -613,16 +745,16 @@ const ALL_BACKBONE_SOURCES = [
     'authoring/set-character-variant-transform.yaml',
     envelope('Procedure', 'set-character-variant-transform', {
       title: 'Set Character Variant Transform',
-      description: 'Safety net for an otherwise valid staged character variant whose full-canvas pixels need translation or uniform scale. Use absolute values returned or derived from inspect_character_contract; never accumulate directional nudges. When the target is the registered head anchor, visually compare it with the canonical body default head; changing it automatically rebases every current expression. Front and back prop layers share this transform. The canonical body is locked.',
+      description: 'Safety net for a Character variant whose full-canvas pixels need translation or uniform scale. Use absolute values from inspect_character_contract and the exact Character revision. A successful call opens that exact variant editor. Head-anchor changes rebase current expressions; front and back prop layers share one transform. The canonical body is locked.',
       input: objectSchema({
-        draftId: { type: 'string', minLength: 1 },
+        characterId: { type: 'string', minLength: 1 },
         group: { enum: ['expression', 'outfit', 'prop'] },
         variantId: { type: 'string', pattern: '^[a-z0-9][a-z0-9_-]{0,39}$' },
-        expectedUpdatedAt: { type: 'integer', minimum: 0 },
+        expectedRevision: { type: 'integer', minimum: 1 },
         x: { type: 'number', minimum: -512, maximum: 512 },
         y: { type: 'number', minimum: -768, maximum: 768 },
         scale: { type: 'number', minimum: 0.25, maximum: 4 },
-      }, ['draftId', 'group', 'variantId', 'expectedUpdatedAt', 'x', 'y', 'scale']),
+      }, ['characterId', 'group', 'variantId', 'expectedRevision', 'x', 'y', 'scale']),
       output: toolResultSchema,
       handler: { kind: 'ref', ref: 'companion.set-character-variant-transform' },
     }),
@@ -632,6 +764,40 @@ const ALL_BACKBONE_SOURCES = [
     envelope('Trigger', 'set-character-variant-transform', {
       source: { kind: 'mcp', surface: 'public' },
       target: { procedure: 'set-character-variant-transform' },
+    }),
+  ),
+  source(
+    'authoring/undo-character-change.yaml',
+    envelope('Procedure', 'undo-character-change', {
+      title: 'Undo Character Change',
+      description: 'Undo the latest change of the active Character editing session. Requires the exact saved Character revision and a settled (saved) session; inactive, pending, failed, conflicted, stale, or empty-history requests return a structured status without mutation or navigation. Success persists the previous Character as a new revision and opens that Character editor.',
+      input: characterHistoryInputSchema,
+      output: characterHistoryResultSchema,
+      handler: { kind: 'ref', ref: 'companion.undo-character-change' },
+    }),
+  ),
+  source(
+    'authoring/undo-character-change-mcp.yaml',
+    envelope('Trigger', 'undo-character-change', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'undo-character-change' },
+    }),
+  ),
+  source(
+    'authoring/redo-character-change.yaml',
+    envelope('Procedure', 'redo-character-change', {
+      title: 'Redo Character Change',
+      description: 'Redo the most recently undone change of the active Character editing session. Same preconditions and structured statuses as undo_character_change. Success persists the next Character as a new revision and opens that Character editor.',
+      input: characterHistoryInputSchema,
+      output: characterHistoryResultSchema,
+      handler: { kind: 'ref', ref: 'companion.redo-character-change' },
+    }),
+  ),
+  source(
+    'authoring/redo-character-change-mcp.yaml',
+    envelope('Trigger', 'redo-character-change', {
+      source: { kind: 'mcp', surface: 'public' },
+      target: { procedure: 'redo-character-change' },
     }),
   ),
   source(

@@ -11,6 +11,12 @@ export const CHARACTER_RIG = {
   ],
 } as const
 
+/** The size generators produce at; exactly 2× the rig canvas so the deterministic downscale stays exact. */
+export const CHARACTER_GENERATION_CANVAS = {
+  width: CHARACTER_RIG.canvas.width * 2,
+  height: CHARACTER_RIG.canvas.height * 2,
+} as const
+
 const LEGACY_CHARACTER_RIG = {
   id: 'companion-fullbody',
   version: 1,
@@ -42,6 +48,19 @@ export interface CharacterVariantTransform {
 
 export const IDENTITY_CHARACTER_TRANSFORM: CharacterVariantTransform = { x: 0, y: 0, scale: 1 }
 
+export const CHARACTER_RESIZE_MODES = ['none', 'exact-aspect-downscale'] as const
+export const CHARACTER_ALIGN_MODES = ['none', 'reference-visible-bounds'] as const
+export type CharacterResizeMode = typeof CHARACTER_RESIZE_MODES[number]
+export type CharacterAlignMode = typeof CHARACTER_ALIGN_MODES[number]
+
+/** Explicit, opt-in raster normalization requested as part of one asset submission. */
+export interface CharacterNormalization {
+  resize: CharacterResizeMode
+  align: CharacterAlignMode
+}
+
+export const NO_CHARACTER_NORMALIZATION: CharacterNormalization = { resize: 'none', align: 'none' }
+
 export interface CharacterDraftAsset {
   blob: Blob
   filename: string
@@ -67,8 +86,9 @@ export interface CharacterAssetTarget {
 
 export interface CharacterDraft {
   id: string
-  schemaVersion: 3
+  schemaVersion: 4
   packId: string
+  rigProfile: { id: string; version: number }
   name: string
   nameConfirmed?: boolean
   profile?: {
@@ -85,7 +105,14 @@ export interface CharacterDraft {
     props: string[]
   }
   updatedAt: number
-  approvedAt?: number
+}
+
+export const characterAssetScope = (packId: string) => `character:${packId}`
+
+export type CharacterWorkspaceData = Omit<CharacterDraft, 'id' | 'updatedAt' | 'variants'> & {
+  variants: Array<Omit<CharacterDraftVariant, 'layers'> & {
+    layers: Partial<Record<CharacterVariantLayer, Omit<CharacterDraftAsset, 'blob'> & { blobId: string }>>
+  }>
 }
 
 export interface AppearanceRef {
@@ -154,7 +181,7 @@ export interface CharacterTextureAtlas {
     meta: {
       app: 'Companion'
       version: '1'
-      image: 'character.atlas.png'
+      image: 'character.atlas.webp'
       format: 'RGBA8888'
       size: { w: number; h: number }
       scale: '1'

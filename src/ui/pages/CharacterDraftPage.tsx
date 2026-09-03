@@ -1,16 +1,31 @@
-import { ArrowLeftIcon, CircleSlash2Icon, Layers2Icon, PencilIcon, PlusIcon } from 'lucide-react'
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { ArrowLeftIcon, CircleSlash2Icon, CopyIcon, Layers2Icon, LoaderCircleIcon, PencilIcon, PlusIcon, Redo2Icon, Trash2Icon, Undo2Icon } from 'lucide-react'
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Navigate, useLocation, useNavigate, useParams } from 'react-router'
+import { Navigate, useNavigate, useParams } from 'react-router'
+import { useStore } from 'zustand'
 
-import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterRegistrationFrame, hasCurrentCharacterLayer, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, transformCharacterBounds } from '@/core/application/character-creation.ts'
-import { workspacePath, type WorkspaceDestination } from '@/core/application/workspace.ts'
-import { IDENTITY_CHARACTER_TRANSFORM, type CharacterAssetTarget, type CharacterDraft, type CharacterDraftVariant, type CharacterTextureAtlas, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
+import { CHARACTER_CREATION_GROUPS, REQUIRED_CHARACTER_TARGETS, characterDraftAtlasKey, characterRegistrationFrame, isCharacterDraftAssetCurrent, resolveCharacterDraftLayers, resolveCharacterDraftReferenceLayers, saveCharacterDraftAsset, setCharacterVariantTransform, transformCharacterBounds } from '@/core/application/character-creation.ts'
+import type { CharacterFitSuggestion } from '@/core/application/character-alignment.ts'
+import type { CharacterEditor } from '@/core/application/character-editor.ts'
+import { IDENTITY_CHARACTER_TRANSFORM, type CharacterDraft, type CharacterDraftVariant, type CharacterTextureAtlas, type CharacterVariantGroup, type CharacterVariantLayer, type CharacterVariantTransform } from '@/core/domain/character.ts'
+import { AozuIcon, type AozuIconName } from '@/ui/AozuIcon'
 import { CharacterAlignmentRenderer, CharacterAssetImage, CharacterAtlasFrameImage, CharacterRenderer, CharacterSlotPlaceholder } from '@/ui/CharacterRenderer'
 import { Button } from '@/ui/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/ui/components/ui/alert-dialog'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/components/ui/tabs'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/components/ui/tooltip'
 import { DataControls } from '@/ui/DataControls'
-import { AozuIcon, type AozuIconName } from '@/ui/AozuIcon'
 import { StatusPage } from '@/ui/pages/StatusPage'
+import { useBlobUrl } from '@/ui/useBlobUrl'
 
 type CharacterCategoryId = 'expressions' | 'outfits' | 'props'
 type CharacterCategory = { id: CharacterCategoryId; group: CharacterVariantGroup; icon: AozuIconName }
@@ -20,58 +35,74 @@ const characterCategories: CharacterCategory[] = [
   { id: 'outfits', group: 'outfit', icon: 'outfits' },
   { id: 'props', group: 'prop', icon: 'props' },
 ]
-const categoryDestinations: Record<CharacterCategoryId, WorkspaceDestination> = {
-  expressions: 'character-expressions', outfits: 'character-outfits', props: 'character-props',
-}
+const categoryForGroup = (group: CharacterVariantGroup) => characterCategories.find((category) => category.group === group)!.id
 const expressionIcons = ['happy', 'sad', 'angry', 'surprised', 'sleepy']
-const characterSlotIcon = (group: CharacterVariantGroup, variantId: string) => {
-  if (group === 'expression') return `/assets/expression-placeholders/${expressionIcons.includes(variantId) ? variantId : 'happy'}.png`
-  if (group === 'body') return '/assets/character-slots/body-base.png'
-  return '/assets/character-slots/body-outfit.png'
-}
+const expressionPlaceholder = (variantId: string) => `/assets/expression-placeholders/${expressionIcons.includes(variantId) ? variantId : 'happy'}.webp`
+// Expressions have portrait art; outfits and props reuse their category icon; the base body keeps its silhouette mask.
 const CharacterVariantPlaceholder = ({ group, variantId, label }: { group: CharacterVariantGroup; variantId: string; label?: string }) => group === 'expression'
-  ? <img className="expression-placeholder" src={characterSlotIcon(group, variantId)} alt={label ?? ''} />
+  ? <img className="expression-placeholder" src={expressionPlaceholder(variantId)} alt={label ?? ''} />
   : group === 'body'
-    ? <img className="character-body-placeholder" src="/assets/placeholders/companion-body-aozu.png" alt={label ?? ''} />
-  : <CharacterSlotPlaceholder src={characterSlotIcon(group, variantId)} label={label} />
+    ? <CharacterSlotPlaceholder src="/assets/character-slots/body-base.webp" label={label} />
+    : <AozuIcon name={group === 'prop' ? 'props' : 'outfits'} className="is-placeholder" />
 const variantKey = ({ group, id }: Pick<CharacterDraftVariant, 'group' | 'id'>) => `${group}:${id}`
-const useBlobUrl = (blob?: Blob) => {
-  const [src, setSrc] = useState<string>()
-  useEffect(() => {
-    if (!blob) return
-    const url = URL.createObjectURL(blob)
-    // oxlint-disable-next-line react/set-state-in-effect -- Object URLs are external browser resources.
-    setSrc(url)
-    return () => URL.revokeObjectURL(url)
-  }, [blob])
-  return src
+const describe = (error: unknown) => error instanceof Error ? error.message : String(error)
+const sameTransform = (left: CharacterVariantTransform = IDENTITY_CHARACTER_TRANSFORM, right: CharacterVariantTransform) =>
+  left.x === right.x && left.y === right.y && left.scale === right.scale
+const withVariant = (source: CharacterDraft, target: Pick<CharacterDraftVariant, 'group' | 'id'>, patch: Partial<CharacterDraftVariant>): CharacterDraft => ({
+  ...source,
+  variants: source.variants.map((variant) => variant.group === target.group && variant.id === target.id ? { ...variant, ...patch } : variant),
+})
+const activateVariant = (source: CharacterDraft, variant: CharacterDraftVariant) => {
+  const { group, id } = variant
+  if (group === 'body') return source
+  if (group === 'expression') return source.selected.expression === id ? source : { ...source, selected: { ...source.selected, expression: id } }
+  if (group === 'prop') return source.selected.props.includes(id) ? source : { ...source, selected: { ...source.selected, props: [...source.selected.props, id] } }
+  return source.selected.outfit === id ? source : { ...source, selected: { ...source.selected, outfit: id } }
 }
+const fitNumber = (value: number | null) => value === null ? '—' : `${Math.round(value * 10_000) / 10_000}`
+const fitMetrics = (t: (key: string) => string, suggestion: Extract<CharacterFitSuggestion, { status: 'suggested' }>) => [
+  ...(['iou', 'footLine', 'match'] as const).flatMap((field) => {
+    const key = field === 'iou' ? 'iou' : field === 'footLine' ? 'footLineDelta' : 'score'
+    const before = suggestion.before[key]
+    const after = suggestion.after[key]
+    return before === null || after === null ? [] : [`${t(`characterDraft.transform.${field}`)} ${fitNumber(before)} → ${fitNumber(after)}`]
+  }),
+  `x ${suggestion.transform.x} · y ${suggestion.transform.y} · ×${suggestion.transform.scale}`,
+]
 
-export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVariantTransform, autoFitVariant, compileAtlas, exportDraft, onReview }: {
-  openDraft(): Promise<CharacterDraft>
-  updateDraft(draft: CharacterDraft): Promise<CharacterDraft>
-  saveAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string): Promise<CharacterDraft>
-  setVariantTransform(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string, transform: CharacterVariantTransform): Promise<CharacterDraft>
-  autoFitVariant(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string): Promise<CharacterDraft>
+const isTextEntry = (target: EventTarget | null) => target instanceof HTMLElement
+  && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+
+export function CharacterDraftPage({ editor, autoFitVariant, fitSuggestion, compileAtlas, exportCharacter, saveAs, deleteCharacter }: {
+  editor: CharacterEditor
+  autoFitVariant(group: CharacterVariantGroup, variantId: string): Promise<void>
+  fitSuggestion(group: CharacterVariantGroup, variantId: string): Promise<CharacterFitSuggestion>
   compileAtlas(draft: CharacterDraft): Promise<CharacterTextureAtlas | undefined>
-  exportDraft(): Promise<Blob>
-  onReview(draft: CharacterDraft): Promise<void>
+  exportCharacter(): Promise<Blob>
+  saveAs(): Promise<CharacterDraft>
+  deleteCharacter(): Promise<void>
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const location = useLocation()
-  const { draftId, step } = useParams()
+  const { characterId, step, variantId } = useParams()
   const category = characterCategories.find(({ id }) => id === step)
-  const [draft, setDraft] = useState<CharacterDraft>()
-  const [loadError, setLoadError] = useState(false)
+  const activeCharacterId = useStore(editor.store, (state) => state.activeCharacterId)
+  const character = useStore(editor.store, (state) => state.character)
+  const saveStatus = useStore(editor.store, (state) => state.saveStatus)
+  const saveError = useStore(editor.store, (state) => state.saveError)
+  const canUndo = useStore(editor.history, (state) => state.pastStates.length > 0) && saveStatus !== 'conflict'
+  const canRedo = useStore(editor.history, (state) => state.futureStates.length > 0) && saveStatus !== 'conflict'
+  const [loadError, setLoadError] = useState<{ characterId: string; message: string }>()
+  // In-progress text, numeric, or drag edits render locally until one commit; keyed to the committed value they started from.
+  const [local, setLocal] = useState<{ base: CharacterDraft; value: CharacterDraft }>()
   const [busy, setBusy] = useState<string>()
   const [error, setError] = useState<string>()
-  const [compiled, setCompiled] = useState<{ updatedAt: number; atlas?: CharacterTextureAtlas }>()
-  const [selectedVariantKey, setSelectedVariantKey] = useState<string>()
+  const [compiled, setCompiled] = useState<{ key: string; atlas?: CharacterTextureAtlas }>()
+  const [fit, setFit] = useState<{ key: string; value: CharacterFitSuggestion }>()
+  const [deleteOpen, setDeleteOpen] = useState(false)
   const [alignmentMode, setAlignmentMode] = useState<'composite' | 'overlay' | 'difference' | 'diagnostic'>('overlay')
-  const compiledAt = useRef<number | undefined>(undefined)
+  const atlasDraft = useRef<CharacterDraft | undefined>(undefined)
   const drag = useRef<{
-    draft: CharacterDraft
     group: CharacterVariantGroup
     variantId: string
     pointerId: number
@@ -84,44 +115,80 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   } | undefined>(undefined)
 
   useEffect(() => {
-    let active = true
-    const refresh = () => void openDraft()
-      .then((next) => { if (active) setDraft(next) })
-      .catch(() => { if (active) setLoadError(true) })
-    refresh()
-    window.addEventListener('character-draft-updated', refresh)
-    return () => {
-      active = false
-      window.removeEventListener('character-draft-updated', refresh)
-    }
-  }, [openDraft])
-
+    let live = true
+    editor.open(characterId ?? '').catch((caught: unknown) => { if (live) setLoadError({ characterId: characterId ?? '', message: describe(caught) }) })
+    return () => { live = false }
+  }, [editor, characterId])
   useEffect(() => {
-    if (!draft || compiledAt.current === draft.updatedAt) return
-    compiledAt.current = draft.updatedAt
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || isTextEntry(event.target)) return
+      const key = event.key.toLowerCase()
+      if (key === 'z') { event.preventDefault(); void (event.shiftKey ? editor.redo() : editor.undo()) }
+      else if (key === 'y' && event.ctrlKey) { event.preventDefault(); void editor.redo() }
+    }
+    const onBeforeUnload = (event: BeforeUnloadEvent) => { if (editor.store.getState().saveStatus !== 'saved') event.preventDefault() }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('beforeunload', onBeforeUnload) }
+  }, [editor])
+
+  const committed = activeCharacterId === characterId ? character ?? undefined : undefined
+  const draft = local && local.base === committed ? local.value : committed
+  const atlasKey = committed ? characterDraftAtlasKey(committed) : undefined
+  useLayoutEffect(() => { atlasDraft.current = committed }, [committed])
+  useEffect(() => {
+    const source = atlasDraft.current
+    if (!source || !atlasKey || compiled?.key === atlasKey) return
     let active = true
-    void compileAtlas(draft)
-      .then((atlas) => { if (active) setCompiled({ updatedAt: draft.updatedAt, atlas }) })
+    void compileAtlas(source)
+      .then((atlas) => { if (active) setCompiled({ key: atlasKey, atlas }) })
       .catch((caught) => {
         console.error('Character atlas compile failed', caught)
-        if (active) setCompiled({ updatedAt: draft.updatedAt })
+        if (active) setCompiled({ key: atlasKey })
       })
     return () => { active = false }
-  }, [compileAtlas, draft])
+  }, [atlasKey, compileAtlas, compiled?.key])
 
-  const atlas = draft && compiled?.updatedAt === draft.updatedAt ? compiled.atlas : undefined
+  const fitGroup = category?.group === 'expression' || category?.group === 'outfit' ? category.group : undefined
+  const fitKey = committed && atlasKey && variantId && fitGroup ? `${fitGroup}:${variantId}:${atlasKey}` : undefined
+  useEffect(() => {
+    if (!fitKey || !fitGroup || !variantId) return
+    let active = true
+    void fitSuggestion(fitGroup, variantId)
+      .then((value) => { if (active) setFit({ key: fitKey, value }) })
+      .catch(() => { if (active) setFit({ key: fitKey, value: { status: 'unavailable' } }) })
+    return () => { active = false }
+  }, [fitKey, fitGroup, variantId, fitSuggestion])
+  const suggestion = fit && fitKey && fit.key === fitKey ? fit.value : undefined
+
+  const atlas = compiled?.atlas
   const atlasSrc = useBlobUrl(atlas?.image)
 
-  if (!step || step === 'identity' || step === 'accessories') return <Navigate to={workspacePath('character-expressions', draftId)} state={location.state} replace />
-  if (!category) return <Navigate to={workspacePath('character-expressions', draftId)} state={location.state} replace />
-  if (loadError) return <StatusPage>{t('startup.error')}</StatusPage>
+  if (!step || step === 'identity' || step === 'accessories') return <Navigate to={`/characters/${encodeURIComponent(characterId ?? '')}/expressions`} replace />
+  if (!category) return <Navigate to={`/characters/${encodeURIComponent(characterId ?? '')}/expressions`} replace />
+  if (loadError && loadError.characterId === characterId) return <StatusPage>
+    {loadError.message}
+    {activeCharacterId && activeCharacterId !== characterId && <><br /><Button variant="link" onClick={() => navigate(`/characters/${encodeURIComponent(activeCharacterId)}/expressions`)}>{t('characterDraft.backToActive', { name: character?.name })}</Button></>}
+  </StatusPage>
   if (!draft) return <StatusPage>{t('startup.loading')}</StatusPage>
 
-  const missing = REQUIRED_CHARACTER_TARGETS.filter((target) => !hasCurrentCharacterLayer(draft, target.group, target.variantId, target.layer))
+  const edit = (value: CharacterDraft) => { if (committed) setLocal({ base: committed, value }) }
+  const revert = () => setLocal(undefined)
+  const commit = (produce: (current: CharacterDraft) => CharacterDraft) => {
+    setError(undefined)
+    setLocal(undefined)
+    try { void editor.dispatch(produce) } catch (caught) { setError(describe(caught)) }
+  }
+  const textKeys = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter') event.currentTarget.blur()
+    if (event.key === 'Escape') revert()
+  }
+
+  const baseVariant = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')
+  const hasBase = Boolean(baseVariant && isCharacterDraftAssetCurrent(draft, baseVariant, 'body'))
   const visibleVariants = category ? draft.variants.filter(({ group }) => category.group === group) : []
-  const bodyVariant = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')!
-  const nameConfirmed = draft.nameConfirmed ?? draft.name !== 'My Companion'
-  const selectedVariant = draft.variants.find((variant) => variantKey(variant) === selectedVariantKey)
+  const selectedVariant = visibleVariants.find((variant) => variant.id === variantId)
+  if (variantId && !selectedVariant) return <Navigate to={`/characters/${encodeURIComponent(draft.id)}/${category.id}`} replace />
   const previewLayers = resolveCharacterDraftLayers(draft, selectedVariant)
   const referenceLayers = selectedVariant ? resolveCharacterDraftReferenceLayers(draft, selectedVariant) : []
   const registration = characterRegistrationFrame(draft)
@@ -132,12 +199,15 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   const selectedTransform = selectedVariant?.transform ?? IDENTITY_CHARACTER_TRANSFORM
   const candidateBounds = selectedAsset?.inspection.visibleBounds ? transformCharacterBounds(selectedAsset.inspection.visibleBounds, selectedTransform) : undefined
   const draggable = selectedVariant?.group === 'expression' && Boolean(selectedAsset)
+  const commitTransform = (target: Pick<CharacterDraftVariant, 'group' | 'id'>, transform: CharacterVariantTransform) => commit((current) => {
+    const variant = current.variants.find((candidate) => candidate.group === target.group && candidate.id === target.id)
+    return !variant || sameTransform(variant.transform, transform) ? current : setCharacterVariantTransform(current, target.group, target.id, transform)
+  })
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!draggable || !selectedVariant) return
     const bounds = event.currentTarget.getBoundingClientRect()
     event.currentTarget.setPointerCapture(event.pointerId)
     drag.current = {
-      draft,
       group: selectedVariant.group,
       variantId: selectedVariant.id,
       pointerId: event.pointerId,
@@ -151,34 +221,21 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
   }
   const moveDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     const active = drag.current
-    if (!active || active.pointerId !== event.pointerId) return
+    if (!active || active.pointerId !== event.pointerId || !committed) return
     const next = {
       ...active.origin,
       x: Math.max(-512, Math.min(512, Math.round(active.origin.x + (event.clientX - active.startX) / active.width * 512))),
       y: Math.max(-768, Math.min(768, Math.round(active.origin.y + (event.clientY - active.startY) / active.height * 768))),
     }
     active.current = next
-    setDraft((current) => current && ({
-      ...current,
-      variants: current.variants.map((variant) => variant.group === active.group && variant.id === active.variantId
-        ? { ...variant, transform: next } : variant),
-    }))
+    edit(withVariant(committed, { group: active.group, id: active.variantId }, { transform: next }))
   }
-  const finishDrag = async (event: ReactPointerEvent<HTMLDivElement>) => {
+  const finishDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     const active = drag.current
     if (!active || active.pointerId !== event.pointerId) return
     drag.current = undefined
     event.currentTarget.releasePointerCapture(event.pointerId)
-    try { setDraft(await setVariantTransform(active.draft, active.group, active.variantId, active.current)); setError(undefined) }
-    catch (caught) { setDraft(active.draft); setError(caught instanceof Error ? caught.message : String(caught)) }
-  }
-  const persist = (next: CharacterDraft) => { setDraft(next); void updateDraft(next) }
-  const activateVariant = (source: CharacterDraft, variant: CharacterDraftVariant) => {
-    const { group, id } = variant
-    if (group === 'body') return source
-    if (group === 'expression') return { ...source, selected: { ...source.selected, expression: id } }
-    if (group === 'prop') return source.selected.props.includes(id) ? source : { ...source, selected: { ...source.selected, props: [...source.selected.props, id] } }
-    return { ...source, selected: { ...source.selected, [group]: id } }
+    commitTransform({ group: active.group, id: active.variantId }, active.current)
   }
   const selectedId = (group: CharacterVariantGroup) => {
     if (group === 'body') return undefined
@@ -186,13 +243,18 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
     if (group === 'outfit') return draft.selected.outfit
     return undefined
   }
-  const selectVariant = (variant: CharacterDraftVariant) => persist(activateVariant(draft, variant))
-  const clearVariant = (group: CharacterVariantGroup) => {
-    if (group === 'expression') persist({ ...draft, selected: { ...draft.selected, expression: undefined } })
-    if (group === 'outfit') persist({ ...draft, selected: { ...draft.selected, outfit: undefined } })
-    if (group === 'prop') persist({ ...draft, selected: { ...draft.selected, props: [] } })
-  }
+  const selectVariant = (variant: CharacterDraftVariant) => commit((current) => activateVariant(current, variant))
+  const clearVariant = (group: CharacterVariantGroup) => commit((current) => {
+    if (group === 'expression') return current.selected.expression === undefined ? current : { ...current, selected: { ...current.selected, expression: undefined } }
+    if (group === 'outfit') return current.selected.outfit === undefined ? current : { ...current, selected: { ...current.selected, outfit: undefined } }
+    if (group === 'prop') return current.selected.props.length === 0 ? current : { ...current, selected: { ...current.selected, props: [] } }
+    return current
+  })
   const isSelected = (variant: CharacterDraftVariant) => variant.group === 'prop' ? draft.selected.props.includes(variant.id) : selectedId(variant.group) === variant.id
+  const toggleVariant = (variant: CharacterDraftVariant) => {
+    if (variant.group !== 'prop' || !isSelected(variant)) return selectVariant(variant)
+    commit((current) => ({ ...current, selected: { ...current.selected, props: current.selected.props.filter((id) => id !== variant.id) } }))
+  }
   const hasSelection = (group: CharacterVariantGroup) => group === 'prop' ? Boolean(draft.selected.props.length) : Boolean(selectedId(group))
   const addVariant = (group: CharacterVariantGroup) => {
     const count = draft.variants.filter((variant) => variant.group === group).length + 1
@@ -202,8 +264,8 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
       label: `${t(`characterDraft.groups.${group}.variantName`)} ${count}`,
       layers: {},
     }
-    setSelectedVariantKey(variantKey(variant))
-    persist({ ...draft, variants: [...draft.variants, variant] })
+    commit((current) => ({ ...current, variants: [...current.variants, variant] }))
+    navigate(`/characters/${encodeURIComponent(draft.id)}/${categoryForGroup(group)}/${encodeURIComponent(variant.id)}`)
   }
   const fileInput = (variant: CharacterDraftVariant, layer: CharacterVariantLayer) => {
     const targetKey = `${variantKey(variant)}:${layer}`
@@ -212,53 +274,59 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
         if (!file) return
         setBusy(targetKey); setError(undefined)
         try {
-          let next = await saveAsset(draft, { group: variant.group, variantId: variant.id, label: variant.label, layer }, file, file.name)
-          if (variant.group !== 'body' && layer !== 'back') {
-            next = activateVariant(next, variant)
-            await updateDraft(next)
-          }
-          setDraft(next)
+          // Blob write first; then exactly one command swaps the asset reference (and activates the variant).
+          const asset = await editor.stageAsset(file, file.name, 'user')
+          await editor.dispatch((current) => {
+            const next = saveCharacterDraftAsset(current, { group: variant.group, variantId: variant.id, label: variant.label, layer }, asset)
+            return variant.group !== 'body' && layer !== 'back' ? activateVariant(next, variant) : next
+          })
         } catch (caught) {
-          setError(caught instanceof Error ? caught.message : String(caught))
+          setError(describe(caught))
         } finally {
           setBusy(undefined); event.target.value = ''
         }
       }} />
   }
-
-  const commitName = async () => {
-    let next = draft
-    const happy = draft.variants.find(({ group, id }) => group === 'expression' && id === 'happy')
-    if (nameConfirmed && draft.name.trim() && !draft.selected.expression && happy && isCharacterDraftAssetCurrent(draft, happy, 'head')) next = activateVariant(draft, happy)
-    setDraft(await updateDraft(next))
+  const runBusy = async (key: string, task: () => Promise<unknown>) => {
+    setBusy(key); setError(undefined)
+    try { await task() } catch (caught) { setError(describe(caught)) } finally { setBusy(undefined) }
+  }
+  const iconAction = (label: string, icon: ComponentType<{ className?: string }>, enabled: boolean, run: () => void) => {
+    const Icon = icon
+    return <Tooltip><TooltipTrigger asChild><Button type="button" size="icon" variant="ghost" aria-label={label} disabled={!enabled} onClick={run}><Icon /></Button></TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip>
   }
 
-  return <div className="draft-workshop-shell bg-muted/30">
-    <main className="draft-workshop mx-auto w-full max-w-6xl p-3 sm:p-6">
+  return <div className="draft-workshop-shell">
+    <main className="draft-workshop mx-auto flex h-full w-full max-w-6xl flex-col p-[0.85rem] sm:p-6">
       <aside className="character-spell-guide" aria-labelledby="character-spell-title">
         <div className="spell-icon"><AozuIcon name="book" /></div>
         <div className="min-w-0 flex-1">
-          <p className="forge-kicker">{t('characterDraft.bookKicker')}</p>
-          <h1 id="character-spell-title" className="font-heading text-2xl font-semibold">{t('characterDraft.webmcpTitle')}</h1>
-          <p>{t('characterDraft.webmcpInstruction')}</p>
-          <blockquote>{t('characterDraft.webmcpSpell')}</blockquote>
+          <h1 id="character-spell-title" className="font-heading text-2xl font-semibold">{t('characterDraft.title')}</h1>
+          <p>{t('characterDraft.description')}</p>
         </div>
       </aside>
 
-      <div className="draft-workshop-grid mt-4">
-      <section className={`character-stage-panel rounded-2xl border bg-background ${nameConfirmed && draft.name.trim() ? 'is-awake' : ''}`}>
+      <div className="draft-workshop-grid mt-2 min-h-0 flex-1 sm:mt-3">
+      <section className="character-stage-panel rounded-2xl border bg-background">
         <div className="character-stage-heading">
-          <div><span>01</span><strong>{t('characterDraft.fullBodyTitle')}</strong></div>
-          {nameConfirmed && draft.name.trim() && <p>{draft.name}</p>}
+          <div><span>01</span><strong>{t('characterDraft.stageTitle')}</strong></div>
+          {draft.name.trim() && <p>{draft.name}</p>}
         </div>
         <div className="character-stage-canvas">
-          <div
+          {baseVariant && !hasBase ? <label
+            className="character-stage-upload aspect-2/3 h-full max-h-full max-w-full"
+            aria-label={t('characterDraft.missingRequired')}
+            title={t('characterDraft.missingRequired')}
+          >
+            <CharacterRenderer label={draft.name} layers={previewLayers} atlas={atlas} />
+            {fileInput(baseVariant, 'body')}
+          </label> : <div
             className={`aspect-2/3 h-full max-h-full max-w-full ${draggable ? 'cursor-move touch-none' : ''}`}
             title={draggable ? t('characterDraft.transform.dragHead') : undefined}
             onPointerDown={beginDrag}
             onPointerMove={moveDrag}
-            onPointerUp={(event) => void finishDrag(event)}
-            onPointerCancel={(event) => void finishDrag(event)}
+            onPointerUp={finishDrag}
+            onPointerCancel={finishDrag}
           >{selectedVariant && selectedAsset
             ? <CharacterAlignmentRenderer
                 label={draft.name}
@@ -269,7 +337,7 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                 referenceBounds={referenceBounds}
                 footLine={registration.footLine}
               />
-            : <CharacterRenderer label={nameConfirmed ? draft.name : t('characterDraft.unnamed')} layers={previewLayers} atlas={atlas} />}</div>
+            : <CharacterRenderer label={draft.name} layers={previewLayers} atlas={atlas} />}</div>}
         </div>
         {selectedVariant && selectedAsset && <div className="alignment-switch" aria-label={t('characterDraft.alignment.label')}>
           {(['composite', 'overlay', 'difference', 'diagnostic'] as const).map((mode) => <Button key={mode} type="button" size="sm" variant={alignmentMode === mode ? 'secondary' : 'ghost'} onClick={() => setAlignmentMode(mode)}>{t(`characterDraft.alignment.${mode}`)}</Button>)}
@@ -277,39 +345,35 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
         <div className="character-first-dialogue">
           <span className="dialogue-portrait"><AozuIcon name="profile" /></span>
           <label className="min-w-0 flex-1">
-            <span>{nameConfirmed && draft.name.trim() ? t('characterDraft.namedQuestion') : t('characterDraft.nameQuestion')}</span>
-            <input aria-label={t('draft.name')} placeholder={t('characterDraft.namePlaceholder')} value={nameConfirmed ? draft.name : ''} onChange={(event) => setDraft({ ...draft, name: event.target.value, nameConfirmed: true })} onBlur={() => void commitName()} />
+            <span>{t('draft.name')}</span>
+            <input
+              aria-label={t('draft.name')}
+              value={draft.name}
+              onChange={(event) => edit({ ...draft, name: event.target.value })}
+              onBlur={(event) => {
+                const name = event.currentTarget.value
+                commit((current) => current.name === name || !name.trim() ? current : { ...current, name })
+              }}
+              onKeyDown={textKeys}
+            />
           </label>
         </div>
       </section>
 
       <section className="doll-workbench rounded-2xl border bg-background" aria-label={t('characterDraft.customizeTitle')}>
+        <div className="workbench-lockable">
+        <div className="workbench-body" inert={!hasBase ? true : undefined} aria-hidden={!hasBase}>
         <div className="workbench-heading"><span>02</span><div><h2>{t('characterDraft.customizeTitle')}</h2><p>{t('characterDraft.workbenchDescription')}</p></div></div>
-        {!selectedVariant && <button type="button" className="body-foundation-card" onClick={() => setSelectedVariantKey(variantKey(bodyVariant))}>
-          <span className="body-foundation-preview">{isCharacterDraftAssetCurrent(draft, bodyVariant, 'body')
-            ? <CharacterAssetImage blob={bodyVariant.layers.body!.blob} label={bodyVariant.label} />
-            : <img src="/assets/placeholders/companion-body-faint.png" alt="" />}</span>
-          <span><strong>{t('characterDraft.baseBody')}</strong><small>{t('characterDraft.baseBodyHint')}</small></span>
-          <PencilIcon aria-hidden="true" />
-        </button>}
-
-        {!selectedVariant && <nav aria-label={t('characterDraft.categorySwitcher')} className="workbench-tabs">
-          {characterCategories.map(({ id, icon }) => <Button
-            key={id}
-            type="button"
-            variant={category?.id === id ? 'secondary' : 'ghost'}
-            className="shrink-0"
-            aria-current={category?.id === id ? 'page' : undefined}
-            onClick={() => { setSelectedVariantKey(undefined); navigate(workspacePath(categoryDestinations[id], draft.id), { replace: true, state: location.state }) }}
-          >
+        <Tabs value={category.id} onValueChange={(id) => navigate(`/characters/${encodeURIComponent(draft.id)}/${id}`)} className="min-h-0 flex-1 gap-0">
+        {!selectedVariant && <TabsList aria-label={t('characterDraft.categorySwitcher')} className="workbench-tabs mt-3 grid w-full grid-cols-3">
+          {characterCategories.map(({ id, icon }) => <TabsTrigger key={id} value={id} className="min-w-0">
             <AozuIcon name={icon} />
             <span>{t(`characterDraft.categories.${id}`)}</span>
-          </Button>)}
-        </nav>}
+          </TabsTrigger>)}
+        </TabsList>}
 
-        <div className="workbench-content">
+        <TabsContent value={category.id} className="workbench-content min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {!selectedVariant && <>
-          <h3>{t(`characterDraft.categories.${category.id}`)}</h3>
           <div className="variant-grid">
             <button type="button" aria-label={t('characterDraft.none')} title={t('characterDraft.none')} aria-pressed={!hasSelection(category.group)} className={`variant-card ${!hasSelection(category.group) ? 'is-selected' : ''}`} onClick={() => clearVariant(category.group)}>
               <span className="variant-preview"><CircleSlash2Icon className="size-1/3 text-muted-foreground" /></span><span className="variant-label">{t('characterDraft.none')}</span>
@@ -323,17 +387,14 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
               const frameId = thumbnailLayer && `${variant.group}-${variant.id}-${thumbnailLayer}`
               const selected = isSelected(variant)
               return <div key={variantKey(variant)} className={`variant-card ${selected ? 'is-selected' : ''}`}>
-                <button type="button" aria-label={variant.label} title={variant.label} aria-pressed={selected} className="block w-full" onClick={() => {
-                  if (!selected) selectVariant(variant)
-                }}>
+                <button type="button" aria-label={variant.label} title={variant.label} aria-pressed={selected} className="block w-full" onClick={() => toggleVariant(variant)}>
                   <span className={`variant-preview ${variant.group === 'expression' ? 'is-expression' : ''}`}>{thumbnail
                     ? atlas && atlasSrc && frameId && atlas.data.frames[frameId]
                       ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={frameId} label={variant.label} />
-                      : <CharacterAssetImage blob={thumbnail.blob} label={variant.label} />
-                    : variant.group === 'prop' ? <AozuIcon name="props" className="is-placeholder" />
-                      : <CharacterVariantPlaceholder group={variant.group} variantId={variant.id} label={variant.label} />}</span><span className="variant-label">{variant.label}</span>
+                      : <CharacterAssetImage blob={thumbnail.blob} bounds={thumbnail.inspection.visibleBounds} label={variant.label} />
+                    : <CharacterVariantPlaceholder group={variant.group} variantId={variant.id} label={variant.label} />}</span><span className="variant-label">{variant.label}</span>
                 </button>
-                <button type="button" title={t('characterDraft.editVariant', { name: variant.label })} className="variant-edit" aria-label={t('characterDraft.editVariant', { name: variant.label })} onClick={() => setSelectedVariantKey(variantKey(variant))}><PencilIcon className="size-4" /></button>
+                <button type="button" title={t('characterDraft.editVariant', { name: variant.label })} className="variant-edit" aria-label={t('characterDraft.editVariant', { name: variant.label })} onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${category.id}/${encodeURIComponent(variant.id)}`)}><PencilIcon className="size-4" /></button>
               </div>
             })}
             <button type="button" title={t(`characterDraft.groups.${category.group}.add`)} className="variant-card add-variant" aria-label={t(`characterDraft.groups.${category.group}.add`)} onClick={() => addVariant(category.group)}>
@@ -348,27 +409,29 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
           const primaryLayer = layeredAccessory ? 'front' : group.layers[0]
           const primaryAsset = isCharacterDraftAssetCurrent(draft, selectedVariant, primaryLayer) ? selectedVariant.layers[primaryLayer] : undefined
           const behindAsset = layeredAccessory && isCharacterDraftAssetCurrent(draft, selectedVariant, 'back') ? selectedVariant.layers.back : undefined
-          const showPropPlaceholder = selectedVariant.group === 'prop'
           const required = REQUIRED_CHARACTER_TARGETS.some((target) => target.group === selectedVariant.group && target.variantId === selectedVariant.id)
           const transform = selectedVariant.transform ?? IDENTITY_CHARACTER_TRANSFORM
           const changeTransform = (field: keyof CharacterVariantTransform, value: number) => {
             if (!Number.isFinite(value)) return
-            setDraft({
-              ...draft,
-              variants: draft.variants.map((variant) => variant === selectedVariant
-                ? { ...variant, transform: { ...transform, [field]: value } }
-                : variant),
-            })
-          }
-          const commitTransform = async () => {
-            const current = draft.variants.find((variant) => variantKey(variant) === variantKey(selectedVariant))!
-            try { setDraft(await setVariantTransform(draft, current.group, current.id, current.transform ?? IDENTITY_CHARACTER_TRANSFORM)); setError(undefined) }
-            catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)) }
+            edit(withVariant(draft, selectedVariant, { transform: { ...transform, [field]: value } }))
           }
           return <>
             <div className="variant-editor-heading">
-              <Button type="button" size="icon" variant="ghost" aria-label={t('characterDraft.backToVariants')} onClick={() => setSelectedVariantKey(undefined)}><ArrowLeftIcon /></Button>
-              <input aria-label={t('characterDraft.variantLabel')} value={selectedVariant.label} onChange={(event) => setDraft({ ...draft, variants: draft.variants.map((variant) => variant === selectedVariant ? { ...variant, label: event.target.value } : variant) })} onBlur={() => void updateDraft(draft)} />
+              <Button type="button" size="icon" variant="ghost" aria-label={t('characterDraft.backToVariants')} onClick={() => navigate(`/characters/${encodeURIComponent(draft.id)}/${category.id}`)}><ArrowLeftIcon /></Button>
+              <input
+                aria-label={t('characterDraft.variantLabel')}
+                className="min-w-0"
+                value={selectedVariant.label}
+                onChange={(event) => edit(withVariant(draft, selectedVariant, { label: event.target.value }))}
+                onBlur={(event) => {
+                  const label = event.currentTarget.value.trim()
+                  commit((current) => {
+                  const variant = current.variants.find((candidate) => candidate.group === selectedVariant.group && candidate.id === selectedVariant.id)
+                  return !variant || !label || variant.label === label ? current : withVariant(current, variant, { label })
+                  })
+                }}
+                onKeyDown={textKeys}
+              />
               {required && <span className="required-status">{t('characterDraft.required')}</span>}
             </div>
             {(primaryAsset || behindAsset) && <div className="transform-grid" aria-label={t('characterDraft.transform.label')}>
@@ -384,30 +447,42 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
                   className="w-full rounded-md border bg-background px-1 text-center text-foreground"
                   value={transform[field]}
                   onChange={(event) => changeTransform(field, Number(event.target.value))}
-                  onBlur={() => void commitTransform()}
+                  onBlur={(event) => {
+                    const value = Number(event.currentTarget.value)
+                    if (!Number.isFinite(value)) return revert()
+                    commit((current) => {
+                      const variant = current.variants.find((candidate) => candidate.group === selectedVariant.group && candidate.id === selectedVariant.id)
+                      if (!variant) return current
+                      const next = { ...(variant.transform ?? IDENTITY_CHARACTER_TRANSFORM), [field]: value }
+                      return sameTransform(variant.transform, next) ? current : setCharacterVariantTransform(current, variant.group, variant.id, next)
+                    })
+                  }}
+                  onKeyDown={textKeys}
                 />
               </label>)}
-              {(selectedVariant.group === 'outfit' || selectedVariant.group === 'expression') && <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                className="col-span-3"
-                disabled={Boolean(busy)}
-                onClick={async () => {
-                  setBusy('auto-fit'); setError(undefined)
-                  try { setDraft(await autoFitVariant(draft, selectedVariant.group, selectedVariant.id)) }
-                  catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)) }
-                  finally { setBusy(undefined) }
-                }}
-              >{t(registration.head?.variantId === selectedVariant.id ? 'characterDraft.transform.visualFit' : 'characterDraft.transform.autoFit')}</Button>}
+              {suggestion?.status === 'suggested' && <div className="col-span-3">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="h-8 w-full"
+                  disabled={Boolean(busy)}
+                  onClick={() => void runBusy('auto-fit', () => autoFitVariant(selectedVariant.group, selectedVariant.id))}
+                >{t('characterDraft.transform.applySuggestedFit')}</Button>
+                <p className="mt-1 text-[9px] leading-3 text-muted-foreground sm:text-[10px]">
+                  {t(`characterDraft.transform.fitSource.${suggestion.source}`)} · {fitMetrics(t, suggestion).join(' · ')}
+                </p>
+              </div>}
+              {suggestion && suggestion.status !== 'suggested' && <p className="col-span-3 text-[9px] leading-3 text-muted-foreground sm:text-[10px]">
+                {t(suggestion.status === 'aligned' ? 'characterDraft.transform.fitAligned' : 'characterDraft.transform.fitUnavailable')}
+              </p>}
             </div>}
             <label className="asset-upload-card">
               <span className="asset-upload-preview">{primaryAsset
                 ? atlas && atlasSrc && atlas.data.frames[`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`]
                   ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={`${selectedVariant.group}-${selectedVariant.id}-${primaryLayer}`} />
-                  : <CharacterAssetImage blob={primaryAsset.blob} />
-                : showPropPlaceholder ? <AozuIcon name="props" className="is-placeholder" />
-                  : <CharacterVariantPlaceholder group={selectedVariant.group} variantId={selectedVariant.id} />}</span>
+                  : <CharacterAssetImage blob={primaryAsset.blob} bounds={primaryAsset.inspection.visibleBounds} />
+                : <CharacterVariantPlaceholder group={selectedVariant.group} variantId={selectedVariant.id} />}</span>
               <span>{t(layeredAccessory ? 'characterDraft.layers.primary' : `characterDraft.layers.${primaryLayer}`)}</span>
               {fileInput(selectedVariant, primaryLayer)}
             </label>
@@ -415,8 +490,8 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
               <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted/40">{behindAsset
                 ? atlas && atlasSrc && atlas.data.frames[`${selectedVariant.group}-${selectedVariant.id}-back`]
                   ? <CharacterAtlasFrameImage atlas={atlas} src={atlasSrc} frameId={`${selectedVariant.group}-${selectedVariant.id}-back`} />
-                  : <CharacterAssetImage blob={behindAsset.blob} />
-                : <Layers2Icon className="size-5 text-[#7b739e]/70" />}</span>
+                  : <CharacterAssetImage blob={behindAsset.blob} bounds={behindAsset.inspection.visibleBounds} />
+                : <Layers2Icon className="size-5 text-muted-foreground" />}</span>
               <span className="min-w-0 truncate">{t('characterDraft.layers.behindOptional')}</span>
               {fileInput(selectedVariant, 'back')}
             </label>}
@@ -424,20 +499,36 @@ export function CharacterDraftPage({ openDraft, updateDraft, saveAsset, setVaria
         })()}
 
         {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
+        </TabsContent>
+        </Tabs>
+        </div>
+        {!hasBase && <div className="workbench-lock" role="status"><p>{t('characterDraft.missingRequired')}</p></div>}
         </div>
         <div className="workbench-footer">
-          {missing.length > 0 && <p className="mb-2 text-muted-foreground">{t('characterDraft.missingRequired')}</p>}
-          <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
-          <DataControls exportData={exportDraft} exportFilename="companion-character-draft.zip" exportIconOnly exportLabel={t('draft.download')} />
-          <Button size="sm" className="w-full" disabled={Boolean(busy) || Boolean(missing.length) || !nameConfirmed || !draft.name.trim()} onClick={async () => {
-            setBusy('review'); setError(undefined)
-            try { await onReview(await updateDraft(draft)) }
-            catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); setBusy(undefined) }
-          }}>{busy === 'review' ? t('characterDraft.validating') : t('common.continue')}</Button>
-          </div>
+          <TooltipProvider><div className="workbench-actions flex flex-wrap items-center gap-1">
+            {iconAction(t('characterDraft.undo'), Undo2Icon, canUndo, () => void editor.undo())}
+            {iconAction(t('characterDraft.redo'), Redo2Icon, canRedo, () => void editor.redo())}
+            <DataControls exportData={exportCharacter} exportFilename="companion-character.zip" exportIconOnly exportLabel={t('draft.download')} />
+            <Tooltip><TooltipTrigger asChild><Button size="icon" variant="outline" aria-label={busy === 'save-as' ? t('characterDraft.savingAs') : t('characterDraft.saveAs')} disabled={Boolean(busy) || !draft.name.trim()} onClick={() => void runBusy('save-as', saveAs)}>{busy === 'save-as' ? <LoaderCircleIcon className="animate-spin" /> : <CopyIcon />}</Button></TooltipTrigger><TooltipContent>{busy === 'save-as' ? t('characterDraft.savingAs') : t('characterDraft.saveAs')}</TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild><Button size="icon" variant="outline" aria-label={t('characters.delete')} disabled={Boolean(busy)} onClick={() => setDeleteOpen(true)}><Trash2Icon /></Button></TooltipTrigger><TooltipContent>{t('characters.delete')}</TooltipContent></Tooltip>
+            <span role="status" title={saveError} className={`ml-1 text-xs ${saveStatus === 'failed' || saveStatus === 'conflict' ? 'text-destructive' : 'text-muted-foreground'}`}>
+              {t(`characterDraft.status.${saveStatus}`)}
+              {saveStatus === 'failed' && <> · <button type="button" className="underline" onClick={() => void editor.retry()}>{t('characterDraft.status.retry')}</button></>}
+              {saveStatus === 'conflict' && <> · <button type="button" className="underline" onClick={() => void runBusy('reload', () => editor.reload())}>{t('characterDraft.status.reload')}</button> / <button type="button" className="underline" onClick={() => void runBusy('save-as', saveAs)}>{t('characterDraft.saveAs')}</button></>}
+            </span>
+          </div></TooltipProvider>
         </div>
       </section>
       </div>
     </main>
+    <AlertDialog open={deleteOpen} onOpenChange={(open) => { if (!busy) setDeleteOpen(open) }}>
+      <AlertDialogContent>
+        <AlertDialogHeader><AlertDialogTitle>{t('characters.deleteTitle')}</AlertDialogTitle><AlertDialogDescription>{t('characters.deleteDescription', { name: draft.name })}</AlertDialogDescription></AlertDialogHeader>
+        <AlertDialogFooter><AlertDialogCancel disabled={Boolean(busy)}>{t('common.cancel')}</AlertDialogCancel><AlertDialogAction variant="destructive" disabled={Boolean(busy)} onClick={(event) => {
+          event.preventDefault()
+          void runBusy('delete', deleteCharacter)
+        }}>{t('characters.delete')}</AlertDialogAction></AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 }

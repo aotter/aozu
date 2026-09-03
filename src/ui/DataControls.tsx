@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { DownloadIcon, LoaderCircleIcon } from 'lucide-react'
 
-import { Button } from '@/ui/components/ui/button'
 import { AozuIcon } from '@/ui/AozuIcon'
+import { Button } from '@/ui/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/ui/components/ui/tooltip'
 
 export function DataControls({
@@ -20,15 +21,19 @@ export function DataControls({
 }) {
   const { t } = useTranslation()
   const [status, setStatus] = useState<'idle' | 'busy' | 'done' | 'error'>('idle')
+  const [error, setError] = useState('')
   const downloadLabel = exportLabel ?? t('data.export')
   const run = async (task: () => Promise<void>) => {
-    setStatus('busy')
-    try { await task(); setStatus('done') } catch { setStatus('error') }
+    setStatus('busy'); setError('')
+    try { await task(); setStatus('done') } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason))
+      setStatus('error')
+    }
   }
 
   return (
     <div className="grid gap-2">
-      {exportData && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant={prepareImport ? 'ghost' : 'outline'} size={exportIconOnly ? 'icon' : 'default'} className={prepareImport ? 'justify-start' : undefined} aria-label={downloadLabel} disabled={status === 'busy'} onClick={() => void run(async () => {
+      {exportData && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant={prepareImport ? 'ghost' : 'outline'} size={exportIconOnly ? 'icon' : 'default'} className={prepareImport ? 'justify-start' : undefined} aria-label={status === 'busy' ? t('data.busy') : downloadLabel} disabled={status === 'busy'} onClick={() => void run(async () => {
         const url = URL.createObjectURL(await exportData())
         const link = document.createElement('a')
         link.href = url
@@ -37,7 +42,7 @@ export function DataControls({
         link.click()
         link.remove()
         setTimeout(() => URL.revokeObjectURL(url), 1_000)
-      })}><AozuIcon name="archive" />{exportIconOnly ? <span className="sr-only">{downloadLabel}</span> : downloadLabel}</Button></TooltipTrigger>{exportIconOnly && <TooltipContent>{downloadLabel}</TooltipContent>}</Tooltip></TooltipProvider>}
+      })}>{status === 'busy' ? <LoaderCircleIcon className="animate-spin" /> : <DownloadIcon />}{exportIconOnly ? <span className="sr-only">{downloadLabel}</span> : downloadLabel}</Button></TooltipTrigger>{exportIconOnly && <TooltipContent>{status === 'busy' ? t('data.busy') : status === 'error' ? `${t('data.error')}${error ? ` ${error}` : ''}` : downloadLabel}</TooltipContent>}</Tooltip></TooltipProvider>}
       {prepareImport && <Button asChild variant={exportData ? 'ghost' : 'default'} className={exportData ? 'justify-start' : 'w-full'}>
         <label>
           <AozuIcon name="import" />
@@ -49,7 +54,9 @@ export function DataControls({
           }} />
         </label>
       </Button>}
-      {status !== 'idle' && <p role="status" className={exportIconOnly ? 'sr-only' : 'px-4 text-xs text-muted-foreground'}>{t(`data.${status}`)}</p>}
+      {status !== 'idle' && <p role={status === 'error' ? 'alert' : 'status'} className={exportIconOnly ? 'sr-only' : `px-4 text-xs ${status === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}>
+        {status === 'error' ? `${t('data.error')}${error ? ` ${error}` : ''}` : t(`data.${status}`)}
+      </p>}
     </div>
   )
 }

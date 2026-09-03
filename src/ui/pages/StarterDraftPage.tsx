@@ -1,7 +1,7 @@
-import { CircleHelpIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { resolveStarterCharacterLayers } from '@/core/application/character-creation.ts'
 import { resolveStarterSceneLayers } from '@/core/application/scene.ts'
 import type {
   ExperienceDraft,
@@ -9,8 +9,8 @@ import type {
   StarterStorySelection,
   ValidatedStarterPackage,
 } from '@/core/domain/starter.ts'
+import { CharacterRenderer } from '@/ui/CharacterRenderer'
 import { SceneRenderer } from '@/ui/SceneRenderer'
-import { AozuIcon } from '@/ui/AozuIcon'
 import { Button } from '@/ui/components/ui/button'
 
 const selected = (
@@ -30,7 +30,6 @@ export function StarterDraftPage({ loadStarters, startCreation, onSelected }: {
   const [packages, setPackages] = useState<ValidatedStarterPackage[]>()
   const [character, setCharacter] = useState<StarterCharacterSelection>(null)
   const [story, setStory] = useState<StarterStorySelection>(null)
-  const [referenceView, setReferenceView] = useState<'body' | 'head'>('body')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
 
@@ -49,104 +48,59 @@ export function StarterDraftPage({ loadStarters, startCreation, onSelected }: {
     } catch { setError(true) } finally { setBusy(false) }
   }
 
-  const storyOptions = packages?.flatMap((loaded) => loaded.starter.directions.map((direction) => ({ loaded, direction }))) ?? []
-  const selectedStory = storyOptions.find(({ loaded, direction }) => selected(story, loaded.starter.id, loaded.starter.version, direction.id))
+  return <main className="mx-auto w-full max-w-4xl px-4 py-10 sm:py-14">
+    <h1 className="font-heading text-3xl font-semibold tracking-tight">{t('starter.title')}</h1>
+    <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{t('starter.description')}</p>
 
-  return <main className="starter-page mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
-    <header className="starter-intro">
-      <div>
-        <p className="forge-kicker"><AozuIcon name="book" /> {t('starter.bookKicker')}</p>
-        <h1 className="font-heading text-4xl font-semibold tracking-tight sm:text-5xl">{t('starter.title')}</h1>
-        <p className="mt-4 max-w-3xl leading-7 text-muted-foreground">{t('starter.description')}</p>
-      </div>
-
-      <details className="reference-drawer">
-        <summary><CircleHelpIcon aria-hidden="true" /><span>{t('starter.referenceTitle')}</span></summary>
-        <div className="reference-drawer-content">
-          <div className="reference-drawer-heading">
-            <p>{t('starter.referenceHint')}</p>
-            <div className="reference-view-switch" role="group" aria-label={t('starter.referenceTitle')}>
-              <button type="button" aria-pressed={referenceView === 'body'} onClick={() => setReferenceView('body')}><AozuIcon name="body" />{t('starter.bodyView')}</button>
-              <button type="button" aria-pressed={referenceView === 'head'} onClick={() => setReferenceView('head')}><AozuIcon name="expressions" />{t('starter.headView')}</button>
-            </div>
-          </div>
-          <div className="reference-placeholder" role="img" aria-label={t(referenceView === 'body' ? 'starter.bodyView' : 'starter.headView')}>
-            <img src={referenceView === 'body' ? '/assets/placeholders/companion-body-faint.png' : '/assets/placeholders/companion-head.png'} alt="" />
-          </div>
-        </div>
-      </details>
-    </header>
-
-    <div className="starter-workspace mt-8">
-      <section className="blueprint-panel character-blueprint" aria-labelledby="character-title">
-        <div className="blueprint-heading">
-          <span className="blueprint-number">01</span>
-          <div><h2 id="character-title" className="font-heading text-2xl font-medium">{t('starter.characterTitle')}</h2><p>{t('starter.characterDescription')}</p></div>
-        </div>
-
-        <div className="character-methods">
-          <button type="button" aria-pressed={character === null} onClick={() => setCharacter(null)} className="blank-character-card">
-            <div className="blank-character-renderer" role="img" aria-label={t('starter.blankCharacter')}>
-              <img src="/assets/placeholders/companion-body-faint.png" alt="" />
-            </div>
-            <span className="method-copy">
-              <strong>{t('starter.blankMethodTitle')}</strong>
-              <small>{t('starter.blankMethodDescription')}</small>
-            </span>
-          </button>
-
-          <div className="webmcp-method">
-            <div className="webmcp-orbit" aria-hidden="true"><AozuIcon name="book" /><span /></div>
-            <div>
-              <h3>{t('starter.webmcpTitle')}</h3>
-              <p>{t('starter.webmcpDescription')}</p>
-            </div>
-            <ol className="webmcp-steps">
-              <li><AozuIcon name="book" /><span>{t('starter.webmcpStepPrompt')}</span></li>
-              <li><AozuIcon name="import" /><span>{t('starter.webmcpStepImport')}</span></li>
-              <li><AozuIcon name="fit" /><span>{t('starter.webmcpStepFit')}</span></li>
-            </ol>
-          </div>
-        </div>
-
-      </section>
-
-      <section className="blueprint-panel story-blueprint" aria-labelledby="story-title">
-        <div className="blueprint-heading">
-          <span className="blueprint-number">02</span>
-          <div><h2 id="story-title" className="font-heading text-2xl font-medium">{t('starter.storyTitle')}</h2><p>{t('starter.storyDescription')}</p></div>
-        </div>
-        <div className="story-options">
-        <button type="button" aria-pressed={story === null} onClick={() => setStory(null)}
-          className="story-card blank-story-card">
-          <div className="blank-story-map" aria-hidden="true"><AozuIcon name="world" /></div>
-          <strong>{t('starter.blankStory')}</strong>
-          <span>{t('starter.blankStoryDescription')}</span>
+    <section className="mt-8">
+      <h2 className="font-heading text-xl font-medium">{t('starter.characterTitle')}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{t('starter.characterDescription')}</p>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <button type="button" aria-pressed={character === null} onClick={() => setCharacter(null)}
+          className="rounded-2xl border p-3 text-left aria-pressed:border-foreground aria-pressed:ring-1 aria-pressed:ring-foreground">
+          <div className="flex aspect-[2/3] items-center justify-center rounded-xl border border-dashed bg-muted/30 text-sm text-muted-foreground">{t('starter.blank')}</div>
+          <span className="mt-3 block font-medium">{t('starter.blankCharacter')}</span>
+          <span className="mt-1 block text-xs leading-5 text-muted-foreground">{t('starter.blankCharacterDescription')}</span>
         </button>
-        {storyOptions.map(({ loaded, direction }) => {
+        {packages?.flatMap((loaded) => loaded.starter.characterStates.map((state) => {
+          const active = selected(character, loaded.starter.id, loaded.starter.version, state.id)
+          return <button key={`${loaded.starter.id}@${loaded.starter.version}:${state.id}`} type="button" aria-pressed={active}
+            onClick={() => setCharacter({ starterId: loaded.starter.id, starterVersion: loaded.starter.version, stateId: state.id })}
+            className="rounded-2xl border p-3 text-left aria-pressed:border-foreground aria-pressed:ring-1 aria-pressed:ring-foreground">
+            <CharacterRenderer label={state.name} layers={resolveStarterCharacterLayers(loaded, state.id)} />
+            <span className="mt-3 block font-medium">{state.name}</span>
+            <span className="mt-1 block text-xs leading-5 text-muted-foreground">{state.summary}</span>
+          </button>
+        }))}
+      </div>
+    </section>
+
+    <section className="mt-8">
+      <h2 className="font-heading text-xl font-medium">{t('starter.storyTitle')}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{t('starter.storyDescription')}</p>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <button type="button" aria-pressed={story === null} onClick={() => setStory(null)}
+          className="rounded-2xl border p-3 text-left aria-pressed:border-foreground aria-pressed:ring-1 aria-pressed:ring-foreground">
+          <div className="flex aspect-video items-center justify-center rounded-xl border border-dashed bg-muted/30 text-sm text-muted-foreground">{t('starter.blank')}</div>
+          <span className="mt-3 block font-medium">{t('starter.blankStory')}</span>
+          <span className="mt-1 block text-xs leading-5 text-muted-foreground">{t('starter.blankStoryDescription')}</span>
+        </button>
+        {packages?.flatMap((loaded) => loaded.starter.directions.map((direction) => {
           const active = selected(story, loaded.starter.id, loaded.starter.version, direction.id)
           return <button key={`${loaded.starter.id}@${loaded.starter.version}:${direction.id}`} type="button" aria-pressed={active}
             onClick={() => setStory({ starterId: loaded.starter.id, starterVersion: loaded.starter.version, directionId: direction.id })}
-            className="story-card">
+            className="rounded-2xl border p-3 text-left aria-pressed:border-foreground aria-pressed:ring-1 aria-pressed:ring-foreground">
             <SceneRenderer label={direction.name} layers={resolveStarterSceneLayers(loaded, direction.id)} />
-            <strong>{direction.name}</strong>
-            <span>{direction.summary}</span>
+            <span className="mt-3 block font-medium">{direction.name}</span>
+            <span className="mt-1 block text-xs leading-5 text-muted-foreground">{direction.summary}</span>
           </button>
-        })}
-        </div>
-      </section>
-    </div>
-
-    <section className="creation-summary" aria-labelledby="selection-title">
-      <div>
-        <p className="forge-kicker"><AozuIcon name="archive" /> {t('starter.selectionTitle')}</p>
-        <dl>
-          <div><dt>{t('starter.characterSelection')}</dt><dd>{t('starter.blankCharacter')}</dd></div>
-          <div><dt>{t('starter.storySelection')}</dt><dd>{selectedStory?.direction.name ?? t('starter.blankStory')}</dd></div>
-        </dl>
+        }))}
       </div>
+    </section>
+
+    <div className="mt-8 flex items-center gap-3">
       <Button disabled={busy || !packages} onClick={() => void begin()}>{busy ? t('starter.choosing') : t('starter.continue')}</Button>
       {error && <p role="alert" className="text-sm text-destructive">{t('starter.error')}</p>}
-    </section>
+    </div>
   </main>
 }

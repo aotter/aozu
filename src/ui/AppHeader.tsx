@@ -2,23 +2,24 @@ import { ArrowLeftIcon, LanguagesIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/ui/components/ui/button'
 import { AozuIcon } from '@/ui/AozuIcon'
+import { Button } from '@/ui/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
+import type { WebMcpState } from '@/adapters/webmcp/controller.ts'
+import { LANGUAGES } from '@/ui/i18n'
 
 type AppHeaderProps = {
-  webmcpAvailable: boolean
+  webmcp: WebMcpState
   title?: string
   onBack?: () => void
   actions?: ReactNode
 }
 
-export function AppHeader({ webmcpAvailable, title, onBack, actions }: AppHeaderProps) {
+export function AppHeader({ webmcp, title, onBack, actions }: AppHeaderProps) {
   const { t, i18n } = useTranslation()
-  const language = i18n.resolvedLanguage?.startsWith('zh') ? 'zh-TW' : 'en'
-  const setLanguage = (next: 'zh-TW' | 'en') => {
-    window.localStorage.setItem('companion-language', next)
-    void i18n.changeLanguage(next)
-  }
+  const label = t(`main.webmcp.${webmcp.status}`, { count: webmcp.toolCount })
+  const color = webmcp.status === 'ready' ? 'bg-emerald-500' : webmcp.status === 'registering' ? 'bg-amber-500'
+    : webmcp.status === 'failed' ? 'bg-red-500' : 'bg-muted-foreground/50'
 
   return (
     <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur">
@@ -28,27 +29,31 @@ export function AppHeader({ webmcpAvailable, title, onBack, actions }: AppHeader
       >
         <div className="flex min-w-0 items-center gap-1">
           {onBack && <Button type="button" size="icon" variant="ghost" onClick={onBack} aria-label={t('common.back')}><ArrowLeftIcon /></Button>}
-          <AozuIcon name="book" className="header-book-icon" />
+          <AozuIcon name="book" />
           <span className="truncate font-heading text-lg font-semibold">
             {title ?? t('common.productName')}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="language-switch" role="group" aria-label={t('navigation.language')}>
-            <LanguagesIcon aria-hidden="true" />
-            <button type="button" aria-pressed={language === 'zh-TW'} onClick={() => setLanguage('zh-TW')}>中</button>
-            <span aria-hidden="true">/</span>
-            <button type="button" aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>EN</button>
-          </div>
+          <Select value={i18n.resolvedLanguage ?? 'en'} onValueChange={(code) => void i18n.changeLanguage(code)}>
+            <SelectTrigger size="sm" aria-label={t('common.language')}>
+              <LanguagesIcon aria-hidden="true" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {LANGUAGES.map(({ code, label: name }) => <SelectItem key={code} value={code}>{name}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <span
-            aria-label={t(webmcpAvailable ? 'main.webmcpConnected' : 'main.webmcpUnavailable')}
+            aria-label={label}
+            title={webmcp.error ?? label}
             className="flex items-center gap-1.5 text-xs text-muted-foreground"
           >
             <span
-              className={`size-2 rounded-full ${webmcpAvailable ? 'bg-emerald-500' : 'bg-muted-foreground/50'}`}
+              className={`size-2 rounded-full ${color}`}
               aria-hidden="true"
             />
-            WebMCP
+            {webmcp.status === 'ready' ? t('main.webmcp.readyShort', { count: webmcp.toolCount }) : 'WebMCP'}
           </span>
           {actions}
         </div>

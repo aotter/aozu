@@ -2,7 +2,6 @@ import { MenuIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/ui/components/ui/button'
-import { AozuIcon, type AozuIconName } from '@/ui/AozuIcon'
 import { DataControls } from './DataControls'
 import { ScrollArea } from '@/ui/components/ui/scroll-area'
 import { Separator } from '@/ui/components/ui/separator'
@@ -16,9 +15,6 @@ import {
 } from '@/ui/components/ui/sheet'
 
 const menuItems = ['start', 'character', 'wardrobe', 'story', 'tasks', 'journal', 'data', 'settings'] as const
-const menuIcons: Record<Exclude<(typeof menuItems)[number], 'data'>, AozuIconName> = {
-  start: 'book', character: 'body', wardrobe: 'outfits', story: 'world', tasks: 'props', journal: 'profile', settings: 'fit',
-}
 
 export function AppMenu({ exportData, prepareImport, onCreateCharacter, onOpenStart }: { exportData(): Promise<Blob>; prepareImport(blob: Blob): Promise<void>; onCreateCharacter(): void; onOpenStart(): void }) {
   const { t } = useTranslation()
@@ -42,7 +38,6 @@ export function AppMenu({ exportData, prepareImport, onCreateCharacter, onOpenSt
               <DataControls key={item} exportData={exportData} prepareImport={prepareImport} />
             ) : (
               <Button key={item} variant="ghost" className="justify-start" disabled={item !== 'character' && item !== 'start'} onClick={item === 'character' ? onCreateCharacter : item === 'start' ? onOpenStart : undefined}>
-                <AozuIcon name={menuIcons[item]} />
                 {t(`navigation.items.${item}`)}
               </Button>
             ))}

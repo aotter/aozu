@@ -70,14 +70,33 @@ export interface AssetRepository {
   put(id: string, blob: Blob): Promise<void>
   get(id: string): Promise<Blob | null>
   list(): Promise<Array<{ id: string; blob: Blob }>>
+  deleteAll?(): Promise<void>
 }
 
 export type AssetRepositoryFactory = (bundleId: string) => AssetRepository
 
+/** A hydrated Character plus its Mantle entry version, the only persisted revision token. */
+export interface CharacterRecord {
+  character: CharacterDraft
+  version: number
+}
+
+/** The settled entry facts one write produced; revision and `updatedAt` always come from the same snapshot. */
+export interface CharacterPersisted {
+  version: number
+  updatedAt: number
+}
+
+export class CharacterRevisionConflict extends Error {
+  override readonly name = 'CharacterRevisionConflict'
+}
+
 export interface CharacterDraftRepository {
-  list(): Promise<CharacterDraft[]>
-  get(id: string): Promise<CharacterDraft | null>
-  put(draft: CharacterDraft): Promise<void>
+  list(): Promise<CharacterRecord[]>
+  get(id: string): Promise<CharacterRecord | null>
+  create(draft: CharacterDraft): Promise<CharacterRecord>
+  /** Writes one whole snapshot against `expectedVersion`; resolves to the settled entry facts or rejects with CharacterRevisionConflict. */
+  put(draft: CharacterDraft, expectedVersion: number): Promise<CharacterPersisted>
   delete(id: string): Promise<void>
 }
 
