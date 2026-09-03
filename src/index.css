@@ -6,7 +6,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: var(--font-sans);
+    --font-heading: "Iowan Old Style", Georgia, serif;
     --font-sans: 'Geist Variable', sans-serif;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
@@ -49,24 +49,24 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
+    --background: oklch(0.89 0.055 75);
+    --foreground: oklch(0.3 0.06 55);
+    --card: oklch(0.91 0.055 78);
+    --card-foreground: oklch(0.3 0.06 55);
+    --popover: oklch(0.92 0.05 80);
+    --popover-foreground: oklch(0.3 0.06 55);
+    --primary: oklch(0.43 0.09 55);
+    --primary-foreground: oklch(0.94 0.07 88);
+    --secondary: oklch(0.82 0.07 75);
+    --secondary-foreground: oklch(0.32 0.06 55);
+    --muted: oklch(0.84 0.045 78);
+    --muted-foreground: oklch(0.45 0.05 58);
+    --accent: oklch(0.73 0.11 78);
+    --accent-foreground: oklch(0.25 0.055 52);
     --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
+    --border: oklch(0.58 0.07 64 / 55%);
+    --input: oklch(0.58 0.07 64 / 45%);
+    --ring: oklch(0.64 0.13 78);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -123,10 +123,204 @@
     }
   body {
     @apply bg-background text-foreground;
+    min-width: 320px;
+    background-image:
+      radial-gradient(circle at 18% 12%, rgb(255 244 205 / 36%) 0 8%, transparent 28%),
+      radial-gradient(circle at 84% 30%, rgb(107 63 32 / 9%) 0 5%, transparent 25%),
+      repeating-linear-gradient(8deg, transparent 0 5px, rgb(91 54 30 / 2%) 6px 7px),
+      repeating-linear-gradient(97deg, transparent 0 7px, rgb(255 255 255 / 3%) 8px 9px);
+    background-attachment: fixed;
     }
   html {
     @apply font-sans;
     }
+}
+
+/* AOZU shell: the parchment page, its book-page border, and the card treatment.
+   Attribute-driven so pages keep their Tailwind layout classes. */
+#root > header {
+  border-color: rgb(108 70 37 / 45%);
+  background: rgb(224 198 143 / 88%);
+  color: #4b2e1c;
+  box-shadow: 0 2px 16px rgb(64 37 20 / 14%);
+}
+
+#root main {
+  position: relative;
+  isolation: isolate;
+  color: #4b2e1c;
+}
+
+#root main::before {
+  position: absolute;
+  inset: 0.75rem;
+  z-index: -1;
+  border: 2px dashed rgb(118 73 38 / 38%);
+  border-radius: 1.5rem;
+  background:
+    radial-gradient(ellipse at 12% 8%, rgb(255 248 219 / 48%), transparent 32%),
+    radial-gradient(ellipse at 88% 92%, rgb(99 55 25 / 8%), transparent 36%),
+    rgb(226 202 151 / 22%);
+  box-shadow: inset 0 0 3rem rgb(92 52 25 / 8%);
+  content: "";
+}
+
+#root main :is(h1, h2, h3) {
+  color: #6a411f;
+  letter-spacing: 0.02em;
+}
+
+#root main :is(article, section).rounded-2xl.border,
+#root main button.rounded-2xl.border {
+  border-width: 2px;
+  border-style: dashed;
+  border-color: rgb(112 70 38 / 50%);
+  background-color: rgb(244 225 181 / 58%);
+  box-shadow: inset 0 0 0 4px rgb(255 246 216 / 14%), 0 0.7rem 1.6rem rgb(63 36 18 / 7%);
+}
+
+#root :is(input, textarea, select) {
+  border-color: rgb(112 70 38 / 45%);
+  background-color: rgb(249 233 194 / 58%);
+}
+
+@media (max-width: 640px) {
+  #root main::before {
+    inset: 0.35rem;
+    border-radius: 1rem;
+  }
+}
+
+/* AOZU brand icons */
+.aozu-icon {
+  display: inline-grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  flex: 0 0 auto;
+  vertical-align: middle;
+  filter: drop-shadow(0 0.2rem 0.35rem rgb(74 40 18 / 22%));
+}
+
+.aozu-icon > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.forge-kicker {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.65rem;
+  color: #95651f;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.forge-kicker .aozu-icon {
+  width: 2.15rem;
+  height: 2.15rem;
+}
+
+/* Book-page opening: a torn rule above, a dashed page edge below. */
+.forge-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  min-height: 10rem;
+  padding: 1.5rem 1rem;
+  border-block: 2px dashed rgb(108 65 33 / 42%);
+}
+
+.forge-hero::before {
+  position: absolute;
+  left: 0;
+  top: -0.42rem;
+  width: 7rem;
+  border-top: 3px solid #bb8a31;
+  content: "";
+}
+
+.forge-seal.aozu-icon {
+  width: 8.5rem;
+  height: 8.5rem;
+  transform: rotate(2deg);
+  filter: drop-shadow(0 0.8rem 1rem rgb(69 37 17 / 24%)) drop-shadow(0 0 1.1rem rgb(232 180 69 / 18%));
+}
+
+@media (max-width: 640px) {
+  .forge-hero {
+    gap: 1rem;
+    min-height: 0;
+    padding: 1.25rem 0.5rem;
+  }
+
+  .forge-seal.aozu-icon {
+    width: 4.5rem;
+    height: 4.5rem;
+  }
+
+  .forge-kicker {
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+  }
+
+  .forge-kicker .aozu-icon {
+    width: 1.6rem;
+    height: 1.6rem;
+  }
+
+  /* Page border + vault + card would stack three dashed frames on a phone. */
+  .character-vault {
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+  }
+}
+
+.character-vault {
+  padding: 1.5rem 1rem;
+  border: 2px dashed rgb(107 63 31 / 45%);
+  border-radius: 1.25rem;
+  background: linear-gradient(180deg, rgb(255 243 207 / 30%), rgb(112 68 35 / 7%));
+  box-shadow: inset 0 0 2rem rgb(86 48 24 / 8%);
+}
+
+.vault-count {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid rgb(115 70 34 / 46%);
+  border-radius: 0.6rem;
+  background: rgb(250 233 187 / 55%);
+  color: #74502b;
+  font-family: var(--font-heading);
+  font-weight: 700;
+}
+
+/* Empty slots read as faint parchment line art, not solid blocks. */
+.character-slot-placeholder {
+  background: linear-gradient(150deg, #f4e3ba 8%, #dcbb80 58%, #b58c4a);
+  filter: drop-shadow(0 0.15rem 0.5rem rgb(112 68 30 / 28%));
+}
+
+/* Character card: the portrait sits in a page-shaped frame. */
+.character-portrait {
+  overflow: hidden;
+  border: 1px dashed rgb(105 62 30 / 46%);
+  border-radius: 0.9rem;
+  background:
+    radial-gradient(ellipse at center 72%, rgb(120 73 35 / 12%) 0 24%, transparent 25%),
+    rgb(247 228 182 / 32%);
+}
+
+.character-portrait [role="img"] {
+  border: 0;
+  border-radius: 0;
+  background-color: transparent;
 }
 
 .character-layer-exit {

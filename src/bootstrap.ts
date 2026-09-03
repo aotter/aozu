@@ -34,6 +34,7 @@ import {
   characterDraftAtlasKey,
   characterRegistrationFrame,
   resolveCharacterDraftAtlasSources,
+  resolveCharacterDraftLayers,
   resolveCharacterDraftReferenceLayers,
   resolveCharacterAssetSources,
   setCharacterVariantTransform,

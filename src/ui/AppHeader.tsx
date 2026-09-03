@@ -2,6 +2,7 @@ import { ArrowLeftIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { AozuIcon } from '@/ui/AozuIcon'
 import { Button } from '@/ui/components/ui/button'
 import type { WebMcpState } from '@/adapters/webmcp/controller.ts'
 
@@ -26,7 +27,8 @@ export function AppHeader({ webmcp, title, onBack, actions }: AppHeaderProps) {
       >
         <div className="flex min-w-0 items-center gap-1">
           {onBack && <Button type="button" size="icon" variant="ghost" onClick={onBack} aria-label={t('common.back')}><ArrowLeftIcon /></Button>}
-          <span className="truncate font-heading text-lg font-semibold">
+          <AozuIcon name="book" />
+          <span className="truncate font-heading text-lg font-semibold tracking-wide">
             {title ?? t('common.productName')}
           </span>
         </div>
