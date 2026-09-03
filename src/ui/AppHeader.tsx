@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { AozuIcon } from '@/ui/AozuIcon'
 import { Button } from '@/ui/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/ui/components/ui/select'
 import type { WebMcpState } from '@/adapters/webmcp/controller.ts'
 import { LANGUAGES } from '@/ui/i18n'
 
@@ -34,13 +35,15 @@ export function AppHeader({ webmcp, title, onBack, actions }: AppHeaderProps) {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <label className="language-switch">
-            <LanguagesIcon aria-hidden="true" />
-            <span className="sr-only">{t('common.language')}</span>
-            <select value={i18n.resolvedLanguage ?? 'en'} onChange={(event) => void i18n.changeLanguage(event.target.value)}>
-              {LANGUAGES.map(({ code, label: name }) => <option key={code} value={code}>{name}</option>)}
-            </select>
-          </label>
+          <Select value={i18n.resolvedLanguage ?? 'en'} onValueChange={(code) => void i18n.changeLanguage(code)}>
+            <SelectTrigger size="sm" aria-label={t('common.language')}>
+              <LanguagesIcon aria-hidden="true" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {LANGUAGES.map(({ code, label: name }) => <SelectItem key={code} value={code}>{name}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <span
             aria-label={label}
             title={webmcp.error ?? label}
