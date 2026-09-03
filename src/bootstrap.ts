@@ -13,14 +13,12 @@ import {
   type CharacterDraft,
   type CharacterVariantGroup,
   type CharacterVariantLayer,
-  type CharacterVariantTransform,
 } from './core/domain/character.ts'
 import {
   CHARACTER_CREATION_GROUPS,
   REQUIRED_CHARACTER_TARGETS,
   createCharacterDraftFromStarter,
   createCharacterDraft,
-  copyCharacter as copyCharacterData,
   migrateCharacterDraft,
   hasCurrentCharacterLayer,
   isCharacterDraftAssetCurrent,
@@ -35,6 +33,7 @@ import {
   validateCharacterAssetInspection,
   saveCharacterDraftAsset,
 } from './core/application/character-creation.ts'
+import { createCharacterEditor } from './core/application/character-editor.ts'
 import { highConfidenceCharacterAutoFit, measureCharacterMaskAlignment, measureProtectedRegionDelta, suggestCharacterVisualRegistration } from './core/application/character-alignment.ts'
 import { inspectCharacterImage, readCharacterAlphaMask, readCharacterPixels, readCharacterVisualSample, renderCharacterCompositeDataUrl, renderCharacterEditMaskDataUrl, renderStitchedCharacterEditBlob } from './adapters/browser/character-image.ts'
 import { compileCharacterTextureAtlas } from './adapters/browser/character-atlas.ts'
@@ -57,11 +56,14 @@ const CHARACTER_WEBMCP_TRIGGERS = [
   'inspect-character-contract',
   'submit-character-asset-candidate',
   'set-character-variant-transform',
+  'undo-character-change',
+  'redo-character-change',
 ] as const
 
 export function createApplication(document: Document) {
   const legacyCharacterDrafts = createIndexedDbCharacterDraftRepository()
   const browser = document.defaultView
+  // Derived atlas output lives outside the tracked Character and outside the Mantle entry.
   let authoringAtlas: { key: string; value: ReturnType<typeof compileCharacterTextureAtlas> } | undefined
   const compileAuthoringAtlas = (draft: CharacterDraft) => {
     const key = characterDraftAtlasKey(draft)
@@ -91,9 +93,12 @@ export function createApplication(document: Document) {
       'companion.inspect-character-contract': inspectCharacterContract,
       'companion.submit-character-asset-candidate': submitCharacterAssetCandidate,
       'companion.set-character-variant-transform': setCharacterTransform,
+      'companion.undo-character-change': characterHistoryTool('undo'),
+      'companion.redo-character-change': characterHistoryTool('redo'),
     },
   })
   const characterDrafts = createCharacterWorkspaceRepository(getAuthoringRuntime, createIndexedDbAssetRepository)
+  const editor = createCharacterEditor(characterDrafts, createIndexedDbAssetRepository, inspectCharacterImage)
   const webmcp = createWebMcpController(document, authoringPlan, CHARACTER_WEBMCP_TRIGGERS, async (trigger, input) =>
     (await getAuthoringRuntime()).invokeTrigger({ trigger, input, ctx: invokeContext }))
 
@@ -105,7 +110,7 @@ export function createApplication(document: Document) {
   const migrateLegacyCharacters = () => legacyCharactersMigrated ??= (async () => {
     const legacy = await legacyCharacterDrafts.list()
     if (!legacy.length) return
-    const packIds = new Set((await characterDrafts.list()).map(({ packId }) => packId))
+    const packIds = new Set((await characterDrafts.list()).map(({ character }) => character.packId))
     for (const stored of legacy) {
       const draft = migrateCharacterDraft(stored)
       if (!packIds.has(draft.packId)) {
@@ -121,32 +126,30 @@ export function createApplication(document: Document) {
 
   const listCharacterDrafts = async () => {
     await migrateLegacyCharacters()
-    return (await characterDrafts.list()).sort((left, right) => right.updatedAt - left.updatedAt || left.id.localeCompare(right.id))
+    return (await characterDrafts.list()).sort((left, right) => right.character.updatedAt - left.character.updatedAt || left.character.id.localeCompare(right.character.id))
   }
 
-  const openCharacter = async (characterId: string) => {
-    const existing = await characterDrafts.get(characterId)
-    if (!existing) throw new Error('Character not found')
-    const character = migrateCharacterDraft(existing)
-    const variants = await Promise.all(character.variants.map(async (variant) => ({
-      ...variant,
-      layers: Object.fromEntries(await Promise.all(Object.entries(variant.layers).map(async ([layer, asset]) => {
-        if (!asset || asset.inspection.visibleBounds) return [layer, asset]
-        return [layer, { ...asset, inspection: await inspectCharacterImage(asset.blob) }]
-      }))),
-    })))
-    return { ...character, variants }
-  }
-
-  const saveCharacterCopy = async (source: CharacterDraft) => {
-    const saved = await characterDrafts.create(copyCharacterData(source))
+  const persisted = async <T>(record: Promise<{ character: T }>) => {
+    const { character } = await record
     await requestPersistentStorage(browser?.navigator.storage)
-    return saved
+    return character
   }
+  const activeCharacter = () => {
+    const { character, persistedRevision } = editor.store.getState()
+    if (!character || persistedRevision === null) throw new Error('No Character is open')
+    return { character, revision: persistedRevision }
+  }
+  const settledRevision = (what: string) => {
+    const { persistedRevision, saveStatus, saveError } = editor.store.getState()
+    if (saveStatus !== 'saved') throw new Error(`${what} is applied in the editor but not saved: ${saveError ?? saveStatus}`)
+    return persistedRevision!
+  }
+
   const application = {
     webmcp,
+    editor,
     async loadCharacterLibrary() {
-      return { characters: (await listCharacterDrafts()).map(({ id, name, revision, updatedAt }) => ({ id, name, revision, updatedAt })) }
+      return { characters: (await listCharacterDrafts()).map(({ character: { id, name, updatedAt } }) => ({ id, name, updatedAt })) }
     },
     listStarters: loadStarters,
     async createCharacter(characterChoice: StarterCharacterSelection) {
@@ -159,61 +162,47 @@ export function createApplication(document: Document) {
       const character = characterChoice
         ? createCharacterDraftFromStarter(findPackage(characterChoice), characterChoice.stateId)
         : createCharacterDraft()
-      const saved = await characterDrafts.create(character)
-      await requestPersistentStorage(browser?.navigator.storage)
-      return saved
+      return persisted(characterDrafts.create(character))
     },
-    openCharacter,
-    async saveCharacter(draft: CharacterDraft) {
-      return characterDrafts.put({
-        ...draft,
-        revision: draft.revision + 1,
-        updatedAt: Math.max(Date.now(), draft.updatedAt + 1),
-      })
-    },
-    saveCharacterAs: saveCharacterCopy,
+    /** Save As: duplicates the active in-memory Character and switches to the copy. */
+    saveCharacterAs: () => persisted(editor.saveAs().then((character) => ({ character }))),
+    /** Copy: duplicates the latest saved library Character. */
     async copyCharacter(characterId: string) {
-      return saveCharacterCopy(await openCharacter(characterId))
+      return persisted(editor.duplicate((await editor.read(characterId)).character))
     },
-    async saveCharacterAsset(draft: CharacterDraft, target: CharacterAssetTarget, blob: Blob, filename: string, source: 'user' | 'agent' = 'user') {
-      return saveCharacterDraftAsset(characterDrafts, inspectCharacterImage, draft, target, blob, filename, source)
-    },
-    async setCharacterVariantTransform(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string, transform: CharacterVariantTransform) {
-      return setCharacterVariantTransform(characterDrafts, draft.id, group, variantId, draft.updatedAt, transform)
-    },
-    async autoFitCharacterVariant(draft: CharacterDraft, group: CharacterVariantGroup, variantId: string) {
-      const variant = draft.variants.find((candidate) => candidate.group === group && candidate.id === variantId)
+    async autoFitCharacterVariant(group: CharacterVariantGroup, variantId: string) {
+      const { character, revision } = activeCharacter()
+      const variant = character.variants.find((candidate) => candidate.group === group && candidate.id === variantId)
       const layer = variant && CHARACTER_CREATION_GROUPS.find((candidate) => candidate.group === group)?.layers.find((candidate) => variant.layers[candidate])
       if (!variant || !layer) throw new Error('Character variant is empty or missing')
-      const target = await characterTarget(draft, { group, variantId, layer })
+      const target = await characterTarget(character, revision, { group, variantId, layer })
       const visualTransform = target?.alignment.visualFit?.suggestedTransform
-      if (visualTransform) return setCharacterVariantTransform(characterDrafts, draft.id, group, variantId, draft.updatedAt, visualTransform)
-      if (target?.alignment.registration?.role === 'head-anchor' && target.alignment.visualFit) return draft
-      if (target?.alignment.measurement?.status === 'aligned') return draft
-      const transform = highConfidenceCharacterAutoFit(target?.alignment.measurement)
+      const transform = visualTransform
+        ?? ((target?.alignment.registration?.role === 'head-anchor' && target.alignment.visualFit) || target?.alignment.measurement?.status === 'aligned'
+          ? null
+          : highConfidenceCharacterAutoFit(target?.alignment.measurement))
+      if (transform === null) return
       if (!transform) throw new Error('No high-confidence auto-fit is available; use the visual alignment controls.')
-      return setCharacterVariantTransform(characterDrafts, draft.id, group, variantId, draft.updatedAt, transform)
+      await editor.dispatch((current) => setCharacterVariantTransform(current, group, variantId, transform), revision)
     },
     compileCharacterAtlas: compileAuthoringAtlas,
-    deleteCharacter: (characterId: string) => characterDrafts.delete(characterId),
+    async deleteCharacter(characterId: string) {
+      await editor.close(characterId)
+      await characterDrafts.delete(characterId)
+    },
     async exportCharacter(characterId: string) {
-      const character = await characterDrafts.get(characterId)
-      if (!character) throw new Error('Character not found')
-      const current = migrateCharacterDraft(character)
-      return exportCharacterDraftZip(current, await compileAuthoringAtlas(current))
+      const { character } = await editor.view(characterId)
+      return exportCharacterDraftZip(character, await compileAuthoringAtlas(character))
     },
     async importCharacter(blob: Blob) {
       const imported = await readCharacterDraftZip(blob, inspectCharacterImage)
-      const duplicateIdentity = (await listCharacterDrafts()).some(({ packId }) => packId === imported.draft.packId)
-      const saved = await characterDrafts.create({
+      const duplicateIdentity = (await listCharacterDrafts()).some(({ character }) => character.packId === imported.draft.packId)
+      return persisted(characterDrafts.create({
         ...imported.draft,
         id: crypto.randomUUID(),
-        revision: 0,
         ...(duplicateIdentity ? { packId: `character-${crypto.randomUUID()}` } : {}),
         updatedAt: Date.now(),
-      })
-      await requestPersistentStorage(browser?.navigator.storage)
-      return saved
+      }))
     },
   }
 
@@ -237,12 +226,25 @@ export function createApplication(document: Document) {
       input: { characterId: draft.id, ...target },
     })) : []
   }
+  const historyStatus = () => {
+    const { activeCharacterId, persistedRevision, saveStatus } = editor.store.getState()
+    const { pastStates, futureStates } = editor.history.getState()
+    return {
+      characterId: activeCharacterId,
+      revision: persistedRevision,
+      canUndo: pastStates.length > 0 && saveStatus !== 'conflict',
+      canRedo: futureStates.length > 0 && saveStatus !== 'conflict',
+      saveStatus,
+    }
+  }
 
   async function inspectWorkspace() {
     const route = browser?.location.pathname ?? '/'
     const selectedRoute = routeSelection(route)
-    const characters = await listCharacterDrafts()
-    const character = characters.find(({ id }) => id === selectedRoute?.characterId) ?? null
+    const records = await listCharacterDrafts()
+    const saved = records.find(({ character }) => character.id === selectedRoute?.characterId)
+    const current = saved ? await editor.view(saved.character.id) : null
+    const character = current?.character ?? null
     const missingCharacterTargets = character ? REQUIRED_CHARACTER_TARGETS
       .filter((target) => !hasCurrentCharacterLayer(character, target.group, target.variantId, target.layer)) : REQUIRED_CHARACTER_TARGETS
     const navigation = [{ destination: 'characters', path: '/characters' }, ...(character ? [
@@ -251,26 +253,27 @@ export function createApplication(document: Document) {
       { destination: 'character-props', path: characterPath(character.id, 'prop') },
     ] : [])]
     const nextActions = character ? characterNextActions(character) : [{
-      tool: 'navigate_character', required: false, reason: characters.length ? 'Open a Character before editing its assets.' : 'Open the Character library so the user can create a blank or starter Character.', input: { destination: 'characters' },
+      tool: 'navigate_character', required: false, reason: records.length ? 'Open a Character before editing its assets.' : 'Open the Character library so the user can create a blank or starter Character.', input: { destination: 'characters' },
     }]
     return {
       status: 'ok',
       data: {
         route: { path: route, ...selectedRoute },
-        characters: characters.map((draft) => ({
+        characters: records.map(({ character: draft, version }) => ({
           id: draft.id,
           name: draft.name,
-          revision: draft.revision,
+          revision: version,
           updatedAt: draft.updatedAt,
         })),
-        currentCharacter: character ? {
+        currentCharacter: character && current ? {
           id: character.id,
           name: character.name,
-          revision: character.revision,
+          revision: current.version,
           updatedAt: character.updatedAt,
           selected: character.selected,
           missingTargets: missingCharacterTargets,
         } : null,
+        history: historyStatus(),
         navigation,
       },
       nextActions,
@@ -286,7 +289,7 @@ export function createApplication(document: Document) {
     if (destination === 'characters') {
       return { status: 'ok', data: { destination, path: '/characters' }, nextActions: [], effects: { navigation: { path: '/characters', mode: 'push', reason: 'Open the Character library.' } } }
     }
-    const character = characterId ? await characterDrafts.get(characterId) : null
+    const character = characterId ? await editor.open(characterId) : null
     if (!character) throw new Error('A valid Character ID is required for this destination')
     const group = destination === 'character-expressions' ? 'expression' : destination === 'character-outfits' ? 'outfit' : 'prop'
     if (variantId && !character.variants.some((variant) => variant.group === group && variant.id === variantId)) throw new Error('Character variant not found')
@@ -294,7 +297,7 @@ export function createApplication(document: Document) {
     return { status: 'ok', data: { destination, characterId: character.id, variantId: variantId ?? null, path }, nextActions: [], effects: { navigation: { path, mode: 'push', reason: variantId ? 'Open the exact Character variant.' : 'Open the Character category.' } } }
   }
 
-  const characterTarget = async (draft: CharacterDraft, rawInput: unknown) => {
+  const characterTarget = async (draft: CharacterDraft, revision: number, rawInput: unknown) => {
     const input = rawInput as Partial<{ group: CharacterVariantGroup; variantId: string; layer: CharacterVariantLayer }>
     if (!input.group && !input.variantId && !input.layer) return null
     if (!input.group || !input.variantId || !input.layer) throw new Error('Character target requires group, variantId, and layer')
@@ -346,7 +349,7 @@ export function createApplication(document: Document) {
         group: input.group,
         variantId: input.variantId,
         layer: input.layer,
-        expectedRevision: draft.revision,
+        expectedRevision: revision,
         expectedEditSourceSha256: editSource?.inspection.sha256 ?? null,
       },
     }
@@ -354,12 +357,12 @@ export function createApplication(document: Document) {
       tool: 'set_character_variant_transform',
       required: true,
       reason: 'Apply the suggested absolute transform, then inspect the alpha-mask alignment again.',
-      input: { characterId: draft.id, group: input.group, variantId: input.variantId, expectedRevision: draft.revision, ...suggestedTransform },
+      input: { characterId: draft.id, group: input.group, variantId: input.variantId, expectedRevision: revision, ...suggestedTransform },
     }] : visualFit?.suggestedTransform ? [{
       tool: 'set_character_variant_transform',
       required: false,
       reason: 'Try the experimental native pixel-and-edge correlation fit, then visually review the head alignment view.',
-      input: { characterId: draft.id, group: input.group, variantId: input.variantId, expectedRevision: draft.revision, ...visualFit.suggestedTransform },
+      input: { characterId: draft.id, group: input.group, variantId: input.variantId, expectedRevision: revision, ...visualFit.suggestedTransform },
     }, submissionAction] : [submissionAction, {
       tool: 'navigate_character', required: false, reason: 'Open this exact variant for visual preflight.', input: {
         destination: `character-${categoryFor(input.group)}`, characterId: draft.id, variantId: input.variantId,
@@ -368,7 +371,7 @@ export function createApplication(document: Document) {
     return {
       input: { group: input.group, variantId: input.variantId, layer: input.layer },
       operation,
-      expectedRevision: draft.revision,
+      expectedRevision: revision,
       current: asset ? {
         filled: true,
         current,
@@ -455,9 +458,9 @@ export function createApplication(document: Document) {
 
   async function inspectCharacterContract(rawInput: unknown) {
       const { characterId, ...targetInput } = rawInput as { characterId: string }
-      const draft = await openCharacter(characterId)
+      const { character: draft, version } = await editor.view(characterId)
       const canonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body
-      const target = await characterTarget(draft, targetInput)
+      const target = await characterTarget(draft, version, targetInput)
       return {
         status: 'ok',
         data: {
@@ -473,7 +476,7 @@ export function createApplication(document: Document) {
               current: isCharacterDraftAssetCurrent(draft, variant, layer),
             })),
           })),
-          character: { id: draft.id, name: draft.name, selected: draft.selected, revision: draft.revision },
+          character: { id: draft.id, name: draft.name, selected: draft.selected, revision: version },
           registrationFrame: characterRegistrationFrame(draft),
           canonicalReference: canonical ? {
             filename: canonical.filename,
@@ -516,8 +519,10 @@ export function createApplication(document: Document) {
         label: input.label,
         layer: input.layer,
       }
-      const current = await openCharacter(input.characterId)
-      if (current.revision !== input.expectedRevision) throw new Error(`Character changed; expected revision ${input.expectedRevision}, current ${current.revision}`)
+      // Targeting another Character settles the active queue and switches sessions before validation.
+      await editor.open(input.characterId)
+      const { character: current, revision } = activeCharacter()
+      if (revision !== input.expectedRevision) throw new Error(`Character changed; expected revision ${input.expectedRevision}, current ${revision}`)
       const sources = resolveCharacterAssetSources(current, target)
       const editSourceSha256 = sources.editSource?.inspection.sha256 ?? null
       if (editSourceSha256 !== input.expectedEditSourceSha256) throw new Error('Character edit source changed; inspect the target again')
@@ -563,7 +568,7 @@ export function createApplication(document: Document) {
           tool: 'submit_character_asset_candidate',
           required: true,
           reason: alignment.diagnostics[0]?.message ?? 'Regenerate the rejected character asset.',
-          input: { characterId: current.id, group: target.group, variantId: target.variantId, layer: target.layer, expectedRevision: current.revision, expectedEditSourceSha256: editSourceSha256 },
+          input: { characterId: current.id, group: target.group, variantId: target.variantId, layer: target.layer, expectedRevision: revision, expectedEditSourceSha256: editSourceSha256 },
         }],
       }
       const autoFit = highConfidenceCharacterAutoFit(alignment)
@@ -581,19 +586,22 @@ export function createApplication(document: Document) {
         : null
       const savedBlob = stitchedBlob ?? blob
       const savedInspection = stitchedBlob ? await inspectCharacterImage(stitchedBlob) : inspection
-      let draft = await saveCharacterDraftAsset(characterDrafts, async () => savedInspection, current, target, savedBlob, filename, 'agent')
-      if (!stitchedBlob && autoFit && target.group !== 'body') {
-        draft = await setCharacterVariantTransform(characterDrafts, current.id, target.group, target.variantId, draft.updatedAt, autoFit)
-      }
+      // Blob first; then one command (asset swap plus optional auto-fit) creates exactly one history frame.
+      const asset = await editor.stageAsset(savedBlob, filename, 'agent', savedInspection)
+      await editor.dispatch((character) => {
+        const placed = saveCharacterDraftAsset(character, target, asset)
+        return !stitchedBlob && autoFit && target.group !== 'body' ? setCharacterVariantTransform(placed, target.group, target.variantId, autoFit) : placed
+      }, input.expectedRevision)
+      const draft = activeCharacter().character
+      const savedRevision = settledRevision('Character asset')
       const savedVariant = draft.variants.find(({ group, id }) => group === target.group && id === target.variantId)!
-      const specification = await characterTarget(draft, target)
+      const specification = await characterTarget(draft, savedRevision, target)
       const protectedRegionDelta = stitchedBlob && sources.editSource && editableRegion
         ? measureProtectedRegionDelta(
             await readCharacterPixels(sources.editSource.blob, sources.editSourceTransform),
             await readCharacterPixels(stitchedBlob),
             editableRegion,
           ) : null
-      document.defaultView?.dispatchEvent(new Event('character-updated'))
       const path = characterPath(draft.id, target.group, target.variantId)
       return {
         status: 'ok',
@@ -613,7 +621,7 @@ export function createApplication(document: Document) {
           alignment: specification?.alignment,
           compositor: stitchedBlob ? { applied: true, protectedRegionDelta } : { applied: false },
           autoFit: autoFit ? { applied: true, transform: autoFit, bakedIntoAsset: Boolean(stitchedBlob) } : { applied: false },
-          revision: draft.revision,
+          revision: savedRevision,
         },
         nextActions: specification?.nextActions ?? characterNextActions(draft),
         effects: { navigation: { path, mode: 'push', reason: 'Open the accepted Character asset for visual review.' } },
@@ -630,19 +638,20 @@ export function createApplication(document: Document) {
         y: number
         scale: number
       }
-      const current = await openCharacter(input.characterId)
-      if (current.revision !== input.expectedRevision) throw new Error(`Character changed; expected revision ${input.expectedRevision}, current ${current.revision}`)
+      await editor.open(input.characterId)
+      const { character: current } = activeCharacter()
       const before = current.variants.find(({ group, id }) => group === input.group && id === input.variantId)?.transform ?? { x: 0, y: 0, scale: 1 }
       const calibratesHead = input.group === 'expression' && current.headRegistration?.variantId === input.variantId
-      const draft = await setCharacterVariantTransform(characterDrafts, input.characterId, input.group, input.variantId, current.updatedAt, {
+      await editor.dispatch((character) => setCharacterVariantTransform(character, input.group, input.variantId, {
         x: input.x,
         y: input.y,
         scale: input.scale,
-      })
+      }), input.expectedRevision)
+      const draft = activeCharacter().character
+      const revision = settledRevision('Character transform')
       const variant = draft.variants.find(({ group, id }) => group === input.group && id === input.variantId)!
       const firstLayer = CHARACTER_CREATION_GROUPS.find(({ group }) => group === input.group)!.layers.find((layer) => variant.layers[layer])!
-      const specification = await characterTarget(draft, { group: input.group, variantId: input.variantId, layer: firstLayer })
-      document.defaultView?.dispatchEvent(new Event('character-updated'))
+      const specification = await characterTarget(draft, revision, { group: input.group, variantId: input.variantId, layer: firstLayer })
       const path = characterPath(draft.id, input.group, input.variantId)
       return {
         status: 'ok',
@@ -653,12 +662,33 @@ export function createApplication(document: Document) {
           rebasedVariantIds: calibratesHead ? draft.variants.filter((candidate) =>
             candidate.group === 'expression' && candidate.id !== input.variantId && isCharacterDraftAssetCurrent(draft, candidate, 'head')
           ).map(({ id }) => id) : [],
-          revision: draft.revision,
+          revision,
           alignment: specification?.alignment,
         },
         nextActions: specification?.nextActions ?? characterNextActions(draft),
         effects: { navigation: { path, mode: 'push', reason: 'Open the adjusted Character variant for visual review.' } },
       }
+  }
+
+  function characterHistoryTool(direction: 'undo' | 'redo') {
+    return async (rawInput: unknown) => {
+      const input = rawInput as { characterId: string; expectedRevision: number }
+      const state = editor.store.getState()
+      const history = historyStatus()
+      if (state.activeCharacterId !== input.characterId || !state.character) return { status: 'no_active_history', data: history }
+      if (state.saveStatus !== 'saved') return { status: 'not_settled', data: history }
+      if (state.persistedRevision !== input.expectedRevision) return { status: 'revision_conflict', data: history }
+      if (!(direction === 'undo' ? history.canUndo : history.canRedo)) return { status: `nothing_to_${direction}`, data: history }
+      await editor[direction]()
+      settledRevision(`Character ${direction}`)
+      const route = browser?.location.pathname ?? ''
+      const path = routeSelection(route)?.characterId === input.characterId ? route : characterPath(input.characterId)
+      return {
+        status: 'ok',
+        data: { ...historyStatus(), characterId: input.characterId },
+        effects: { navigation: { path, mode: 'push', reason: `Review the Character after ${direction}.` } },
+      }
+    }
   }
 
   return application

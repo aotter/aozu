@@ -25,7 +25,6 @@ import type { ValidatedStarterPackage } from '../domain/starter.ts'
 import type { StagedCandidatePreview } from './candidate.ts'
 import type {
   AssetRepositoryFactory,
-  CharacterDraftRepository,
   CharacterPackLibraryRecord,
   CharacterPackLibraryRepository,
 } from './ports.ts'
@@ -62,7 +61,6 @@ const initialVariants = (): CharacterDraftVariant[] => [
 export const createCharacterDraft = (packId: string = `character-${crypto.randomUUID()}`, id: string = crypto.randomUUID()): CharacterDraft => ({
   id,
   schemaVersion: 4,
-  revision: 0,
   packId,
   rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
   name: 'My Companion',
@@ -76,7 +74,6 @@ export const copyCharacter = (character: CharacterDraft): CharacterDraft => ({
   id: crypto.randomUUID(),
   packId: `character-${crypto.randomUUID()}`,
   name: `${character.name || 'Untitled Character'} copy`,
-  revision: 0,
   updatedAt: Date.now(),
 })
 
@@ -248,8 +245,8 @@ export function createCharacterDraftFromStarter(loaded: ValidatedStarterPackage,
 }
 
 type LegacyRole = 'body-base' | 'head-neutral' | 'head-happy' | 'body-outfit' | 'prop-back' | 'prop-front'
-type CharacterDraftV4 = CharacterDraft & { published?: { version: number; revision: number } }
-type CharacterDraftV3 = Omit<CharacterDraft, 'schemaVersion' | 'revision' | 'rigProfile'> & {
+type CharacterDraftV4 = CharacterDraft & { revision?: number; published?: { version: number; revision: number } }
+type CharacterDraftV3 = Omit<CharacterDraft, 'schemaVersion' | 'rigProfile'> & {
   schemaVersion: 3
   approvedAt?: number
 }
@@ -289,8 +286,9 @@ const withHeadRegistration = (draft: CharacterDraft): CharacterDraft => {
 
 export function migrateCharacterDraft(draft: CharacterDraftV4 | CharacterDraftV3 | CharacterDraftV2 | LegacyCharacterDraft): CharacterDraft {
   if ('schemaVersion' in draft && draft.schemaVersion === 4) {
-    if (!('published' in draft)) return withHeadRegistration(withoutDefaultExpression(draft))
-    const { published: _published, ...character } = draft
+    // Legacy `revision` and `published` metadata is dropped on hydration; the Mantle entry version is the only revision.
+    if (!('published' in draft) && !('revision' in draft)) return withHeadRegistration(withoutDefaultExpression(draft))
+    const { published: _published, revision: _revision, ...character } = draft
     return withHeadRegistration(withoutDefaultExpression(character))
   }
   if ('schemaVersion' in draft && draft.schemaVersion === 3) {
@@ -298,7 +296,6 @@ export function migrateCharacterDraft(draft: CharacterDraftV4 | CharacterDraftV3
     const upgraded: CharacterDraft = {
       ...legacy,
       schemaVersion: 4,
-      revision: 0,
       rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
     }
     return withHeadRegistration(withoutDefaultExpression(upgraded))
@@ -318,7 +315,6 @@ export function migrateCharacterDraft(draft: CharacterDraftV4 | CharacterDraftV3
     return withHeadRegistration(withoutDefaultExpression({
       ...draft,
       schemaVersion: 4,
-      revision: 0,
       rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
       variants,
       selected: {
@@ -362,18 +358,13 @@ export function validateCharacterAssetInspection(inspection: CharacterAssetInspe
   ) throw new Error('Asset must be a visible, transparent 512×768 RGBA PNG under 5 MiB')
 }
 
-export async function setCharacterVariantTransform(
-  drafts: CharacterDraftRepository,
-  draftId: string,
+/** Pure command: returns the next Character with one variant transform applied (head anchors rebase current expressions). */
+export function setCharacterVariantTransform(
+  draft: CharacterDraft,
   group: CharacterVariantGroup,
   variantId: string,
-  expectedUpdatedAt: number,
   transform: CharacterVariantTransform,
-) {
-  const stored = await drafts.get(draftId)
-  if (!stored) throw new Error('Character not found')
-  const draft = migrateCharacterDraft(stored)
-  if (draft.updatedAt !== expectedUpdatedAt) throw new Error(`Character changed; expected ${expectedUpdatedAt}, current ${draft.updatedAt}`)
+): CharacterDraft {
   if (group === 'body') throw new Error('The canonical body registration is locked')
   validateCharacterVariantTransform(transform)
   const variant = draft.variants.find(({ group: candidateGroup, id }) => candidateGroup === group && id === variantId)
@@ -396,28 +387,22 @@ export async function setCharacterVariantTransform(
     validateCharacterVariantTransform(rebased)
     return rebased
   }
-  const next = {
+  return {
     ...draft,
-    revision: draft.revision + 1,
     variants: draft.variants.map((candidate) => candidate === variant
       ? { ...candidate, transform: { ...transform } }
       : rebasesHeads && candidate.group === 'expression' && isCharacterDraftAssetCurrent(draft, candidate, 'head')
         ? { ...candidate, transform: rebase(candidate.transform) }
         : candidate),
-    updatedAt: Math.max(Date.now(), draft.updatedAt + 1),
   }
-  return drafts.put(next)
 }
 
-export async function saveCharacterDraftAsset(
-  drafts: CharacterDraftRepository,
-  inspect: (blob: Blob) => Promise<CharacterAssetInspection>,
+/** Pure command: returns the next Character with one already-stored asset placed at `target`. */
+export function saveCharacterDraftAsset(
   draft: CharacterDraft,
   target: CharacterAssetTarget,
-  blob: Blob,
-  filename: string,
-  source: 'user' | 'agent',
-) {
+  { blob, filename, source, inspection }: Omit<CharacterDraftAsset, 'canonicalSha256'>,
+): CharacterDraft {
   if (
     !CHARACTER_VARIANT_GROUPS.includes(target.group) ||
     (target.group === 'body' && target.variantId !== 'base') ||
@@ -425,7 +410,6 @@ export async function saveCharacterDraftAsset(
     !variantIdPattern.test(target.variantId) ||
     !target.label.trim() || target.label.trim().length > 80
   ) throw new Error('Unknown character asset target')
-  const inspection = await inspect(blob)
   validateCharacterAssetInspection(inspection)
   const previousCanonical = draft.variants.find(({ group, id }) => group === 'body' && id === 'base')?.layers.body?.inspection.sha256
   const derived = !(target.group === 'body' && target.variantId === 'base')
@@ -448,18 +432,15 @@ export async function saveCharacterDraftAsset(
         ])),
       })
     : variants
-  const next: CharacterDraft = {
+  return {
     ...draft,
-    revision: draft.revision + 1,
     variants: nextVariants,
     ...(!derived && previousCanonical && previousCanonical !== inspection.sha256
       ? { headRegistration: undefined }
       : target.group === 'expression' && !draft.headRegistration
         ? { headRegistration: { variantId: target.variantId } }
         : {}),
-    updatedAt: Math.max(Date.now(), draft.updatedAt + 1),
   }
-  return drafts.put(next)
 }
 
 const ref = (pack: CharacterPack, appearanceId: string): AppearanceRef => ({

@@ -11,18 +11,14 @@ import { StatusPage } from '@/ui/pages/StatusPage'
 function CharacterEditor({ application, refresh }: { application: Application; refresh(): Promise<void> }) {
   const navigate = useNavigate()
   const { characterId, step } = useParams()
-  const openCharacter = useCallback(() => application.openCharacter(characterId ?? ''), [application, characterId])
   if (!characterId) return <Navigate to="/characters" replace />
   return <CharacterDraftPage
-    openCharacter={openCharacter}
-    saveCharacter={application.saveCharacter}
-    saveAsset={application.saveCharacterAsset}
-    setVariantTransform={application.setCharacterVariantTransform}
+    editor={application.editor}
     autoFitVariant={application.autoFitCharacterVariant}
     compileAtlas={application.compileCharacterAtlas}
     exportCharacter={() => application.exportCharacter(characterId)}
-    saveAs={async (draft) => {
-      const saved = await application.saveCharacterAs(draft)
+    saveAs={async () => {
+      const saved = await application.saveCharacterAs()
       await refresh()
       navigate(`/characters/${encodeURIComponent(saved.id)}/${step ?? 'expressions'}`)
       return saved
@@ -54,11 +50,10 @@ export function AppRoutes({ application }: { application: Application }) {
       .catch(() => { if (live) setLoadError(true) })
     return () => { live = false }
   }, [application])
-  useEffect(() => {
-    const update = () => void refresh()
-    window.addEventListener('character-updated', update)
-    return () => window.removeEventListener('character-updated', update)
-  }, [refresh])
+  // Every persisted Character revision refreshes the library listing (names, ordering).
+  useEffect(() => application.editor.store.subscribe((state, previous) => {
+    if (state.persistedRevision !== previous.persistedRevision) void refresh()
+  }), [application, refresh])
 
   if (loadError) return <><AppHeader webmcp={webmcp} /><StatusPage>{t('startup.error')}</StatusPage></>
   if (!library) return <><AppHeader webmcp={webmcp} /><StatusPage>{t('startup.loading')}</StatusPage></>

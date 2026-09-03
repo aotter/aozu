@@ -107,7 +107,6 @@ export async function readCharacterDraftZip(
     draft: {
       id: sourceId,
       schemaVersion: 4,
-      revision: typeof raw.revision === 'number' && Number.isSafeInteger(raw.revision) && raw.revision >= 0 ? raw.revision : 0,
       packId,
       rigProfile: { id: CHARACTER_RIG.id, version: CHARACTER_RIG.version },
       name,
@@ -154,7 +153,6 @@ export async function exportCharacterDraftZip(
     name: draft.name,
     headRegistration: draft.headRegistration,
     selected: draft.selected,
-    revision: draft.revision,
     updatedAt: draft.updatedAt,
     variants,
   })

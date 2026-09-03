@@ -18,7 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/ui/components/ui/alert-dialog'
 
-export type CharacterLibraryItem = Pick<CharacterDraft, 'id' | 'name' | 'revision' | 'updatedAt'>
+export type CharacterLibraryItem = Pick<CharacterDraft, 'id' | 'name' | 'updatedAt'>
 
 export function CharacterLibraryPage({ characters, loadStarters, createCharacter, openCharacter, copyCharacter, deleteCharacter, exportCharacter, importCharacter, refresh }: {
   characters: CharacterLibraryItem[]

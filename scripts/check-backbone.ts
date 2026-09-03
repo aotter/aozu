@@ -20,9 +20,10 @@ const validate = (collection: keyof typeof plan.schemas, data: Record<string, un
   new EntryDataValidator().validate(plan.schemas[collection]!.manifest, data)
 const validateAuthoring = (collection: keyof typeof authoring.schemas, data: Record<string, unknown>) =>
   new EntryDataValidator().validate(authoring.schemas[collection]!.manifest, data)
+assert.equal(authoring.triggers['undo-character-change']?.target, 'undo-character-change')
+assert.equal(authoring.triggers['redo-character-change']?.target, 'redo-character-change')
 assert.equal(validateAuthoring('character-workspaces', {
   schemaVersion: 4,
-  revision: 0,
   packId: 'character-test',
   rigProfile: { id: 'companion-fullbody', version: 2 },
   name: 'Test',
@@ -30,7 +31,12 @@ assert.equal(validateAuthoring('character-workspaces', {
   selected: { props: [] },
 }).length, 0)
 assert.ok(validateAuthoring('character-workspaces', {
-  schemaVersion: 4, revision: 0, packId: 'character-test', name: 'Missing rig', variants: [], selected: { props: [] },
+  schemaVersion: 4, packId: 'character-test', name: 'Missing rig', variants: [], selected: { props: [] },
+}).length)
+// Mantle entry version is the only revision token; a second counter in the Character value is rejected.
+assert.ok(validateAuthoring('character-workspaces', {
+  schemaVersion: 4, revision: 0, packId: 'character-test', rigProfile: { id: 'companion-fullbody', version: 2 }, name: 'Test',
+  variants: [{ id: 'base', group: 'body', label: 'Base body', layers: {} }], selected: { props: [] },
 }).length)
 assert.equal(validate('rules', {
   ruleId: 'recursive', priority: 1,

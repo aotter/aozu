@@ -1,21 +1,25 @@
 import type { Entry } from '@aotter/mantle-spec'
 import type { MantleRuntime } from '@aotter/mantle-runtime'
 
-import type { AssetRepositoryFactory, CharacterDraftRepository } from '../../core/application/ports.ts'
-import type {
-  CharacterDraft,
-  CharacterDraftAsset,
-  CharacterVariantLayer,
-  CharacterWorkspaceData,
+import {
+  CharacterRevisionConflict,
+  type AssetRepositoryFactory,
+  type CharacterDraftRepository,
+  type CharacterRecord,
+} from '../../core/application/ports.ts'
+import {
+  characterAssetScope,
+  type CharacterDraft,
+  type CharacterDraftAsset,
+  type CharacterVariantLayer,
+  type CharacterWorkspaceData,
 } from '../../core/domain/character.ts'
 
 export const CHARACTER_WORKSPACE_COLLECTION = 'character-workspaces'
-const assetScope = (packId: string) => `character:${packId}`
 const context = { user: null, staff: null, env: {} }
 
 const dataFrom = (draft: CharacterDraft): CharacterWorkspaceData => ({
   schemaVersion: draft.schemaVersion,
-  revision: draft.revision,
   packId: draft.packId,
   rigProfile: structuredClone(draft.rigProfile),
   name: draft.name,
@@ -38,15 +42,16 @@ export function createCharacterWorkspaceRepository(
   assets: AssetRepositoryFactory,
 ): CharacterDraftRepository {
   const persistAssets = async (draft: CharacterDraft) => {
-    const repository = assets(assetScope(draft.packId))
+    const repository = assets(characterAssetScope(draft.packId))
     const unique = new Map(draft.variants.flatMap(({ layers }) => Object.values(layers).filter(Boolean).map((asset) => [asset.inspection.sha256, asset.blob])))
     await Promise.all([...unique].map(async ([id, blob]) => {
       if (!await repository.get(id)) await repository.put(id, blob)
     }))
   }
-  const hydrate = async (entry: Entry): Promise<CharacterDraft> => {
-    const data = structuredClone(entry.data) as unknown as CharacterWorkspaceData
-    const repository = assets(assetScope(data.packId))
+  const hydrate = async (entry: Entry): Promise<CharacterRecord> => {
+    // Legacy `revision`/`published` metadata stays stored until the next real save; a read never writes.
+    const { revision: _revision, published: _published, ...data } = structuredClone(entry.data) as unknown as CharacterWorkspaceData & { revision?: unknown; published?: unknown }
+    const repository = assets(characterAssetScope(data.packId))
     const variants = await Promise.all(data.variants.map(async ({ layers, ...variant }) => ({
       ...variant,
       layers: Object.fromEntries(await Promise.all(Object.entries(layers).map(async ([layer, asset]) => {
@@ -57,7 +62,7 @@ export function createCharacterWorkspaceRepository(
         return [layer, { ...descriptor, blob } satisfies CharacterDraftAsset]
       }))) as Partial<Record<CharacterVariantLayer, CharacterDraftAsset>>,
     })))
-    return { ...data, id: entry.id, updatedAt: entry.updatedAt, variants }
+    return { character: { ...data, id: entry.id, updatedAt: entry.updatedAt, variants }, version: entry.version }
   }
   const entries = async () => (await runtime()).entries
 
@@ -80,18 +85,21 @@ export function createCharacterWorkspaceRepository(
       if (!result.ok) throw new Error(result.diagnostic.message ?? 'Character could not be created')
       return hydrate(result.data)
     },
-    async put(draft) {
+    async put(draft, expectedVersion) {
       const current = await (await entries()).readById(draft.id)
       if (!current || current.collection !== CHARACTER_WORKSPACE_COLLECTION) throw new Error('Character not found')
-      if (draft.revision !== Number(current.data.revision) + 1) throw new Error('Character changed; reload and try again')
+      if (current.version !== expectedVersion) throw new CharacterRevisionConflict(`Character changed elsewhere: expected revision ${expectedVersion}, found ${current.version}`)
       await persistAssets(draft)
       const result = await (await runtime()).invokeProcedure<Entry>({
         procedure: 'update-character-workspace',
-        input: { id: draft.id, expectedVersion: current.version, ...dataFrom(draft) },
+        input: { id: draft.id, expectedVersion, ...dataFrom(draft) },
         ctx: context,
       })
-      if (!result.ok) throw new Error(result.diagnostic.message ?? 'Character could not be saved')
-      return hydrate(result.data)
+      if (!result.ok) {
+        const message = result.diagnostic.message ?? 'Character could not be saved'
+        throw result.diagnostic.code === 'CONFLICT' ? new CharacterRevisionConflict(message) : new Error(message)
+      }
+      return result.data.version
     },
     async delete(id) {
       const current = await (await entries()).readById(id)
@@ -100,7 +108,7 @@ export function createCharacterWorkspaceRepository(
         procedure: 'delete-character-workspace', input: { id }, ctx: context,
       })
       if (!result.ok) throw new Error(result.diagnostic.message ?? 'Character could not be deleted')
-      await assets(assetScope(String(current.data.packId))).deleteAll?.()
+      await assets(characterAssetScope(String(current.data.packId))).deleteAll?.()
     },
   }
 }

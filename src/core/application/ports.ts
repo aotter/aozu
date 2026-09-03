@@ -75,11 +75,22 @@ export interface AssetRepository {
 
 export type AssetRepositoryFactory = (bundleId: string) => AssetRepository
 
+/** A hydrated Character plus its Mantle entry version, the only persisted revision token. */
+export interface CharacterRecord {
+  character: CharacterDraft
+  version: number
+}
+
+export class CharacterRevisionConflict extends Error {
+  override readonly name = 'CharacterRevisionConflict'
+}
+
 export interface CharacterDraftRepository {
-  list(): Promise<CharacterDraft[]>
-  get(id: string): Promise<CharacterDraft | null>
-  create(draft: CharacterDraft): Promise<CharacterDraft>
-  put(draft: CharacterDraft): Promise<CharacterDraft>
+  list(): Promise<CharacterRecord[]>
+  get(id: string): Promise<CharacterRecord | null>
+  create(draft: CharacterDraft): Promise<CharacterRecord>
+  /** Writes one whole snapshot against `expectedVersion`; resolves to the new version or rejects with CharacterRevisionConflict. */
+  put(draft: CharacterDraft, expectedVersion: number): Promise<number>
   delete(id: string): Promise<void>
 }
 

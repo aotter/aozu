@@ -68,7 +68,6 @@ export interface CharacterAssetTarget {
 export interface CharacterDraft {
   id: string
   schemaVersion: 4
-  revision: number
   packId: string
   rigProfile: { id: string; version: number }
   name: string
@@ -81,6 +80,8 @@ export interface CharacterDraft {
   }
   updatedAt: number
 }
+
+export const characterAssetScope = (packId: string) => `character:${packId}`
 
 export type CharacterWorkspaceData = Omit<CharacterDraft, 'id' | 'updatedAt' | 'variants'> & {
   variants: Array<Omit<CharacterDraftVariant, 'layers'> & {
